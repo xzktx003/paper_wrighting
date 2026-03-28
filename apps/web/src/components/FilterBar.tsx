@@ -1,0 +1,86 @@
+import type { AgentSessionRecord } from "@agent-orchestrator/shared";
+
+export interface FilterState {
+  host: string | null;
+  kind: string | null;
+  dirQuery: string;
+}
+
+interface FilterBarProps {
+  sessions: AgentSessionRecord[];
+  filters: FilterState;
+  onFiltersChange: (filters: FilterState) => void;
+}
+
+export function FilterBar({
+  sessions,
+  filters,
+  onFiltersChange,
+}: FilterBarProps) {
+  const hosts = Array.from(new Set(sessions.map((s) => s.hostId ?? "local")));
+  const kinds = Array.from(new Set(sessions.map((s) => s.agentKind)));
+  const hasFilters = filters.host || filters.kind || filters.dirQuery;
+
+  return (
+    <div className="filter-bar">
+      <label className="filter-item">
+        <span className="filter-label">服务器</span>
+        <select
+          className="filter-select"
+          value={filters.host ?? ""}
+          onChange={(e) =>
+            onFiltersChange({ ...filters, host: e.target.value || null })
+          }
+        >
+          <option value="">全部</option>
+          {hosts.map((h) => (
+            <option key={h} value={h}>
+              {h === "local" ? "本地" : h}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="filter-item">
+        <span className="filter-label">类型</span>
+        <select
+          className="filter-select"
+          value={filters.kind ?? ""}
+          onChange={(e) =>
+            onFiltersChange({ ...filters, kind: e.target.value || null })
+          }
+        >
+          <option value="">全部</option>
+          {kinds.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="filter-item">
+        <span className="filter-label">目录</span>
+        <input
+          className="filter-input"
+          placeholder="搜索目录..."
+          value={filters.dirQuery}
+          onChange={(e) =>
+            onFiltersChange({ ...filters, dirQuery: e.target.value })
+          }
+        />
+      </label>
+
+      {hasFilters && (
+        <button
+          className="filter-reset"
+          onClick={() =>
+            onFiltersChange({ host: null, kind: null, dirQuery: "" })
+          }
+        >
+          重置筛选
+        </button>
+      )}
+    </div>
+  );
+}

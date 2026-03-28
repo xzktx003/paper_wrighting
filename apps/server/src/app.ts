@@ -1,0 +1,104 @@
+import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
+import Fastify from "fastify";
+
+import type { AgentSessionSnapshotEvent } from "@agent-orchestrator/shared";
+
+import { registerAgentSessionRoutes } from "./routes/agent-sessions.js";
+import { registerSshHostsRoutes } from "./routes/ssh-hosts.js";
+import { AgentSessionRegistry } from "./services/agent-session-registry.js";
+import { LocalProcessRuntimeManager } from "./services/local-process-runtime-manager.js";
+import { LocalTmuxAdapter } from "./services/local-tmux-adapter.js";
+import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
+import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
+
+export function buildServer(): {
+  app: ReturnType<typeof Fastify>;
+  registry: AgentSessionRegistry;
+} {
+  const app = Fastify({ logger: true });
+  const registry = new AgentSessionRegistry();
+  const processRuntimeManager = new LocalProcessRuntimeManager(registry);
+  const tmuxAdapter = new LocalTmuxAdapter(registry);
+  const sshRuntimeManager = new SshRuntimeManager(registry);
+  const ptyRuntimeManager = new PtyRuntimeManager(registry);
+
+  app.register(cors, {
+    origin: true,
+  });
+
+  app.register(websocket);
+
+  app.register(async (instance) => {
+    await registerAgentSessionRoutes(instance, {
+      registry,
+      processRuntimeManager,
+      tmuxAdapter,
+      sshRuntimeManager,
+      ptyRuntimeManager,
+    });
+
+    await registerSshHostsRoutes(instance);
+
+    instance.get("/ws/agent-sessions", { websocket: true }, (socket) => {
+      const unsubscribe = registry.subscribe((snapshot) => {
+        const event: AgentSessionSnapshotEvent = {
+          type: "snapshot",
+          payload: snapshot,
+        };
+
+        socket.send(JSON.stringify(event));
+      });
+
+      socket.on("close", () => {
+        unsubscribe();
+      });
+    });
+
+    instance.get<{ Params: { id: string } }>(
+      "/ws/agent-sessions/:id/terminal",
+      { websocket: true },
+      (socket, request) => {
+        const { id } = request.params;
+
+        if (!ptyRuntimeManager.has(id)) {
+          socket.close(4004, "没有找到 PTY 会话");
+          return;
+        }
+
+        const unsubscribe = ptyRuntimeManager.subscribe(id, (data) => {
+          socket.send(data);
+        });
+
+        socket.on("message", (message: Buffer | string) => {
+          const text =
+            typeof message === "string" ? message : message.toString("utf8");
+
+          if (text.startsWith('{"type":"resize"')) {
+            try {
+              const parsed = JSON.parse(text) as {
+                type: string;
+                cols: number;
+                rows: number;
+              };
+
+              ptyRuntimeManager.resize(id, parsed.cols, parsed.rows);
+            } catch {
+              /* ignore malformed resize */
+            }
+
+            return;
+          }
+
+          ptyRuntimeManager.write(id, text);
+        });
+
+        socket.on("close", () => {
+          unsubscribe();
+        });
+      },
+    );
+  });
+
+  return { app, registry };
+}
