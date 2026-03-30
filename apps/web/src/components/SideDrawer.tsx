@@ -17,7 +17,10 @@ import {
   launchSshPtyAgent,
   scanDirectory,
 } from "../lib/api";
-import { buildRemoteInteractiveShellCommand } from "../lib/platform-compat";
+import {
+  buildRemoteInteractiveShellCommand,
+  buildRemoteInteractiveShellExecCommand,
+} from "../lib/platform-compat";
 
 interface SideDrawerProps {
   open: boolean;
@@ -130,7 +133,7 @@ function buildRemoteDirectLaunchCommand(
   sessionId?: string,
 ): string {
   if (agentKind === "shell") {
-    return `cd ${formatWorkingDirectory(workingDirectory)} && exec "\${SHELL:-\$(command -v bash || command -v zsh || command -v sh || printf /bin/sh)}" -i`;
+    return `cd ${formatWorkingDirectory(workingDirectory)} && ${buildRemoteInteractiveShellExecCommand()}`;
   }
 
   return buildDirectLaunchCommand(
