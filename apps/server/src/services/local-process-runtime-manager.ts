@@ -7,6 +7,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
+import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
 
 export class LocalProcessRuntimeManager {
   private readonly processes = new Map<
@@ -18,7 +19,7 @@ export class LocalProcessRuntimeManager {
 
   launch(input: LaunchLocalAgentInput): AgentSessionRecord {
     const childProcess = spawn(input.command, {
-      cwd: input.workingDirectory,
+      cwd: resolveLocalWorkingDirectory(input.workingDirectory),
       env: process.env,
       shell: true,
       stdio: "pipe",

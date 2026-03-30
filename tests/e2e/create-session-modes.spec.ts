@@ -14,6 +14,17 @@ function killTmuxSession(sessionName: string): void {
   }
 }
 
+function tmuxSessionExists(sessionName: string): boolean {
+  try {
+    execFileSync(TMUX_BINARY, ['has-session', '-t', sessionName], {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function findSessionByDisplayName(
   request: APIRequestContext,
   displayName: string,
@@ -81,7 +92,7 @@ test('browser: direct and tmux creation both work from the new session form', as
     await page.getByTestId('new-session-name').fill(tmuxName);
     await page.getByTestId('new-session-kind').selectOption('copilot');
     await page.getByTestId('new-session-mode').selectOption('tmux');
-    await page.getByTestId('new-session-dir').fill(workingDirectory);
+    await page.getByTestId('new-session-dir').fill('');
 
     await expect(page.getByTestId('new-session-tmux-note')).toContainText(
       'tmux session 名将使用当前显示名称',
@@ -108,6 +119,12 @@ test('browser: direct and tmux creation both work from the new session form', as
 
     const tmuxSession = await findSessionByDisplayName(request, tmuxName);
     tmuxSessionId = tmuxSession?.id;
+
+    await expect
+      .poll(() => tmuxSessionExists(tmuxName), {
+        timeout: 15000,
+      })
+      .toBeTruthy();
   } finally {
     if (directSessionId) {
       await request.delete(`/api/agent-sessions/${directSessionId}`);

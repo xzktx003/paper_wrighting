@@ -7,6 +7,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
+import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
 
 type PtyDataListener = (data: string) => void;
 
@@ -31,7 +32,7 @@ export class PtyRuntimeManager {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
-      cwd: input.workingDirectory ?? process.cwd(),
+      cwd: resolveLocalWorkingDirectory(input.workingDirectory),
       env: process.env as Record<string, string>,
     });
 
@@ -329,7 +330,7 @@ export class PtyRuntimeManager {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
-      cwd: input.workingDirectory ?? process.cwd(),
+      cwd: resolveLocalWorkingDirectory(input.workingDirectory),
       env: process.env as Record<string, string>,
     });
 

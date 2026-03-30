@@ -522,6 +522,14 @@ function matchesTmuxResult(
     return false;
   }
 
+  const sessionName = result.sessionName?.trim().toLowerCase();
+  if (sessionName) {
+    return (
+      tmuxResult.tmuxSession?.trim().toLowerCase() === sessionName ||
+      tmuxResult.displayName.toLowerCase().includes(sessionName)
+    );
+  }
+
   const resultPath = normalizePathForMatch(result.workingDirectory);
   const tmuxPath = normalizePathForMatch(tmuxResult.workingDirectory);
   const pathMatches =
@@ -536,13 +544,7 @@ function matchesTmuxResult(
       .toLowerCase()
       .includes(result.agentKind.toLowerCase());
 
-  const sessionNameMatches =
-    Boolean(result.sessionName) &&
-    tmuxResult.displayName
-      .toLowerCase()
-      .includes(result.sessionName!.toLowerCase());
-
-  return (pathMatches && agentMatches) || sessionNameMatches;
+  return pathMatches && agentMatches;
 }
 
 function mergeTmuxResults(
