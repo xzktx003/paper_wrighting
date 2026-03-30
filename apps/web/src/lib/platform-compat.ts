@@ -22,6 +22,7 @@ function buildRemoteInteractiveShellBootstrap(finalCommand: string): string {
     "else",
     '  SHELL_BIN="/bin/sh";',
     "fi;",
+    "export SHELL_BIN;",
     finalCommand,
   ].join(" ");
 }
@@ -49,6 +50,17 @@ export function buildRemoteInteractiveShellCommand(command: string): string {
   return buildRemoteInteractiveShellBootstrap(
     `exec "$SHELL_BIN" -i -c ${shellQuote(command)}`,
   );
+}
+
+export function buildRemoteTmuxCommand(
+  command: string,
+  keepPaneOpen = false,
+): string {
+  const paneCommand = keepPaneOpen
+    ? `${command}; exec "$SHELL_BIN" -i`
+    : command;
+
+  return shellQuote(buildRemoteInteractiveShellCommand(paneCommand));
 }
 
 export function buildRemoteInteractiveShellExecCommand(): string {

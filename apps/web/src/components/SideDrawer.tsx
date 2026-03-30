@@ -20,6 +20,7 @@ import {
 import {
   buildRemoteInteractiveShellCommand,
   buildRemoteInteractiveShellExecCommand,
+  buildRemoteTmuxCommand,
 } from "../lib/platform-compat";
 
 interface SideDrawerProps {
@@ -123,7 +124,7 @@ function buildTmuxLaunchCommand(
     return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
   }
 
-  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${shellQuote(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId))}`;
+  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
 }
 
 function buildRemoteDirectLaunchCommand(
@@ -323,8 +324,9 @@ export function SideDrawer({
       if (result.sshTarget) {
         let remoteCommand: string;
         if (result.tmuxSession) {
-          remoteCommand = wrapRemoteInteractiveCommand(
-            buildTmuxAttachCommand(result.tmuxSession, result.tmuxPane),
+          remoteCommand = buildTmuxAttachCommand(
+            result.tmuxSession,
+            result.tmuxPane,
           );
         } else {
           let inner: string;
@@ -350,7 +352,9 @@ export function SideDrawer({
               result.displayName,
             );
           }
-          remoteCommand = wrapRemoteInteractiveCommand(inner);
+          remoteCommand = shouldResumeInTmux
+            ? inner
+            : wrapRemoteInteractiveCommand(inner);
         }
 
         const sshLaunchInput: LaunchSshPtyInput & { tmuxPaneId?: string } = {
@@ -429,11 +433,12 @@ export function SideDrawer({
     try {
       if (selectedHost.type === "ssh") {
         const target = currentSshTarget()!;
-        const remoteCommand = wrapRemoteInteractiveCommand(
+        const remoteCommand =
           launchMode === "tmux"
             ? command
-            : buildRemoteDirectLaunchCommand(newKind, dir, name),
-        );
+            : wrapRemoteInteractiveCommand(
+                buildRemoteDirectLaunchCommand(newKind, dir, name),
+              );
 
         await launchSshPtyAgent({
           workspaceId: "default",

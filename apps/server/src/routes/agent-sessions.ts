@@ -31,7 +31,7 @@ import {
 } from "../services/observe-session-manager.js";
 import { PtyRuntimeManager } from "../services/pty-runtime-manager.js";
 import {
-  buildInteractiveShellCommand,
+  buildTmuxCommand,
   quoteForPosixShell,
 } from "../services/runtime-compat.js";
 import { SshRuntimeManager } from "../services/ssh-runtime-manager.js";
@@ -105,7 +105,7 @@ function buildTmuxLaunchCommand(
     return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
   }
 
-  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${shellQuote(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId))}`;
+  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
 }
 
 function buildTmuxAttachCommand(
@@ -464,11 +464,9 @@ return "not_found"
           displayName: session.displayName,
           agentKind: session.agentKind,
           sshTarget: session.sshTarget,
-          remoteCommand: wrapRemoteReconnectCommand(
-            buildTmuxAttachCommand(
-              session.transportRef.tmuxSession,
-              session.transportRef.tmuxPane,
-            ),
+          remoteCommand: buildTmuxAttachCommand(
+            session.transportRef.tmuxSession,
+            session.transportRef.tmuxPane,
           ),
           workingDirectory: session.workingDirectory,
           tmuxSessionName: session.transportRef.tmuxSession,
@@ -516,8 +514,4 @@ return "not_found"
       });
     },
   );
-}
-
-function wrapRemoteReconnectCommand(command: string): string {
-  return buildInteractiveShellCommand(command);
 }

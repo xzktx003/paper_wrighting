@@ -14,7 +14,7 @@ WEB_PORT="${WEB_PORT:-3000}"
 WEB_HTTPS="${WEB_HTTPS:-1}"
 WEB_HTTPS_CERT="${WEB_HTTPS_CERT:-${RUNTIME_DIR}/certs/dev-cert.pem}"
 WEB_HTTPS_KEY="${WEB_HTTPS_KEY:-${RUNTIME_DIR}/certs/dev-key.pem}"
-WEB_HTTPS_SAN="${WEB_HTTPS_SAN:-DNS:localhost,IP:127.0.0.1}"
+WEB_HTTPS_SAN="${WEB_HTTPS_SAN:-}"
 
 SERVER_LOG="${RUNTIME_DIR}/server.log"
 WEB_LOG="${RUNTIME_DIR}/web.log"
@@ -139,6 +139,57 @@ show_log_tail() {
   fi
 }
 
+build_default_https_san() {
+  local san_entries=("DNS:localhost" "IP:127.0.0.1")
+  local host_name
+  local ip
+
+  host_name="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+  if [[ -n "$host_name" && "$host_name" != "localhost" ]]; then
+    san_entries+=("DNS:${host_name}")
+  fi
+
+  for ip in $(hostname -I 2>/dev/null || true); do
+    if [[ -z "$ip" || "$ip" == 127.* || "$ip" == "::1" ]]; then
+      continue
+    fi
+
+    san_entries+=("IP:${ip}")
+  done
+
+  local IFS=,
+  printf '%s\n' "${san_entries[*]}"
+}
+
+certificate_matches_requested_san() {
+  local cert_path="$1"
+  local requested_san="$2"
+  local certificate_text
+  local san_entry
+
+  if [[ ! -f "$cert_path" ]]; then
+    return 1
+  fi
+
+  certificate_text="$(openssl x509 -in "$cert_path" -noout -text 2>/dev/null || true)"
+  if [[ -z "$certificate_text" ]]; then
+    return 1
+  fi
+
+  IFS=',' read -r -a san_entries <<<"$requested_san"
+  for san_entry in "${san_entries[@]}"; do
+    if ! grep -F "$san_entry" <<<"$certificate_text" >/dev/null; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+if [[ -z "$WEB_HTTPS_SAN" ]]; then
+  WEB_HTTPS_SAN="$(build_default_https_san)"
+fi
+
 ensure_https_certificate() {
   if [[ "$WEB_HTTPS" != "1" ]]; then
     return 0
@@ -150,7 +201,12 @@ ensure_https_certificate() {
   fi
 
   if [[ -f "$WEB_HTTPS_CERT" && -f "$WEB_HTTPS_KEY" ]]; then
-    return 0
+    if certificate_matches_requested_san "$WEB_HTTPS_CERT" "$WEB_HTTPS_SAN"; then
+      return 0
+    fi
+
+    log "Regenerating self-signed certificate with SANs: ${WEB_HTTPS_SAN}"
+    rm -f "$WEB_HTTPS_CERT" "$WEB_HTTPS_KEY"
   fi
 
   mkdir -p "$(dirname "$WEB_HTTPS_CERT")"

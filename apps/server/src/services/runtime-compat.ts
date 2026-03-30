@@ -74,6 +74,7 @@ function buildInteractiveShellBootstrap(finalCommand: string): string {
     "else",
     '  SHELL_BIN="/bin/sh";',
     "fi;",
+    "export SHELL_BIN;",
     finalCommand,
   ].join(" ");
 }
@@ -102,6 +103,17 @@ export function buildInteractiveShellCommand(command: string): string {
   return buildInteractiveShellBootstrap(
     `exec "$SHELL_BIN" -i -c ${quoteForPosixShell(command)}`,
   );
+}
+
+export function buildTmuxCommand(
+  command: string,
+  keepPaneOpen = false,
+): string {
+  const paneCommand = keepPaneOpen
+    ? `${command}; exec "$SHELL_BIN" -i`
+    : command;
+
+  return quoteForPosixShell(buildInteractiveShellCommand(paneCommand));
 }
 
 export function resolveTmuxBinary(

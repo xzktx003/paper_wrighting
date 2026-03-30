@@ -6,7 +6,6 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { getSshHosts, launchSshPtyAgent } from "../lib/api";
-import { buildRemoteInteractiveShellCommand } from "../lib/platform-compat";
 
 interface QuickTmuxConnectProps {
   open: boolean;
@@ -35,10 +34,6 @@ function formatWorkingDirectory(workingDirectory: string): string {
   }
 
   return shellQuote(workingDirectory);
-}
-
-function wrapRemoteInteractiveCommand(command: string): string {
-  return buildRemoteInteractiveShellCommand(command);
 }
 
 function buildQuickTmuxCommand(
@@ -233,8 +228,9 @@ export function QuickTmuxConnect({
           username: selectedHost.username,
           identityFile: selectedHost.identityFile,
         },
-        remoteCommand: wrapRemoteInteractiveCommand(
-          buildQuickTmuxCommand(nextSessionName, nextWorkingDirectory),
+        remoteCommand: buildQuickTmuxCommand(
+          nextSessionName,
+          nextWorkingDirectory,
         ),
         workingDirectory: nextWorkingDirectory,
         tmuxSessionName: nextSessionName,

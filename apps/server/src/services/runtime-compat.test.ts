@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 
-import { buildInteractiveShellCommand } from "./runtime-compat.js";
+import {
+  buildInteractiveShellCommand,
+  buildTmuxCommand,
+} from "./runtime-compat.js";
 
 function createShellStub(
   directory: string,
@@ -20,6 +23,10 @@ function createShellStub(
       `export SELECTED_SHELL=${marker}`,
       'if [ "$1" = "-i" ]; then',
       "  shift",
+      '  if [ "$#" -eq 0 ]; then',
+      '    printf %s "$SELECTED_SHELL"',
+      "    exit 0",
+      "  fi",
       "fi",
       'if [ "$1" = "-c" ]; then',
       "  shift",
@@ -76,4 +83,37 @@ test("keeps the configured shell when it is not plain sh", () => {
   } finally {
     rmSync(tempDirectory, { force: true, recursive: true });
   }
+});
+
+test("tmux command target still boots through the interactive shell wrapper", () => {
+  const tempDirectory = mkdtempSync(join(tmpdir(), "runtime-compat-"));
+
+  try {
+    const shPath = createShellStub(tempDirectory, "sh", "sh");
+    createShellStub(tempDirectory, "bash", "bash");
+
+    const result = execFileSync(
+      "/bin/sh",
+      ["-c", `/bin/sh -c ${buildTmuxCommand('printf %s "$SELECTED_SHELL"')}`],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: tempDirectory,
+          SHELL: shPath,
+        },
+      },
+    );
+
+    assert.equal(result, "bash");
+  } finally {
+    rmSync(tempDirectory, { force: true, recursive: true });
+  }
+});
+
+test("tmux command can keep the pane open in the selected shell", () => {
+  const command = buildTmuxCommand('printf "RUN"; exit 0', true);
+
+  assert.match(command, /exec "\$SHELL_BIN" -i/);
+  assert.match(command, /printf "RUN"; exit 0/);
 });
