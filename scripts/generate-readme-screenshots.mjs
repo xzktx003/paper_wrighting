@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { accessSync, constants } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -7,8 +8,32 @@ import { chromium } from '@playwright/test';
 const baseUrl = process.env.README_BASE_URL ?? 'http://127.0.0.1:3000';
 const apiBaseUrl = process.env.README_API_URL ?? 'http://127.0.0.1:4000';
 const outputDir = path.resolve(process.cwd(), 'docs/readme-assets');
-const tmuxBinary =
-  process.platform === 'darwin' ? '/opt/homebrew/bin/tmux' : 'tmux';
+
+function isExecutablePath(filePath) {
+  try {
+    accessSync(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveTmuxBinary() {
+  if (process.env.TMUX_BINARY) {
+    return process.env.TMUX_BINARY;
+  }
+
+  const candidates = [
+    '/opt/homebrew/bin/tmux',
+    '/usr/local/bin/tmux',
+    '/usr/bin/tmux',
+    '/bin/tmux',
+  ];
+
+  return candidates.find(isExecutablePath) ?? 'tmux';
+}
+
+const tmuxBinary = resolveTmuxBinary();
 
 const demoSessions = [
   {

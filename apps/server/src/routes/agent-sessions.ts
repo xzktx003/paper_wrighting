@@ -16,10 +16,14 @@ import { AgentSessionRegistry } from "../services/agent-session-registry.js";
 import { LocalProcessRuntimeManager } from "../services/local-process-runtime-manager.js";
 import { LocalTmuxAdapter } from "../services/local-tmux-adapter.js";
 import { PtyRuntimeManager } from "../services/pty-runtime-manager.js";
+import {
+  buildInteractiveShellCommand,
+  quoteForPosixShell,
+} from "../services/runtime-compat.js";
 import { SshRuntimeManager } from "../services/ssh-runtime-manager.js";
 
 function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+  return quoteForPosixShell(value);
 }
 
 function formatWorkingDirectory(workingDirectory: string): string {
@@ -45,7 +49,11 @@ function buildAgentInvocation(
   agentKind: string,
   displayName: string,
   sessionId?: string,
-): string {
+): string | undefined {
+  if (agentKind === "shell") {
+    return undefined;
+  }
+
   if (sessionId) {
     return `${agentKind} --resume=${sessionId}`;
   }
@@ -63,7 +71,13 @@ function buildDirectLaunchCommand(
   displayName: string,
   sessionId?: string,
 ): string {
-  return `cd ${formatWorkingDirectory(workingDirectory)} && ${buildAgentInvocation(agentKind, displayName, sessionId)}`;
+  const invocation = buildAgentInvocation(agentKind, displayName, sessionId);
+
+  if (!invocation) {
+    return "";
+  }
+
+  return `cd ${formatWorkingDirectory(workingDirectory)} && ${invocation}`;
 }
 
 function buildTmuxLaunchCommand(
@@ -73,6 +87,10 @@ function buildTmuxLaunchCommand(
   tmuxSessionName: string,
   sessionId?: string,
 ): string {
+  if (agentKind === "shell") {
+    return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
+  }
+
   return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${shellQuote(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId))}`;
 }
 
@@ -231,6 +249,11 @@ export async function registerAgentSessionRoutes(
         return sshRuntimeManager.writeInput(request.params.id, request.body);
       }
 
+      if (ptyRuntimeManager.has(request.params.id)) {
+        ptyRuntimeManager.write(request.params.id, request.body.input);
+        return registry.get(request.params.id);
+      }
+
       return processRuntimeManager.writeInput(request.params.id, request.body);
     },
   );
@@ -315,5 +338,5 @@ export async function registerAgentSessionRoutes(
 }
 
 function wrapRemoteReconnectCommand(command: string): string {
-  return `zsh -i -c ${JSON.stringify(command)}`;
+  return buildInteractiveShellCommand(command);
 }

@@ -8,6 +8,7 @@ import type {
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
 import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
+import { resolvePreferredShell } from "./runtime-compat.js";
 
 type PtyDataListener = (data: string) => void;
 
@@ -20,20 +21,30 @@ interface PtyHandle {
   scrollbackBytes: number;
 }
 
+function buildPtyEnv(): Record<string, string> {
+  const env = { ...(process.env as Record<string, string | undefined>) };
+
+  delete env.npm_config_prefix;
+
+  return Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== undefined),
+  ) as Record<string, string>;
+}
+
 export class PtyRuntimeManager {
   private readonly handles = new Map<string, PtyHandle>();
 
   constructor(private readonly registry: AgentSessionRegistry) {}
 
   launch(input: LaunchLocalAgentInput): AgentSessionRecord {
-    const shell = process.env.SHELL ?? "/bin/zsh";
+    const shell = resolvePreferredShell();
 
     const ptyProcess = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
       cwd: resolveLocalWorkingDirectory(input.workingDirectory),
-      env: process.env as Record<string, string>,
+      env: buildPtyEnv(),
     });
 
     const agentSession = this.registry.register({
@@ -118,7 +129,7 @@ export class PtyRuntimeManager {
       cols: 120,
       rows: 30,
       cwd: process.env.HOME ?? process.cwd(),
-      env: process.env as Record<string, string>,
+      env: buildPtyEnv(),
     });
 
     const agentSession = this.registry.register({
@@ -267,7 +278,7 @@ export class PtyRuntimeManager {
       cols: 120,
       rows: 30,
       cwd: process.env.HOME ?? process.cwd(),
-      env: process.env as Record<string, string>,
+      env: buildPtyEnv(),
     });
 
     const handle: PtyHandle = {
@@ -325,13 +336,13 @@ export class PtyRuntimeManager {
   ): AgentSessionRecord {
     this.kill(agentSessionId);
 
-    const shell = process.env.SHELL ?? "/bin/zsh";
+    const shell = resolvePreferredShell();
     const ptyProcess = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols: 120,
       rows: 30,
       cwd: resolveLocalWorkingDirectory(input.workingDirectory),
-      env: process.env as Record<string, string>,
+      env: buildPtyEnv(),
     });
 
     const handle: PtyHandle = {

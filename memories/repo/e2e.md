@@ -2,3 +2,6 @@
 - The agent dashboard E2E suite shares backend session state; run Playwright with a single worker for stability.
 - For ssh -> tmux sessions, `node-pty.resize()` alone is not enough on macOS; explicitly sending `SIGWINCH` to the PTY child is required so ssh forwards the new size to remote tmux clients.
 - Non-interactive tmux thumbnails must never send resize frames to the backend; cache the last live terminal geometry and scale a local preview instead, or tmux clients will shrink and render incorrectly.
+- In React StrictMode, closing a WebSocket during CONNECTING in effect cleanup can produce false "closed before the connection is established" warnings and fake disconnect banners; defer close until onopen when cleaning up dev-only mounts.
+- Shell handling must not assume zsh exists; prefer `SHELL`, then fall back across `bash -> zsh -> sh` for Linux/macOS compatibility.
+- tmux path handling must auto-detect Apple Silicon Homebrew, Intel Homebrew, and PATH-based installs; avoid hardcoding only `/opt/homebrew/bin/tmux` in app code, scripts, or E2E tests.

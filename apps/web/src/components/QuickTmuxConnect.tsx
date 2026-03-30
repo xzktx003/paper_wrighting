@@ -6,6 +6,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { getSshHosts, launchSshPtyAgent } from "../lib/api";
+import { buildRemoteInteractiveShellCommand } from "../lib/platform-compat";
 
 interface QuickTmuxConnectProps {
   open: boolean;
@@ -37,7 +38,7 @@ function formatWorkingDirectory(workingDirectory: string): string {
 }
 
 function wrapRemoteInteractiveCommand(command: string): string {
-  return `zsh -i -c ${JSON.stringify(command)}`;
+  return buildRemoteInteractiveShellCommand(command);
 }
 
 function buildQuickTmuxCommand(

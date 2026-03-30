@@ -1,5 +1,7 @@
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
+import { getQuickTmuxShortcutLabel } from "../lib/platform-compat";
+
 interface TopBarProps {
   sessions: AgentSessionRecord[];
   drawerOpen: boolean;
@@ -13,6 +15,7 @@ export function TopBar({
   onToggleDrawer,
   onOpenQuickTmuxConnect,
 }: TopBarProps) {
+  const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
   const runningCount = sessions.filter(
     (s) => s.interactionState === "running",
   ).length;
@@ -36,7 +39,7 @@ export function TopBar({
       <div className="top-bar-stats">
         <button className="top-bar-action" onClick={onOpenQuickTmuxConnect}>
           快速连接 tmux
-          <span className="top-bar-shortcut">⌘/Ctrl+E</span>
+          <span className="top-bar-shortcut">{quickTmuxShortcutLabel}</span>
         </button>
         <span className="stat-item">
           共 <strong>{totalCount}</strong> 个会话

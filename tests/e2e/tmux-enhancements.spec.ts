@@ -5,7 +5,9 @@ import path from 'node:path';
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const TMUX_BINARY = '/opt/homebrew/bin/tmux';
+import { resolveTmuxBinary } from './tmux-binary';
+
+const TMUX_BINARY = resolveTmuxBinary();
 const COPILOT_SESSION_ROOT = path.join(os.homedir(), '.copilot', 'session-state');
 
 function runTmux(args: string[]): string {
@@ -561,7 +563,7 @@ test('browser: tmux 终端会转发鼠标二进制事件', async ({ page, reques
   }
 });
 
-test('browser: Meta+E 可以快速连接远端 tmux 并自动聚焦', async ({
+test('browser: Ctrl/Meta+E 可以快速连接远端 tmux 并自动聚焦', async ({
   page,
   request,
 }) => {
@@ -587,6 +589,7 @@ test('browser: Meta+E 可以快速连接远端 tmux 并自动聚焦', async ({
         new KeyboardEvent('keydown', {
           key: 'e',
           metaKey: true,
+          ctrlKey: true,
           bubbles: true,
         }),
       );

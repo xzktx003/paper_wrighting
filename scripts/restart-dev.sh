@@ -9,7 +9,7 @@ SERVER_BIND_HOST="${SERVER_BIND_HOST:-0.0.0.0}"
 SERVER_PUBLIC_HOST="${SERVER_PUBLIC_HOST:-127.0.0.1}"
 SERVER_PORT="${SERVER_PORT:-4000}"
 
-WEB_HOST="${WEB_HOST:-127.0.0.1}"
+WEB_HOST="${WEB_HOST:-0.0.0.0}"
 WEB_PORT="${WEB_PORT:-3000}"
 
 SERVER_LOG="${RUNTIME_DIR}/server.log"
@@ -82,6 +82,44 @@ wait_for_http() {
   return 1
 }
 
+extract_frontend_url() {
+  local label="$1"
+  local file="$2"
+
+  sed -nE "s/.*${label}:[[:space:]]+(http:\/\/[^[:space:]]+).*/\1/p" "$file" \
+    | tail -n 1 \
+    | tr -d '\r' \
+    | sed 's:/$::'
+}
+
+wait_for_frontend_urls() {
+  local file="$1"
+  local attempts="${2:-30}"
+
+  FRONTEND_LOCAL_URL=''
+  FRONTEND_NETWORK_URL=''
+
+  for ((i = 1; i <= attempts; i += 1)); do
+    FRONTEND_LOCAL_URL="$(extract_frontend_url Local "$file")"
+    FRONTEND_NETWORK_URL="$(extract_frontend_url Network "$file")"
+
+    if [[ -n "$FRONTEND_LOCAL_URL" ]]; then
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  log 'frontend did not print a ready url'
+  return 1
+}
+
+extract_url_port() {
+  local url="$1"
+
+  printf '%s\n' "$url" | sed -nE 's#.*:([0-9]+)$#\1#p'
+}
+
 show_log_tail() {
   local label="$1"
   local file="$2"
@@ -110,25 +148,38 @@ nohup env HOST="$SERVER_BIND_HOST" PORT="$SERVER_PORT" \
 echo $! >"$SERVER_PID_FILE"
 
 log "Starting frontend on ${WEB_HOST}:${WEB_PORT}"
-nohup pnpm --filter web dev -- --host "$WEB_HOST" --port "$WEB_PORT" \
+nohup pnpm --filter web exec vite --host "$WEB_HOST" --port "$WEB_PORT" \
   >"$WEB_LOG" 2>&1 &
 echo $! >"$WEB_PID_FILE"
 
 SERVER_URL="http://${SERVER_PUBLIC_HOST}:${SERVER_PORT}"
 SERVER_HEALTH_URL="${SERVER_URL}/api/health"
-WEB_URL="http://${WEB_HOST}:${WEB_PORT}"
 
 if ! wait_for_http backend "$SERVER_HEALTH_URL"; then
   show_log_tail backend "$SERVER_LOG"
   exit 1
 fi
 
-if ! wait_for_http frontend "$WEB_URL"; then
+if ! wait_for_frontend_urls "$WEB_LOG"; then
   show_log_tail frontend "$WEB_LOG"
   exit 1
 fi
 
+FRONTEND_READY_URL="${FRONTEND_LOCAL_URL}/@vite/client"
+if ! wait_for_http frontend "$FRONTEND_READY_URL"; then
+  show_log_tail frontend "$WEB_LOG"
+  exit 1
+fi
+
+FRONTEND_PORT="$(extract_url_port "$FRONTEND_LOCAL_URL")"
+if [[ -n "$FRONTEND_PORT" && "$FRONTEND_PORT" != "$WEB_PORT" ]]; then
+  log "Requested frontend port ${WEB_PORT} was busy; Vite selected ${FRONTEND_PORT}"
+fi
+
 printf '\nBackend  : %s\n' "$SERVER_URL"
 printf 'Health   : %s\n' "$SERVER_HEALTH_URL"
-printf 'Frontend : %s\n' "$WEB_URL"
+printf 'Frontend : %s\n' "$FRONTEND_LOCAL_URL"
+if [[ -n "$FRONTEND_NETWORK_URL" ]]; then
+  printf 'Network  : %s\n' "$FRONTEND_NETWORK_URL"
+fi
 printf 'Logs     : %s | %s\n' "$SERVER_LOG" "$WEB_LOG"

@@ -9,6 +9,12 @@ import type {
   SshTarget,
 } from "@agent-orchestrator/shared";
 
+import {
+  buildInteractiveShellCommand,
+  quoteForPosixShell,
+  resolveTmuxBinary,
+} from "./runtime-compat.js";
+
 const AGENT_INDICATORS: Record<string, { dirs: string[]; files: string[] }> = {
   claude: {
     dirs: [".claude"],
@@ -154,8 +160,7 @@ function scanLocalProcesses(dirPath: string): ScanResult[] {
 function scanLocalTmux(dirPath: string): ScanResult[] {
   const results: ScanResult[] = [];
 
-  const tmuxBin =
-    process.platform === "darwin" ? "/opt/homebrew/bin/tmux" : "tmux";
+  const tmuxBin = resolveTmuxBinary();
 
   const panes = execLocal(
     `${tmuxBin} list-panes -a -F '#{session_name}:#{pane_id}:#{pane_current_path}:#{pane_current_command}' 2>/dev/null || true`,
@@ -192,8 +197,17 @@ function scanLocalTmux(dirPath: string): ScanResult[] {
 
 function resolveRemotePath(sshTarget: SshTarget, remotePath: string): string {
   if (!remotePath.startsWith("~")) return remotePath;
-  const resolved = execRemote(sshTarget, `echo ${remotePath}`);
-  return resolved || remotePath;
+
+  const home = execRemote(sshTarget, 'printf %s "$HOME"');
+  if (!home) {
+    return remotePath;
+  }
+
+  if (remotePath === "~" || remotePath === "~/") {
+    return home;
+  }
+
+  return path.posix.join(home, remotePath.slice(2));
 }
 
 function parseSimpleYaml(text: string): Record<string, string> {
@@ -220,7 +234,7 @@ function scanCopilotSessionsRemote(
   // Detect copilot binary path (nvm loads in interactive shells)
   const copilotBin = execRemote(
     sshTarget,
-    `zsh -i -c 'which copilot' 2>/dev/null || bash -i -c 'which copilot' 2>/dev/null`,
+    buildInteractiveShellCommand("command -v copilot 2>/dev/null"),
   );
 
   // Batch read all workspace.yaml files and lock info in one SSH call
@@ -374,10 +388,11 @@ function scanRemoteHistory(
 
   for (const entry of checkDirs) {
     const [agentKind, indicator] = entry.split(":");
-    const fullPath = `${remotePath}/${indicator}`;
+    const fullPath = path.posix.join(remotePath, indicator);
+    const quotedFullPath = quoteForPosixShell(fullPath);
     const output = execRemote(
       sshTarget,
-      `test -e ${fullPath} && stat -c %Y ${fullPath} 2>/dev/null || stat -f %m ${fullPath} 2>/dev/null || echo ''`,
+      `test -e ${quotedFullPath} && stat -c %Y ${quotedFullPath} 2>/dev/null || stat -f %m ${quotedFullPath} 2>/dev/null || echo ''`,
     );
 
     if (output && output !== "") {

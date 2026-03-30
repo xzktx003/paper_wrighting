@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process';
 
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
-const TMUX_BINARY = '/opt/homebrew/bin/tmux';
+import { resolveTmuxBinary } from './tmux-binary';
+
+const TMUX_BINARY = resolveTmuxBinary();
 
 function killTmuxSession(sessionName: string): void {
   try {

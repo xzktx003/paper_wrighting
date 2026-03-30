@@ -17,6 +17,7 @@ import {
   launchSshPtyAgent,
   scanDirectory,
 } from "../lib/api";
+import { buildRemoteInteractiveShellCommand } from "../lib/platform-compat";
 
 interface SideDrawerProps {
   open: boolean;
@@ -77,7 +78,11 @@ function buildAgentInvocation(
   agentKind: string,
   displayName: string,
   sessionId?: string,
-): string {
+): string | undefined {
+  if (agentKind === "shell") {
+    return undefined;
+  }
+
   if (sessionId) {
     return `${agentKind} --resume=${sessionId}`;
   }
@@ -95,7 +100,13 @@ function buildDirectLaunchCommand(
   displayName: string,
   sessionId?: string,
 ): string {
-  return `cd ${formatWorkingDirectory(workingDirectory)} && ${buildAgentInvocation(agentKind, displayName, sessionId)}`;
+  const invocation = buildAgentInvocation(agentKind, displayName, sessionId);
+
+  if (!invocation) {
+    return "";
+  }
+
+  return `cd ${formatWorkingDirectory(workingDirectory)} && ${invocation}`;
 }
 
 function buildTmuxLaunchCommand(
@@ -105,7 +116,29 @@ function buildTmuxLaunchCommand(
   tmuxSessionName: string,
   sessionId?: string,
 ): string {
+  if (agentKind === "shell") {
+    return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
+  }
+
   return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${shellQuote(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId))}`;
+}
+
+function buildRemoteDirectLaunchCommand(
+  agentKind: string,
+  workingDirectory: string,
+  displayName: string,
+  sessionId?: string,
+): string {
+  if (agentKind === "shell") {
+    return `cd ${formatWorkingDirectory(workingDirectory)} && exec "\${SHELL:-\$(command -v bash || command -v zsh || command -v sh || printf /bin/sh)}" -i`;
+  }
+
+  return buildDirectLaunchCommand(
+    agentKind,
+    workingDirectory,
+    displayName,
+    sessionId,
+  );
 }
 
 function buildTmuxAttachCommand(
@@ -120,7 +153,7 @@ function buildTmuxAttachCommand(
 }
 
 function wrapRemoteInteractiveCommand(command: string): string {
-  return `zsh -i -c ${JSON.stringify(command)}`;
+  return buildRemoteInteractiveShellCommand(command);
 }
 
 function buildDefaultSessionName(
@@ -301,14 +334,14 @@ export function SideDrawer({
                   tmuxSessionName,
                   result.sessionId,
                 )
-              : buildDirectLaunchCommand(
+              : buildRemoteDirectLaunchCommand(
                   result.agentKind,
                   result.workingDirectory,
                   result.displayName,
                   result.sessionId,
                 );
           } else {
-            inner = buildDirectLaunchCommand(
+            inner = buildRemoteDirectLaunchCommand(
               result.agentKind,
               result.workingDirectory,
               result.displayName,
@@ -344,14 +377,12 @@ export function SideDrawer({
               tmuxSessionName,
               result.sessionId,
             )
-          : result.workingDirectory
-            ? buildDirectLaunchCommand(
-                result.agentKind,
-                result.workingDirectory,
-                result.displayName,
-                result.sessionId,
-              )
-            : `${result.agentKind} --resume=${result.sessionId}`;
+          : buildDirectLaunchCommand(
+              result.agentKind,
+              result.workingDirectory || "~/",
+              result.displayName,
+              result.sessionId,
+            );
         await launchPtyAgent({
           workspaceId: "default",
           displayName: result.displayName,
@@ -395,7 +426,11 @@ export function SideDrawer({
     try {
       if (selectedHost.type === "ssh") {
         const target = currentSshTarget()!;
-        const remoteCommand = wrapRemoteInteractiveCommand(command);
+        const remoteCommand = wrapRemoteInteractiveCommand(
+          launchMode === "tmux"
+            ? command
+            : buildRemoteDirectLaunchCommand(newKind, dir, name),
+        );
 
         await launchSshPtyAgent({
           workspaceId: "default",

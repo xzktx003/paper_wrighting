@@ -10,8 +10,9 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
+import { resolveTmuxBinary } from "./runtime-compat.js";
 
-const TMUX_BINARY = "/opt/homebrew/bin/tmux";
+const TMUX_BINARY = resolveTmuxBinary();
 
 interface TmuxPaneInfo {
   sessionName: string;

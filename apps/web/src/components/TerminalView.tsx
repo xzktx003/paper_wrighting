@@ -53,6 +53,8 @@ export function TerminalView({
     const animationFrameIds: number[] = [];
     const isPreview = !interactive;
     let handleMouseDown: (() => void) | null = null;
+    let disposed = false;
+    let closeAfterOpen = false;
 
     const cachePreviewGeometry = (cols: number, rows: number) => {
       if (isPreview) {
@@ -178,11 +180,20 @@ export function TerminalView({
     };
 
     ws.onopen = () => {
+      if (disposed || closeAfterOpen) {
+        ws.close();
+        return;
+      }
+
       flushResize();
       scheduleFit();
     };
 
     ws.onclose = () => {
+      if (disposed) {
+        return;
+      }
+
       term.write("\r\n\x1b[33m[连接已断开]\x1b[0m\r\n");
     };
 
@@ -243,6 +254,7 @@ export function TerminalView({
     resizeObserver.observe(container);
 
     return () => {
+      disposed = true;
       window.removeEventListener("resize", handleWindowResize);
       resizeObserver.disconnect();
       if (handleMouseDown) {
@@ -254,7 +266,13 @@ export function TerminalView({
       for (const animationFrameId of animationFrameIds) {
         window.cancelAnimationFrame(animationFrameId);
       }
-      ws.close();
+
+      if (ws.readyState === WebSocket.CONNECTING) {
+        closeAfterOpen = true;
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+
       term.dispose();
       delete container.__xterm;
       termRef.current = null;

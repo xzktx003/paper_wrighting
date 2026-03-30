@@ -34,10 +34,6 @@ function wsBase(): string {
     return httpUrl.toString().replace(/\/$/, "");
   }
 
-  if (import.meta.env.DEV) {
-    return "ws://127.0.0.1:4000";
-  }
-
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}`;
 }
@@ -176,6 +172,7 @@ export function subscribeAgentSessions(
   onSnapshot: (snapshot: ListAgentSessionsResponse) => void,
 ): () => void {
   const socket = new WebSocket(buildWebSocketUrl());
+  let closeAfterOpen = false;
 
   socket.addEventListener("message", (event) => {
     const payload = JSON.parse(event.data) as AgentSessionSnapshotEvent;
@@ -185,8 +182,21 @@ export function subscribeAgentSessions(
     }
   });
 
+  socket.addEventListener("open", () => {
+    if (closeAfterOpen) {
+      socket.close();
+    }
+  });
+
   return () => {
-    socket.close();
+    if (socket.readyState === WebSocket.CONNECTING) {
+      closeAfterOpen = true;
+      return;
+    }
+
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.close();
+    }
   };
 }
 

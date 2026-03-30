@@ -113,6 +113,13 @@
 brew install tmux
 ```
 
+## 兼容性约定
+
+- 服务端支持部署在 Linux 和 macOS。
+- 本地 PTY 与远端交互 shell 会优先使用当前环境的 `SHELL`，如果没有，再按 `bash -> zsh -> sh` 自动回退，不再假设必须有 zsh。
+- 本地 tmux 会自动尝试这些位置：`TMUX_BINARY`、`/opt/homebrew/bin/tmux`、`/usr/local/bin/tmux`，最后再回退到 `PATH` 里的 `tmux`。
+- 前端已按 Chromium 浏览器处理快捷键显示：mac 浏览器显示 `⌘+E`，Windows / Linux 浏览器显示 `Ctrl+E`。
+
 ## 安装步骤
 
 ### 1. 克隆仓库
@@ -153,13 +160,23 @@ Host hm24
 
 - 清理占用中的 3000/4000 端口
 - 启动后端服务
-- 启动前端服务
-- 输出健康检查地址和日志路径
+- 启动前端服务，默认绑定 `0.0.0.0`，方便局域网访问
+- 如果目标前端端口被其他进程占用，会自动切到下一个可用端口
+- 输出前端实际 Local/Network 地址、后端健康检查地址和日志路径
 
-启动成功后，默认地址是：
+启动成功后，脚本会打印：
 
-- 前端：http://127.0.0.1:3000
+- 前端实际本地地址（Local）
+- 前端局域网地址（Network，当前环境可用时）
 - 后端健康检查：http://127.0.0.1:4000/api/health
+
+默认会优先尝试前端 3000 端口；如果被占用，Vite 会自动切到下一个可用端口，并由脚本打印最终端口。
+
+如果你想显式指定一个起始端口，也可以这样启动：
+
+```bash
+WEB_PORT=3100 ./scripts/restart-dev.sh
+```
 
 ### 备用：分别启动
 
@@ -263,7 +280,8 @@ node ./scripts/generate-readme-screenshots.mjs
 ### tmux 功能不可用
 
 - 确认本机已经安装 tmux。
-- macOS 下如果是 Homebrew 安装，默认会优先尝试 `/opt/homebrew/bin/tmux`。
+- 如果是 macOS，程序会自动探测 `/opt/homebrew/bin/tmux` 和 `/usr/local/bin/tmux`。
+- 如果你使用了非标准路径，也可以通过环境变量 `TMUX_BINARY` 显式指定。
 
 ### 页面打不开或 API 报错
 
