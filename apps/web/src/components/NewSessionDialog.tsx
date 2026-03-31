@@ -49,6 +49,7 @@ export function NewSessionDialog({
     useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const suggestionRequestRef = useRef(0);
+  const backdropPointerDownRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
@@ -267,7 +268,20 @@ export function NewSessionDialog({
   return (
     <div
       className="new-session-backdrop"
-      onClick={() => !submitting && onClose()}
+      onMouseDown={(event) => {
+        backdropPointerDownRef.current = event.target === event.currentTarget;
+      }}
+      onClick={(event) => {
+        const shouldClose =
+          !submitting &&
+          backdropPointerDownRef.current &&
+          event.target === event.currentTarget;
+        backdropPointerDownRef.current = false;
+
+        if (shouldClose) {
+          onClose();
+        }
+      }}
     >
       <div
         aria-modal="true"
