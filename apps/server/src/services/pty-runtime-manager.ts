@@ -10,29 +10,18 @@ import type {
 import { AgentSessionRegistry } from "./agent-session-registry.js";
 import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
 import { resolvePreferredShell } from "./runtime-compat.js";
+import { sanitizeReplayForTerminal } from "./terminal-control-filter.js";
 
 type PtyDataListener = (data: string) => void;
 
 const MAX_SCROLLBACK_BYTES = 256 * 1024; // 256 KB replay buffer
-const REPLAY_CONTROL_QUERY_PATTERNS = [
-  /\u001b\[(?:[?>])?[\d;]*c/g,
-  /\u001b\[\??[\d;]*n/g,
-  /\u001b\[[\d;]*t/g,
-];
-
 interface PtyHandle {
   ptyProcess: pty.IPty;
   dataListeners: Set<PtyDataListener>;
   scrollback: string[];
   scrollbackBytes: number;
 }
-
-export function sanitizeReplayForTerminal(data: string): string {
-  return REPLAY_CONTROL_QUERY_PATTERNS.reduce(
-    (sanitized, pattern) => sanitized.replace(pattern, ""),
-    data,
-  );
-}
+export { sanitizeReplayForTerminal } from "./terminal-control-filter.js";
 
 interface LocalPtySpawnPlan {
   file: string;

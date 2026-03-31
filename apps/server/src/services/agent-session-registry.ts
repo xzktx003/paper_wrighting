@@ -65,6 +65,7 @@ function mergeScreenWindow(previous: string, incoming: string): string {
 function byInteractionState(
   left: AgentSessionRecord,
   right: AgentSessionRecord,
+  getSessionOrder: (agentSessionId: string) => number,
 ): number {
   const leftIndex = interactionStateOrder.indexOf(left.interactionState);
   const rightIndex = interactionStateOrder.indexOf(right.interactionState);
@@ -73,10 +74,15 @@ function byInteractionState(
     return leftIndex - rightIndex;
   }
 
-  const leftTime = left.lastOutputAt ?? left.lastHeartbeatAt ?? "";
-  const rightTime = right.lastOutputAt ?? right.lastHeartbeatAt ?? "";
+  const leftTime = left.lastOutputAt ?? "";
+  const rightTime = right.lastOutputAt ?? "";
 
-  return rightTime.localeCompare(leftTime);
+  const timeCompare = rightTime.localeCompare(leftTime);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+
+  return getSessionOrder(left.id) - getSessionOrder(right.id);
 }
 
 export class AgentSessionRegistry {
@@ -84,9 +90,11 @@ export class AgentSessionRegistry {
   private readonly outputEntries = new Map<string, AgentOutputEntry[]>();
   private readonly screenWindows = new Map<string, string>();
   private readonly lastScreenChangedAt = new Map<string, number>();
+  private readonly sessionOrder = new Map<string, number>();
   private readonly awaitingInputTimers = new Map<string, NodeJS.Timeout>();
   private readonly listeners = new Set<SnapshotListener>();
   private activeAgentSessionId: string | null = null;
+  private nextSessionOrder = 0;
 
   constructor(
     private readonly awaitingInputIdleMs = DEFAULT_AWAITING_INPUT_IDLE_MS,
@@ -94,7 +102,9 @@ export class AgentSessionRegistry {
 
   list(): ListAgentSessionsResponse {
     return {
-      items: [...this.sessions.values()].sort(byInteractionState),
+      items: [...this.sessions.values()].sort((left, right) =>
+        byInteractionState(left, right, this.getSessionOrder),
+      ),
       activeAgentSessionId: this.activeAgentSessionId,
       updatedAt: new Date().toISOString(),
     };
@@ -159,6 +169,8 @@ export class AgentSessionRegistry {
     this.outputEntries.set(agentSession.id, []);
     this.screenWindows.set(agentSession.id, "");
     this.lastScreenChangedAt.set(agentSession.id, Date.now());
+    this.sessionOrder.set(agentSession.id, this.nextSessionOrder);
+    this.nextSessionOrder += 1;
 
     if (this.shouldUseTimedAwaitingInput(agentSession)) {
       this.refreshAwaitingInputTimer(agentSession.id);
@@ -278,20 +290,16 @@ export class AgentSessionRegistry {
     const nextSession: AgentSessionRecord = {
       ...agentSession,
       lastHeartbeatAt: now,
-      lastOutputAt: now,
-      outputPreview,
+      lastOutputAt: screenChanged ? now : agentSession.lastOutputAt,
+      outputPreview: screenChanged ? outputPreview : agentSession.outputPreview,
       interactionState:
-        stream === "system"
-          ? agentSession.interactionState
-          : this.shouldUseTimedAwaitingInput(agentSession)
-            ? "running"
-            : agentSession.interactionState,
+        screenChanged && this.shouldUseTimedAwaitingInput(agentSession)
+          ? "running"
+          : agentSession.interactionState,
       stateConfidence:
-        stream === "system"
-          ? agentSession.stateConfidence
-          : this.shouldUseTimedAwaitingInput(agentSession)
-            ? "medium"
-            : agentSession.stateConfidence,
+        screenChanged && this.shouldUseTimedAwaitingInput(agentSession)
+          ? "medium"
+          : agentSession.stateConfidence,
       lastRefreshedAt: now,
     };
 
@@ -415,6 +423,7 @@ export class AgentSessionRegistry {
     this.outputEntries.delete(agentSessionId);
     this.screenWindows.delete(agentSessionId);
     this.lastScreenChangedAt.delete(agentSessionId);
+    this.sessionOrder.delete(agentSessionId);
     this.clearAwaitingInputTimer(agentSessionId);
     if (this.activeAgentSessionId === agentSessionId) {
       this.activeAgentSessionId = null;
@@ -433,6 +442,9 @@ export class AgentSessionRegistry {
       currentEntries.slice(-MAX_OUTPUT_ENTRIES),
     );
   }
+
+  private getSessionOrder = (agentSessionId: string): number =>
+    this.sessionOrder.get(agentSessionId) ?? Number.MAX_SAFE_INTEGER;
 
   private emitSnapshot(): void {
     const snapshot = this.list();

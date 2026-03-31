@@ -5,6 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 import { buildTerminalWebSocketUrl } from "../lib/api";
+import { stripTerminalResponsePayload } from "../lib/terminal-input";
 
 interface TerminalViewProps {
   agentSessionId: string;
@@ -278,17 +279,27 @@ export function TerminalView({
     };
 
     term.onData((data) => {
+      const sanitized = stripTerminalResponsePayload(data);
+      if (!sanitized) {
+        return;
+      }
+
       if (ws?.readyState === WebSocket.OPEN && ensureInputOwner()) {
-        ws.send(data);
+        ws.send(sanitized);
       }
     });
 
     term.onBinary((data) => {
+      const sanitized = stripTerminalResponsePayload(data);
+      if (!sanitized) {
+        return;
+      }
+
       if (ws?.readyState === WebSocket.OPEN && ensureInputOwner()) {
         ws.send(
           JSON.stringify({
             type: "binary",
-            data: btoa(data),
+            data: btoa(sanitized),
           }),
         );
       }

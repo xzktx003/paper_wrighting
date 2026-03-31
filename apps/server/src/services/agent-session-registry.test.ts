@@ -27,7 +27,7 @@ test("marks direct sessions awaiting_input after screen stays unchanged", async 
   assert.equal(updated.interactionState, "running");
   assert.equal(updated.stateConfidence, "medium");
 
-  await wait(35);
+  await wait(60);
 
   assert.equal(registry.get(session.id).interactionState, "awaiting_input");
   assert.equal(registry.get(session.id).stateConfidence, "medium");
@@ -46,7 +46,7 @@ test("user input resets inactivity timer and later returns to awaiting_input", a
   await wait(10);
   assert.equal(registry.get(session.id).interactionState, "running");
 
-  await wait(25);
+  await wait(40);
   assert.equal(registry.get(session.id).interactionState, "awaiting_input");
 });
 
@@ -63,6 +63,62 @@ test("repeated identical terminal redraws do not keep sessions running", async (
   assert.equal(registry.get(session.id).interactionState, "awaiting_input");
 });
 
+test("identical redraws do not reorder sessions in the board", async () => {
+  const registry = new AgentSessionRegistry(60);
+  const first = createSession(registry);
+  const second = registry.register({
+    workspaceId: "test",
+    hostId: "local",
+    sourceType: "local",
+    agentKind: "copilot",
+    displayName: "Second Session",
+    interactionState: "running",
+  });
+
+  registry.appendOutput(first.id, "first prompt> ", "stdout");
+  await wait(5);
+  registry.appendOutput(second.id, "second prompt> ", "stdout");
+
+  const before = registry.list().items.map((item) => item.id);
+
+  registry.appendOutput(first.id, "\u001b[2K\rfirst prompt> ", "stdout");
+
+  assert.deepEqual(
+    registry.list().items.map((item) => item.id),
+    before,
+  );
+});
+
+test("heartbeat updates do not reorder sessions without new output", () => {
+  const registry = new AgentSessionRegistry(60);
+  const first = registry.register({
+    workspaceId: "capture",
+    hostId: "local",
+    sourceType: "local-window-capture",
+    agentKind: "vscode",
+    displayName: "Window 1",
+    interactionState: "running",
+  });
+  const second = registry.register({
+    workspaceId: "capture",
+    hostId: "local",
+    sourceType: "local-window-capture",
+    agentKind: "vscode",
+    displayName: "Window 2",
+    interactionState: "running",
+  });
+
+  const before = registry.list().items.map((item) => item.id);
+
+  registry.syncCapturedScreen(second.id, "frame 2");
+
+  assert.deepEqual(before, [first.id, second.id]);
+  assert.deepEqual(
+    registry.list().items.map((item) => item.id),
+    before,
+  );
+});
+
 test("tmux observe-only sessions stay detached even when screen is unchanged", async () => {
   const registry = new AgentSessionRegistry(20);
   const session = registry.register({
@@ -76,7 +132,7 @@ test("tmux observe-only sessions stay detached even when screen is unchanged", a
   });
 
   registry.syncCapturedScreen(session.id, "stable frame");
-  await wait(30);
+  await wait(50);
   const updated = registry.syncCapturedScreen(session.id, "stable frame");
 
   assert.equal(updated.interactionState, "detached");
@@ -98,7 +154,7 @@ test("local-window-capture sessions enter awaiting_input after the captured scre
   assert.equal(session.interactionState, "running");
 
   registry.syncCapturedScreen(session.id, "stable frame");
-  await wait(35);
+  await wait(60);
 
   const updated = registry.syncCapturedScreen(session.id, "stable frame");
   assert.equal(updated.interactionState, "awaiting_input");

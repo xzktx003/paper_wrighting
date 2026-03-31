@@ -12,6 +12,7 @@ import { LocalTmuxAdapter } from "./services/local-tmux-adapter.js";
 import { ObserveSessionManager } from "./services/observe-session-manager.js";
 import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
 import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
+import { stripTerminalResponsePayload } from "./services/terminal-control-filter.js";
 
 export function buildServer(): {
   app: ReturnType<typeof Fastify>;
@@ -108,8 +109,13 @@ export function buildServer(): {
 
         socket.on("message", (message: Buffer | string) => {
           const writeToRuntime = (payload: string) => {
+            const sanitizedPayload = stripTerminalResponsePayload(payload);
+            if (!sanitizedPayload) {
+              return;
+            }
+
             try {
-              ptyRuntimeManager.write(id, payload);
+              ptyRuntimeManager.write(id, sanitizedPayload);
             } catch {
               // The browser can still flush a final input frame after the
               // PTY has exited or the session has been deleted.
