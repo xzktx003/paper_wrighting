@@ -69,6 +69,7 @@ export interface AgentSessionRecord {
   sshTarget?: SshTarget;
   remoteCommand?: string;
   windowCaptureMeta?: WindowCaptureMeta;
+  hidden?: boolean;
 }
 
 export interface AgentOutputEntry {
@@ -113,7 +114,8 @@ export interface FocusAgentSessionInput {
 }
 
 export interface UpdateAgentSessionInput {
-  displayName: string;
+  displayName?: string;
+  hidden?: boolean;
 }
 
 export interface StdinAgentSessionInput {
@@ -240,10 +242,6 @@ export interface KillTmuxSessionInput {
   tmuxSessionName: string;
   hostId?: string;
   sshTarget?: SshTarget;
-}
-
-export interface RemoveFromGridInput {
-  preserveTransport: boolean;
 }
 
 // --- Window Capture DTOs ---

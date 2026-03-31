@@ -120,7 +120,7 @@ test("POST /api/agent-sessions/:id/observe-state invalid transition returns 400"
   }
 });
 
-test("DELETE running local-window-capture session returns 409", async () => {
+test("DELETE running local-window-capture session auto-stops and succeeds", async () => {
   const app = await buildApp();
 
   try {
@@ -137,7 +137,7 @@ test("DELETE running local-window-capture session returns 409", async () => {
       url: `/api/agent-sessions/${agentSession.id}`,
     });
 
-    assert.equal(deleteRes.statusCode, 409);
+    assert.equal(deleteRes.statusCode, 204);
   } finally {
     await app.close();
   }

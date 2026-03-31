@@ -332,11 +332,16 @@ export async function deleteAgentSessionSafe(
   return { ok: res.ok, status: res.status };
 }
 
-export function removeFromGrid(agentSessionId: string): Promise<void> {
-  return request<void>(
-    `/api/agent-sessions/${agentSessionId}/remove-from-grid`,
-    { method: "POST" },
-  );
+export function hideAgentSession(
+  agentSessionId: string,
+): Promise<AgentSessionRecord> {
+  return updateAgentSession(agentSessionId, { hidden: true });
+}
+
+export function unhideAgentSession(
+  agentSessionId: string,
+): Promise<AgentSessionRecord> {
+  return updateAgentSession(agentSessionId, { hidden: false });
 }
 
 export function killTmuxSession(agentSessionId: string): Promise<void> {

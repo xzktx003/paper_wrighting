@@ -73,7 +73,9 @@ export function TerminalView({
     const isPreview = !interactive;
     const ownerToken = Symbol(agentSessionId);
     const ownerPriority = interactive ? 2 : 1;
-    let handleMouseDown: (() => void) | null = null;
+    let handleMouseDownCapture: (() => void) | null = null;
+    let handlePointerDownCapture: (() => void) | null = null;
+    let handleWindowFocus: (() => void) | null = null;
     let disposed = false;
     let closeAfterOpen = false;
 
@@ -160,6 +162,49 @@ export function TerminalView({
     termRef.current = term;
     fitRef.current = fitAddon;
 
+    const focusInteractiveTerminal = (unlockInput = false) => {
+      if (!interactive) {
+        return;
+      }
+
+      if (unlockInput) {
+        term.options.disableStdin = false;
+      }
+      ensureInputOwner();
+      term.focus();
+    };
+
+    const scheduleFocusInteractiveTerminal = (unlockInput = false) => {
+      if (!interactive) {
+        return;
+      }
+
+      focusInteractiveTerminal(unlockInput);
+
+      const frameId = window.requestAnimationFrame(() => {
+        if (!disposed) {
+          focusInteractiveTerminal(unlockInput);
+        }
+      });
+      animationFrameIds.push(frameId);
+
+      timeoutIds.push(
+        window.setTimeout(() => {
+          if (!disposed) {
+            focusInteractiveTerminal(unlockInput);
+          }
+        }, 0),
+      );
+
+      timeoutIds.push(
+        window.setTimeout(() => {
+          if (!disposed) {
+            focusInteractiveTerminal(unlockInput);
+          }
+        }, 32),
+      );
+    };
+
     const wsUrl = buildTerminalWebSocketUrl(agentSessionId);
     let ws: WebSocket | null = null;
     let replayComplete = false;
@@ -187,6 +232,7 @@ export function TerminalView({
 
         flushResize();
         scheduleFit();
+        scheduleFocusInteractiveTerminal();
       };
 
       ws.onclose = () => {
@@ -252,6 +298,7 @@ export function TerminalView({
 
       replayComplete = true;
       term.options.disableStdin = false;
+      scheduleFocusInteractiveTerminal();
     };
 
     const handleTerminalFrame = (payload: string) => {
@@ -307,15 +354,27 @@ export function TerminalView({
 
     if (interactive) {
       term.attachCustomWheelEventHandler((event) => {
+        focusInteractiveTerminal(true);
         event.stopPropagation();
         return true;
       });
 
-      handleMouseDown = () => {
-        term.focus();
+      handlePointerDownCapture = () => {
+        focusInteractiveTerminal(true);
       };
 
-      container.addEventListener("mousedown", handleMouseDown);
+      handleMouseDownCapture = () => {
+        focusInteractiveTerminal(true);
+      };
+
+      handleWindowFocus = () => {
+        scheduleFocusInteractiveTerminal();
+      };
+
+      container.addEventListener("pointerdown", handlePointerDownCapture, true);
+      container.addEventListener("mousedown", handleMouseDownCapture, true);
+      window.addEventListener("focus", handleWindowFocus);
+      scheduleFocusInteractiveTerminal();
     }
 
     term.onResize(({ cols, rows }) => {
@@ -348,8 +407,22 @@ export function TerminalView({
       disposed = true;
       window.removeEventListener("resize", handleWindowResize);
       resizeObserver.disconnect();
-      if (handleMouseDown) {
-        container.removeEventListener("mousedown", handleMouseDown);
+      if (handlePointerDownCapture) {
+        container.removeEventListener(
+          "pointerdown",
+          handlePointerDownCapture,
+          true,
+        );
+      }
+      if (handleMouseDownCapture) {
+        container.removeEventListener(
+          "mousedown",
+          handleMouseDownCapture,
+          true,
+        );
+      }
+      if (handleWindowFocus) {
+        window.removeEventListener("focus", handleWindowFocus);
       }
       window.clearTimeout(connectTimeoutId);
       for (const timeoutId of timeoutIds) {

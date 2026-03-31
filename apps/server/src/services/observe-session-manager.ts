@@ -189,6 +189,16 @@ export class ObserveSessionManager {
     );
   }
 
+  stopCapture(sessionId: string): void {
+    this.registry.updateSession(sessionId, {
+      connectionState: "offline",
+      interactionState: "exited",
+      stateConfidence: "high",
+      outputPreview: "观察已停止",
+    });
+    this.entries.delete(sessionId);
+  }
+
   private validateTransition(
     session: AgentSessionRecord,
     nextConnection: string,

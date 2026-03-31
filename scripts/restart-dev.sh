@@ -51,7 +51,7 @@ kill_from_pid_file() {
   if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
     log "Stopping ${name} process ${pid}"
     kill "$pid" 2>/dev/null || true
-    sleep 1
+    sleep 0.3
 
     if kill -0 "$pid" 2>/dev/null; then
       kill -9 "$pid" 2>/dev/null || true
@@ -74,7 +74,7 @@ kill_listeners_on_port() {
 
   log "Freeing ${name} port ${port}: ${pids//$'\n'/, }"
   kill $pids 2>/dev/null || true
-  sleep 1
+  sleep 0.3
 
   pids="$(lsof -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
   if [[ -n "$pids" ]]; then
@@ -85,7 +85,7 @@ kill_listeners_on_port() {
 wait_for_http() {
   local name="$1"
   local url="$2"
-  local attempts="${3:-30}"
+  local attempts="${3:-60}"
   local curl_args=(-fsS)
 
   if [[ "$url" == https://* ]]; then
@@ -96,7 +96,7 @@ wait_for_http() {
     if curl "${curl_args[@]}" "$url" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 1
+    sleep 0.3
   done
 
   log "${name} did not become ready: ${url}"
@@ -106,16 +106,20 @@ wait_for_http() {
 extract_frontend_url() {
   local label="$1"
   local file="$2"
+  local all_urls
 
-  sed -nE "s/.*${label}:[[:space:]]+(https?:\/\/[^[:space:]]+).*/\1/p" "$file" \
-    | tail -n 1 \
+  all_urls="$(sed -nE "s/.*${label}:[[:space:]]+(https?:\/\/[^[:space:]]+).*/\1/p" "$file" \
     | tr -d '\r' \
-    | sed 's:/$::'
+    | sed 's:/$::')"
+
+  # Prefer localhost / 127.0.0.1; fall back to first URL
+  printf '%s\n' "$all_urls" | grep -E '//localhost[:/]|//127\.0\.0\.1[:/]' | head -n 1 \
+    || printf '%s\n' "$all_urls" | head -n 1
 }
 
 wait_for_frontend_urls() {
   local file="$1"
-  local attempts="${2:-30}"
+  local attempts="${2:-60}"
 
   FRONTEND_LOCAL_URL=''
   FRONTEND_NETWORK_URL=''
@@ -128,7 +132,7 @@ wait_for_frontend_urls() {
       return 0
     fi
 
-    sleep 1
+    sleep 0.3
   done
 
   log 'frontend did not print a ready url'
@@ -274,21 +278,41 @@ echo $! >"$WEB_PID_FILE"
 SERVER_URL="http://${SERVER_PUBLIC_HOST}:${SERVER_PORT}"
 SERVER_HEALTH_URL="${SERVER_URL}/api/health"
 
-if ! wait_for_http backend "$SERVER_HEALTH_URL"; then
+# Wait for backend and frontend in parallel
+BACKEND_OK=0
+FRONTEND_OK=0
+
+wait_for_http backend "$SERVER_HEALTH_URL" &
+BACKEND_WAIT_PID=$!
+
+(
+  if ! wait_for_frontend_urls "$WEB_LOG"; then
+    exit 1
+  fi
+  FRONTEND_LOCAL_URL="$(extract_frontend_url Local "$WEB_LOG")"
+  FRONTEND_READY_URL="${FRONTEND_LOCAL_URL}/@vite/client"
+  if ! wait_for_http frontend "$FRONTEND_READY_URL"; then
+    exit 1
+  fi
+) &
+FRONTEND_WAIT_PID=$!
+
+if ! wait "$BACKEND_WAIT_PID"; then
   show_log_tail backend "$SERVER_LOG"
+  BACKEND_OK=1
+fi
+
+if ! wait "$FRONTEND_WAIT_PID"; then
+  show_log_tail frontend "$WEB_LOG"
+  FRONTEND_OK=1
+fi
+
+if [[ "$BACKEND_OK" -ne 0 || "$FRONTEND_OK" -ne 0 ]]; then
   exit 1
 fi
 
-if ! wait_for_frontend_urls "$WEB_LOG"; then
-  show_log_tail frontend "$WEB_LOG"
-  exit 1
-fi
-
-FRONTEND_READY_URL="${FRONTEND_LOCAL_URL}/@vite/client"
-if ! wait_for_http frontend "$FRONTEND_READY_URL"; then
-  show_log_tail frontend "$WEB_LOG"
-  exit 1
-fi
+# Re-extract URLs after parallel wait (subshell can't export)
+wait_for_frontend_urls "$WEB_LOG" 5
 
 FRONTEND_PORT="$(extract_url_port "$FRONTEND_LOCAL_URL")"
 if [[ -n "$FRONTEND_PORT" && "$FRONTEND_PORT" != "$WEB_PORT" ]]; then

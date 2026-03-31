@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 
 import type {
+  AgentSessionRecord,
   LaunchRemoteAgentInput,
   LaunchLocalAgentInput,
   LaunchSshPtyInput,
@@ -178,14 +179,28 @@ export async function registerAgentSessionRoutes(
   fastify.patch<{ Params: { id: string }; Body: UpdateAgentSessionInput }>(
     "/api/agent-sessions/:id",
     async (request, reply) => {
-      const displayName = request.body?.displayName?.trim();
+      const { displayName, hidden } = request.body ?? {};
+      const updates: Partial<AgentSessionRecord> = {};
 
-      if (!displayName) {
-        reply.code(400);
-        return { error: "displayName is required" };
+      if (displayName !== undefined) {
+        const trimmed = displayName.trim();
+        if (!trimmed) {
+          reply.code(400);
+          return { error: "displayName cannot be empty" };
+        }
+        updates.displayName = trimmed;
       }
 
-      return registry.updateSession(request.params.id, { displayName });
+      if (hidden !== undefined) {
+        updates.hidden = Boolean(hidden);
+      }
+
+      if (Object.keys(updates).length === 0) {
+        reply.code(400);
+        return { error: "No valid fields to update" };
+      }
+
+      return registry.updateSession(request.params.id, updates);
     },
   );
 
@@ -339,15 +354,6 @@ export async function registerAgentSessionRoutes(
   );
 
   fastify.post<{ Params: { id: string } }>(
-    "/api/agent-sessions/:id/remove-from-grid",
-    async (request, reply) => {
-      const { id } = request.params;
-      registry.remove(id);
-      reply.code(204);
-    },
-  );
-
-  fastify.post<{ Params: { id: string } }>(
     "/api/agent-sessions/:id/tmux/kill",
     async (request, reply) => {
       const { id } = request.params;
@@ -357,6 +363,7 @@ export async function registerAgentSessionRoutes(
         reply.code(400);
         return { error: "Session has no tmux session reference" };
       }
+      ptyRuntimeManager.kill(id);
       await tmuxAdapter.killSession(tmuxSessionName, session.sshTarget);
       registry.remove(id);
       reply.code(204);
@@ -564,12 +571,17 @@ return "not_found"
     "/api/agent-sessions/:id",
     async (request, reply) => {
       const { id } = request.params;
+      const session = registry.get(id);
 
       if (observeSessionManager.isRunningCapture(id)) {
-        reply.code(409);
-        return {
-          error: "运行中的观察会话不能直接删除，请先停止观察",
-        };
+        observeSessionManager.stopCapture(id);
+      }
+
+      if (
+        session.sourceType === "remote-tmux-discovered" &&
+        session.controlMode === "control"
+      ) {
+        await tmuxAdapter.release(session);
       }
 
       ptyRuntimeManager.kill(id);

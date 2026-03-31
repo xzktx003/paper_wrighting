@@ -13,6 +13,7 @@ import type { DiscoveryMode } from "./components/DiscoveryDialog";
 import { DiscoveryDialog } from "./components/DiscoveryDialog";
 import type { AddToGridItem } from "./components/DiscoveryDialog";
 import type { FilterState } from "./components/FilterBar";
+import { HiddenSessionsDrawer } from "./components/HiddenSessionsDrawer";
 import type { SelectedHost } from "./components/HostDropdown";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { QuickTmuxConnect } from "./components/QuickTmuxConnect";
@@ -21,15 +22,17 @@ import {
   addDiscoveredTmux,
   createWindowCaptureSession,
   deleteAgentSession,
+  focusAgentSession,
   getSshHosts,
+  hideAgentSession,
   killTmuxSession,
   launchPtyAgent,
   launchSshPtyAgent,
   listAgentSessions,
   reconnectAgentSession,
-  removeFromGrid,
   sendObserveState,
   subscribeAgentSessions,
+  unhideAgentSession,
   updateAgentSession,
 } from "./lib/api";
 import {
@@ -239,6 +242,9 @@ export default function App() {
   }, []);
 
   const sessions = snapshot?.items ?? [];
+  const visibleSessions = sessions.filter((s) => !s.hidden);
+  const hiddenSessions = sessions.filter((s) => s.hidden);
+  const [showHiddenDrawer, setShowHiddenDrawer] = useState(false);
 
   // Heartbeat effect for active captures
   useEffect(() => {
@@ -353,7 +359,7 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const filteredSessions = sessions.filter((s) => {
+  const filteredSessions = visibleSessions.filter((s) => {
     if (filters.host && (s.hostId ?? "local") !== filters.host) return false;
     if (filters.kind && s.agentKind !== filters.kind) return false;
     if (filters.transport === "tmux" && !s.transportRef?.tmuxSession) {
@@ -417,8 +423,24 @@ export default function App() {
       .catch(() => {});
   }
 
-  async function handleRemoveFromGrid(id: string) {
-    await removeFromGrid(id);
+  async function handleHideSession(id: string) {
+    await hideAgentSession(id);
+    const snap = await listAgentSessions().catch(() => null);
+    if (snap) {
+      setSnapshot(snap);
+      if (snap.activeAgentSessionId === id) {
+        const nextVisible = snap.items.find((s) => !s.hidden && s.id !== id);
+        if (nextVisible) {
+          focusAgentSession({ agentSessionId: nextVisible.id })
+            .then(setSnapshot)
+            .catch(() => {});
+        }
+      }
+    }
+  }
+
+  async function handleUnhideSession(id: string) {
+    await unhideAgentSession(id);
     listAgentSessions()
       .then(setSnapshot)
       .catch(() => {});
@@ -631,18 +653,20 @@ export default function App() {
           ) : (
             <AgentGrid
               sessions={filteredSessions}
-              allSessions={sessions}
+              allSessions={visibleSessions}
               filters={filters}
               onFiltersChange={setFilters}
               onFocusSession={handleFocusSession}
               onDeleteSession={handleDeleteSession}
               onReconnectSession={handleReconnectSession}
               onRenameSession={handleRenameSession}
-              onRemoveFromGrid={handleRemoveFromGrid}
+              onHideSession={handleHideSession}
               onCopyConnectCommand={handleCopyConnectCommand}
               onKillTmux={handleKillTmux}
               getCaptureStream={getCaptureStreamForSession}
               onStopCapture={handleStopCapture}
+              hiddenCount={hiddenSessions.length}
+              onShowHidden={() => setShowHiddenDrawer(true)}
             />
           )}
         </div>
@@ -675,6 +699,14 @@ export default function App() {
           onFocusSession={handleFocusSession}
         />
       )}
+
+      <HiddenSessionsDrawer
+        sessions={hiddenSessions}
+        open={showHiddenDrawer}
+        onClose={() => setShowHiddenDrawer(false)}
+        onUnhide={handleUnhideSession}
+        onDelete={handleDeleteSession}
+      />
     </main>
   );
 }

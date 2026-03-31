@@ -10,25 +10,25 @@ async function cleanupCaptureSessions(request: APIRequestContext) {
   const data = await res.json();
   for (const s of data.items) {
     if (s.sourceType === 'local-window-capture') {
-      // Try to transition to exited first (may fail if token mismatch)
-      await request
-        .post(`/api/agent-sessions/${s.id}/observe-state`, {
-          data: {
-            kind: 'transition',
-            observeToken: 'force-cleanup',
-            connectionState: 'offline',
-            interactionState: 'exited',
-            stateConfidence: 'high',
-          },
-        })
-        .catch(() => {});
       const deleteRes = await request
         .delete(`/api/agent-sessions/${s.id}`)
         .catch(() => null);
 
       if (!deleteRes || deleteRes.status() !== 204) {
+        // Force transition to exited and try again
         await request
-          .post(`/api/agent-sessions/${s.id}/remove-from-grid`)
+          .post(`/api/agent-sessions/${s.id}/observe-state`, {
+            data: {
+              kind: 'transition',
+              observeToken: 'force-cleanup',
+              connectionState: 'offline',
+              interactionState: 'exited',
+              stateConfidence: 'high',
+            },
+          })
+          .catch(() => {});
+        await request
+          .delete(`/api/agent-sessions/${s.id}`)
           .catch(() => {});
       }
     }
@@ -141,7 +141,7 @@ test('window capture: 静止画面会从运行中切换为等待输入', async (
   }
 });
 
-test('window capture: 运行中不能删除，停止后可以删除', async ({
+test('window capture: 运行中和停止后都可以删除', async ({
   request,
 }) => {
   await cleanupCaptureSessions(request);
@@ -151,29 +151,10 @@ test('window capture: 运行中不能删除，停止后可以删除', async ({
   });
   expect(createRes.ok()).toBeTruthy();
 
-  const { agentSession, observeToken } = await createRes.json();
+  const { agentSession } = await createRes.json();
 
   try {
-    const deleteAttempt = await request.delete(
-      `/api/agent-sessions/${agentSession.id}`,
-    );
-    expect(deleteAttempt.status()).toBe(409);
-
-    const transRes = await request.post(
-      `/api/agent-sessions/${agentSession.id}/observe-state`,
-      {
-        data: {
-          kind: 'transition',
-          observeToken,
-          connectionState: 'offline',
-          interactionState: 'exited',
-          stateConfidence: 'high',
-          outputPreview: 'ended',
-        },
-      },
-    );
-    expect(transRes.ok()).toBeTruthy();
-
+    // DELETE should succeed even while running (auto-stops capture)
     const deleteRes = await request.delete(
       `/api/agent-sessions/${agentSession.id}`,
     );

@@ -12,12 +12,14 @@ interface AgentGridProps {
   onDeleteSession: (id: string) => void;
   onReconnectSession: (id: string) => void;
   onRenameSession?: (id: string) => void;
-  onRemoveFromGrid?: (id: string) => void;
+  onHideSession?: (id: string) => void;
   onCopyConnectCommand?: (id: string) => void;
   onKillTmux?: (id: string) => void;
   getCaptureStream?: (id: string) => MediaStream | null;
   onStopCapture?: (id: string) => void;
   suspendedSessionId?: string | null;
+  hiddenCount?: number;
+  onShowHidden?: () => void;
 }
 
 export function AgentGrid({
@@ -29,20 +31,33 @@ export function AgentGrid({
   onDeleteSession,
   onReconnectSession,
   onRenameSession,
-  onRemoveFromGrid,
+  onHideSession,
   onCopyConnectCommand,
   onKillTmux,
   getCaptureStream,
   onStopCapture,
   suspendedSessionId,
+  hiddenCount = 0,
+  onShowHidden,
 }: AgentGridProps) {
   return (
     <div className="agent-grid-container">
-      <FilterBar
-        sessions={allSessions}
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-      />
+      <div className="agent-grid-toolbar">
+        <FilterBar
+          sessions={allSessions}
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+        />
+        {hiddenCount > 0 && (
+          <button
+            className="hidden-sessions-btn"
+            onClick={onShowHidden}
+            type="button"
+          >
+            已隐藏 ({hiddenCount})
+          </button>
+        )}
+      </div>
       {sessions.length === 0 ? (
         <div className="grid-empty">
           <p>
@@ -62,7 +77,7 @@ export function AgentGrid({
               onDelete={onDeleteSession}
               onReconnect={onReconnectSession}
               onRename={onRenameSession}
-              onRemoveFromGrid={onRemoveFromGrid}
+              onHide={onHideSession}
               onCopyConnectCommand={onCopyConnectCommand}
               onKillTmux={onKillTmux}
               captureStream={getCaptureStream?.(session.id)}

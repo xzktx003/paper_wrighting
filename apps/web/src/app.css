@@ -400,6 +400,16 @@ input {
   gap: 12px;
 }
 
+.agent-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-grid-toolbar .filter-bar {
+  flex: 1;
+}
+
 /* ===== Filter Bar ===== */
 .filter-bar {
   display: flex;
@@ -628,7 +638,7 @@ input {
   color: rgba(244, 241, 234, 0.4);
 }
 
-.grid-card-delete {
+.grid-card-close {
   padding: 0 6px;
   border: none;
   background: transparent;
@@ -661,7 +671,7 @@ input {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.grid-card-delete:hover {
+.grid-card-close:hover {
   color: #ff6b6b;
   background: rgba(255, 107, 107, 0.12);
 }
@@ -1919,9 +1929,9 @@ input {
   background: rgba(224, 108, 117, 0.1);
 }
 
-/* ── Grid Card Remove ── */
+/* ── Grid Card Hide ── */
 
-.grid-card-remove {
+.grid-card-hide {
   background: none;
   border: none;
   color: rgba(244, 241, 234, 0.4);
@@ -1931,7 +1941,136 @@ input {
   border-radius: 4px;
 }
 
-.grid-card-remove:hover {
+.grid-card-hide:hover {
   color: rgba(244, 241, 234, 0.7);
   background: rgba(246, 178, 107, 0.1);
+}
+
+/* ── Grid Card Kill Tmux ── */
+
+.grid-card-kill-tmux {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: rgba(224, 108, 117, 0.5);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.grid-card-kill-tmux:hover {
+  color: #e06c75;
+  background: rgba(224, 108, 117, 0.12);
+}
+
+/* ── Hidden Sessions Button ── */
+
+.hidden-sessions-btn {
+  background: none;
+  border: 1px solid rgba(244, 241, 234, 0.15);
+  color: rgba(244, 241, 234, 0.6);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.hidden-sessions-btn:hover {
+  color: rgba(244, 241, 234, 0.9);
+  background: rgba(246, 178, 107, 0.1);
+}
+
+/* ── Hidden Sessions Drawer ── */
+
+.hidden-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hidden-drawer {
+  background: #1e1e1e;
+  border: 1px solid rgba(246, 178, 107, 0.2);
+  border-radius: 8px;
+  width: min(480px, 90vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.hidden-drawer h3 {
+  margin: 0 0 12px;
+  color: #f4f1ea;
+  font-size: 15px;
+}
+
+.hidden-drawer-empty {
+  color: rgba(244, 241, 234, 0.5);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.hidden-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(244, 241, 234, 0.06);
+}
+
+.hidden-drawer-item:last-child {
+  border-bottom: none;
+}
+
+.hidden-drawer-name {
+  flex: 1;
+  color: #f4f1ea;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hidden-drawer-kind {
+  color: rgba(244, 241, 234, 0.4);
+  font-size: 12px;
+}
+
+.hidden-drawer-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.hidden-drawer-actions button {
+  background: none;
+  border: 1px solid rgba(244, 241, 234, 0.15);
+  color: rgba(244, 241, 234, 0.7);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.hidden-drawer-actions button:hover {
+  background: rgba(246, 178, 107, 0.1);
+  color: #f4f1ea;
+}
+
+.hidden-drawer-actions .btn-danger {
+  color: rgba(224, 108, 117, 0.7);
+  border-color: rgba(224, 108, 117, 0.2);
+}
+
+.hidden-drawer-actions .btn-danger:hover {
+  color: #e06c75;
+  background: rgba(224, 108, 117, 0.12);
 }

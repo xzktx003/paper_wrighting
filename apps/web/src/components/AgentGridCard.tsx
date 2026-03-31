@@ -11,7 +11,7 @@ interface AgentGridCardProps {
   onDelete: (id: string) => void;
   onReconnect: (id: string) => void;
   onRename?: (id: string) => void;
-  onRemoveFromGrid?: (id: string) => void;
+  onHide?: (id: string) => void;
   onCopyConnectCommand?: (id: string) => void;
   onKillTmux?: (id: string) => void;
   captureStream?: MediaStream | null;
@@ -59,7 +59,7 @@ export function AgentGridCard({
   onDelete,
   onReconnect,
   onRename,
-  onRemoveFromGrid,
+  onHide,
   onCopyConnectCommand,
   onKillTmux,
   captureStream,
@@ -75,8 +75,6 @@ export function AgentGridCard({
   const isExited = session.interactionState === "exited";
   const isDetached = session.interactionState === "detached";
   const canReconnect = isExited && !isTmux && !isWindowCapture;
-  const canRemoveFromGrid = isTmux || isTmuxManaged;
-  const canDelete = !isTmux && (!isWindowCapture || isExited || isDetached);
   const canStopCapture =
     isWindowCapture && !isExited && !isDetached && Boolean(captureStream);
 
@@ -87,10 +85,22 @@ export function AgentGridCard({
       )
     : null;
 
-  function handleDelete(e: React.MouseEvent) {
+  function getCloseTitle(): string {
+    if (isTmux || isTmuxManaged) {
+      return isExited ? "清除记录" : "脱离会话";
+    }
+    if (isWindowCapture) {
+      return isExited || isDetached ? "清除记录" : "停止观察";
+    }
+    return isExited ? "清除记录" : "关闭会话";
+  }
+
+  function handleClose(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!isExited) {
-      if (!window.confirm("会话仍在运行中，确定关闭？")) return;
+    const needsConfirm =
+      !isTmux && !isTmuxManaged && !isWindowCapture && !isExited;
+    if (needsConfirm && !window.confirm("会话仍在运行中，确定关闭？")) {
+      return;
     }
     onDelete(session.id);
   }
@@ -130,37 +140,48 @@ export function AgentGridCard({
             <CardMoreMenu
               sessionId={session.id}
               isTmux={isTmux || isTmuxManaged}
-              onRename={(id) => onRename?.(id)}
               onCopyConnectCommand={(id) => onCopyConnectCommand?.(id)}
-              onKillTmux={(id) => onKillTmux?.(id)}
             />
           )}
           <span className={`grid-card-badge badge-${session.interactionState}`}>
             {stateLabel}
           </span>
-          {canRemoveFromGrid && (
+          <button
+            className="grid-card-hide"
+            onClick={(e) => {
+              e.stopPropagation();
+              onHide?.(session.id);
+            }}
+            title="隐藏"
+            type="button"
+          >
+            👁
+          </button>
+          {(isTmux || isTmuxManaged) && (
             <button
-              className="grid-card-remove"
+              className="grid-card-kill-tmux"
               onClick={(e) => {
                 e.stopPropagation();
-                onRemoveFromGrid?.(session.id);
+                if (
+                  window.confirm("确定要终止此 tmux 会话吗？这将杀掉底层进程。")
+                ) {
+                  onKillTmux?.(session.id);
+                }
               }}
-              title="从宫格移除"
+              title="终止 tmux 会话"
               type="button"
             >
-              ⊟
+              🗑
             </button>
           )}
-          {canDelete && (
-            <button
-              className="grid-card-delete"
-              onClick={handleDelete}
-              title="删除会话"
-              type="button"
-            >
-              ×
-            </button>
-          )}
+          <button
+            className="grid-card-close"
+            onClick={handleClose}
+            title={getCloseTitle()}
+            type="button"
+          >
+            ×
+          </button>
         </div>
       </div>
       <div className="grid-card-terminal">

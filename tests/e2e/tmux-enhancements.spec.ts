@@ -3,12 +3,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from '@playwright/test';
 
 import { resolveTmuxBinary } from './tmux-binary';
 
 const TMUX_BINARY = resolveTmuxBinary();
-const COPILOT_SESSION_ROOT = path.join(os.homedir(), '.copilot', 'session-state');
+const COPILOT_SESSION_ROOT = path.join(
+  os.homedir(),
+  '.copilot',
+  'session-state',
+);
 const backendBaseUrl = process.env.PLAYWRIGHT_BACKEND_URL ?? '';
 
 function backendPath(pathname: string): string {
@@ -114,6 +123,41 @@ function killRemoteTmuxSession(
   }
 }
 
+function tmuxPaneContainsText(sessionName: string, text: string): boolean {
+  try {
+    return runTmux(['capture-pane', '-pt', sessionName]).includes(text);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForSessionInList(
+  request: APIRequestContext,
+  sessionId: string,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const response = await request.get(backendPath('/api/agent-sessions'));
+      const payload = (await response.json()) as {
+        items?: Array<{ id?: string }>;
+      };
+
+      return payload.items?.some((item) => item.id === sessionId) ?? false;
+    })
+    .toBeTruthy();
+}
+
+async function ensureGridMode(page: Page): Promise<void> {
+  const exitButton = page.getByRole('button', { name: '返回宫格' });
+  if ((await exitButton.count()) === 0) {
+    return;
+  }
+
+  if (await exitButton.first().isVisible()) {
+    await exitButton.first().click();
+  }
+}
+
 async function getSshHosts(request: APIRequestContext): Promise<
   Array<{
     name: string;
@@ -151,10 +195,7 @@ function createCopilotSessionState(options: {
   );
 
   if (options.running) {
-    fs.writeFileSync(
-      path.join(sessionDir, `inuse.${process.pid}.lock`),
-      '',
-    );
+    fs.writeFileSync(path.join(sessionDir, `inuse.${process.pid}.lock`), '');
   }
 
   return sessionDir;
@@ -291,15 +332,18 @@ test('browser: 普通对话终端可以用鼠标滚轮浏览历史', async ({
   try {
     await page.setViewportSize({ width: 1600, height: 1200 });
 
-    const launchResponse = await request.post(backendPath('/api/agent-launch/pty'), {
-      data: {
-        workspaceId: 'default',
-        displayName,
-        agentKind: 'copilot',
-        command: 'node ./scripts/mock-terminal-agent.mjs scroll',
-        workingDirectory: process.cwd(),
+    const launchResponse = await request.post(
+      backendPath('/api/agent-launch/pty'),
+      {
+        data: {
+          workspaceId: 'default',
+          displayName,
+          agentKind: 'copilot',
+          command: 'node ./scripts/mock-terminal-agent.mjs scroll',
+          workingDirectory: process.cwd(),
+        },
       },
-    });
+    );
 
     expect(launchResponse.ok()).toBeTruthy();
     sessionId = (await launchResponse.json()).id;
@@ -319,11 +363,13 @@ test('browser: 普通对话终端可以用鼠标滚轮浏览历史', async ({
         page.evaluate(() => {
           const terminal = document.querySelector(
             '.focus-main .terminal-view',
-          ) as HTMLDivElement & {
-            __xterm?: {
-              buffer?: { active?: { viewportY?: number } };
-            };
-          } | null;
+          ) as
+            | (HTMLDivElement & {
+                __xterm?: {
+                  buffer?: { active?: { viewportY?: number } };
+                };
+              })
+            | null;
 
           return terminal?.__xterm?.buffer?.active?.viewportY ?? 0;
         }),
@@ -331,13 +377,13 @@ test('browser: 普通对话终端可以用鼠标滚轮浏览历史', async ({
       .toBeGreaterThan(0);
 
     const before = await page.evaluate(() => {
-      const terminal = document.querySelector(
-        '.focus-main .terminal-view',
-      ) as HTMLDivElement & {
-        __xterm?: {
-          buffer?: { active?: { viewportY?: number } };
-        };
-      } | null;
+      const terminal = document.querySelector('.focus-main .terminal-view') as
+        | (HTMLDivElement & {
+            __xterm?: {
+              buffer?: { active?: { viewportY?: number } };
+            };
+          })
+        | null;
 
       return terminal?.__xterm?.buffer?.active?.viewportY ?? 0;
     });
@@ -345,13 +391,13 @@ test('browser: 普通对话终端可以用鼠标滚轮浏览历史', async ({
     await page.mouse.wheel(0, -1200);
     await page.waitForTimeout(300);
     const after = await page.evaluate(() => {
-      const terminal = document.querySelector(
-        '.focus-main .terminal-view',
-      ) as HTMLDivElement & {
-        __xterm?: {
-          buffer?: { active?: { viewportY?: number } };
-        };
-      } | null;
+      const terminal = document.querySelector('.focus-main .terminal-view') as
+        | (HTMLDivElement & {
+            __xterm?: {
+              buffer?: { active?: { viewportY?: number } };
+            };
+          })
+        | null;
 
       return terminal?.__xterm?.buffer?.active?.viewportY ?? 0;
     });
@@ -374,15 +420,18 @@ test('browser: 调整窗口大小会把新的终端尺寸同步到 PTY', async (
   try {
     await page.setViewportSize({ width: 1280, height: 820 });
 
-    const launchResponse = await request.post(backendPath('/api/agent-launch/pty'), {
-      data: {
-        workspaceId: 'default',
-        displayName,
-        agentKind: 'copilot',
-        command: 'node ./scripts/mock-terminal-agent.mjs size',
-        workingDirectory: process.cwd(),
+    const launchResponse = await request.post(
+      backendPath('/api/agent-launch/pty'),
+      {
+        data: {
+          workspaceId: 'default',
+          displayName,
+          agentKind: 'copilot',
+          command: 'node ./scripts/mock-terminal-agent.mjs size',
+          workingDirectory: process.cwd(),
+        },
       },
-    });
+    );
 
     expect(launchResponse.ok()).toBeTruthy();
     sessionId = (await launchResponse.json()).id;
@@ -408,18 +457,21 @@ test('browser: 调整窗口大小会把新的终端尺寸同步到 PTY', async (
     await page.setViewportSize({ width: 1600, height: 1200 });
 
     await expect
-      .poll(async () => {
-        const size = await getLastReportedTtySize(request, sessionId!);
-        if (!size || !initialSize) {
-          return null;
-        }
+      .poll(
+        async () => {
+          const size = await getLastReportedTtySize(request, sessionId!);
+          if (!size || !initialSize) {
+            return null;
+          }
 
-        return size.cols > initialSize.cols || size.rows > initialSize.rows
-          ? size
-          : null;
-      }, {
-        timeout: 15000,
-      })
+          return size.cols > initialSize.cols || size.rows > initialSize.rows
+            ? size
+            : null;
+        },
+        {
+          timeout: 15000,
+        },
+      )
       .not.toBeNull();
 
     const resizedSize = await getLastReportedTtySize(request, sessionId!);
@@ -457,16 +509,19 @@ test('browser: tmux 缩略图不会把真实终端缩回小尺寸', async ({
       'bash',
     ]);
 
-    const launchResponse = await request.post(backendPath('/api/agent-launch/pty'), {
-      data: {
-        workspaceId: 'default',
-        displayName,
-        agentKind: 'copilot',
-        command: `tmux attach -t '${sessionName}'`,
-        workingDirectory: process.cwd(),
-        tmuxSessionName: sessionName,
+    const launchResponse = await request.post(
+      backendPath('/api/agent-launch/pty'),
+      {
+        data: {
+          workspaceId: 'default',
+          displayName,
+          agentKind: 'copilot',
+          command: `tmux attach -t '${sessionName}'`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
       },
-    });
+    );
 
     expect(launchResponse.ok()).toBeTruthy();
     launchedSessionId = (await launchResponse.json()).id;
@@ -501,7 +556,9 @@ test('browser: tmux 缩略图不会把真实终端缩回小尺寸', async ({
     expect(gridSize).toEqual(focusedSize);
   } finally {
     if (launchedSessionId) {
-      await request.delete(backendPath(`/api/agent-sessions/${launchedSessionId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
     }
     killTmuxSession(sessionName);
   }
@@ -526,16 +583,19 @@ test('browser: tmux 终端会转发鼠标二进制事件', async ({ page, reques
       'node ./scripts/mock-terminal-agent.mjs mouse',
     ]);
 
-    const launchResponse = await request.post(backendPath('/api/agent-launch/pty'), {
-      data: {
-        workspaceId: 'default',
-        displayName,
-        agentKind: 'copilot',
-        command: `tmux attach -t '${sessionName}'`,
-        workingDirectory: process.cwd(),
-        tmuxSessionName: sessionName,
+    const launchResponse = await request.post(
+      backendPath('/api/agent-launch/pty'),
+      {
+        data: {
+          workspaceId: 'default',
+          displayName,
+          agentKind: 'copilot',
+          command: `tmux attach -t '${sessionName}'`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
       },
-    });
+    );
 
     expect(launchResponse.ok()).toBeTruthy();
     launchedSessionId = (await launchResponse.json()).id;
@@ -554,6 +614,53 @@ test('browser: tmux 终端会转发鼠标二进制事件', async ({ page, reques
     const screen = page.locator('.focus-main .terminal-view .xterm-screen');
     await expect(terminal).toBeVisible({ timeout: 15000 });
     await expect(screen).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const terminal = document.querySelector(
+            '.focus-main .terminal-view',
+          ) as
+            | (HTMLDivElement & {
+                __xterm?: {
+                  modes?: {
+                    mouseTrackingMode?: string;
+                  };
+                  options?: {
+                    disableStdin?: boolean;
+                  };
+                };
+              })
+            | null;
+
+          return {
+            mouseTrackingMode:
+              terminal?.__xterm?.modes?.mouseTrackingMode ?? 'none',
+            disableStdin: terminal?.__xterm?.options?.disableStdin ?? null,
+          };
+        }),
+      )
+      .toMatchObject({
+        disableStdin: false,
+      });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const terminal = document.querySelector(
+            '.focus-main .terminal-view',
+          ) as
+            | (HTMLDivElement & {
+                __xterm?: {
+                  modes?: {
+                    mouseTrackingMode?: string;
+                  };
+                };
+              })
+            | null;
+
+          return terminal?.__xterm?.modes?.mouseTrackingMode ?? 'none';
+        }),
+      )
+      .not.toBe('none');
 
     const before = await page.evaluate(
       () =>
@@ -590,12 +697,116 @@ test('browser: tmux 终端会转发鼠标二进制事件', async ({ page, reques
     );
     expect(
       frames.some(
-        (frame) => frame.includes('"type":"binary"') || frame.includes('\u001b') || frame.includes('[M'),
+        (frame) =>
+          frame.includes('"type":"binary"') ||
+          frame.includes('\u001b') ||
+          frame.includes('[M'),
       ),
     ).toBeTruthy();
   } finally {
     if (launchedSessionId) {
-      await request.delete(backendPath(`/api/agent-sessions/${launchedSessionId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
+    }
+    killTmuxSession(sessionName);
+  }
+});
+
+test('browser: 切回浏览器窗口后会恢复 tmux 输入焦点', async ({
+  page,
+  request,
+}) => {
+  const sessionName = `e2e-mouse-window-refocus-${Date.now()}`;
+  const displayName = `E2E Mouse Window Refocus ${Date.now()}`;
+
+  let launchedSessionId: string | undefined;
+
+  killTmuxSession(sessionName);
+
+  try {
+    runTmux([
+      'new-session',
+      '-d',
+      '-s',
+      sessionName,
+      '-c',
+      process.cwd(),
+      'node ./scripts/mock-terminal-agent.mjs mouse',
+    ]);
+
+    const launchResponse = await request.post(
+      backendPath('/api/agent-launch/pty'),
+      {
+        data: {
+          workspaceId: 'default',
+          displayName,
+          agentKind: 'copilot',
+          command: `tmux attach -t '${sessionName}'`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    launchedSessionId = (await launchResponse.json()).id;
+    await waitForSessionInList(request, launchedSessionId);
+
+    await installWebSocketSpy(page);
+    await page.goto('/');
+    await ensureGridMode(page);
+
+    const card = page.locator('.grid-card', {
+      has: page.locator('.grid-card-name', { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    await card.dblclick();
+
+    const terminal = page.locator('.focus-main .terminal-view');
+    const screen = page.locator('.focus-main .terminal-view .xterm-screen');
+    await expect(terminal).toBeVisible({ timeout: 15000 });
+    await expect(screen).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(() => tmuxPaneContainsText(sessionName, 'mouse-ready'))
+      .toBeTruthy();
+    await page.waitForTimeout(150);
+
+    await screen.click({ position: { x: 90, y: 50 } });
+
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document.activeElement?.classList.contains(
+              'xterm-helper-textarea',
+            ) ?? false,
+        ),
+      )
+      .toBeTruthy();
+
+    const backgroundPage = await page.context().newPage();
+    await backgroundPage.goto('about:blank');
+    await backgroundPage.bringToFront();
+    await page.bringToFront();
+    await backgroundPage.close();
+
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document.activeElement?.classList.contains(
+              'xterm-helper-textarea',
+            ) ?? false,
+        ),
+      )
+      .toBeTruthy();
+  } finally {
+    if (launchedSessionId) {
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
     }
     killTmuxSession(sessionName);
   }
@@ -641,7 +852,9 @@ test('browser: Ctrl/Meta+E 可以快速连接远端 tmux 并自动聚焦', async
 
     await expect(page.getByTestId('quick-tmux-session-name')).toBeVisible();
     await page.getByTestId('quick-tmux-session-name').fill(sessionName);
-    await page.getByTestId('quick-tmux-working-directory').fill(workingDirectory);
+    await page
+      .getByTestId('quick-tmux-working-directory')
+      .fill(workingDirectory);
     await page.getByRole('button', { name: '打开 tmux' }).click();
 
     await expect(page.locator('.focus-main-name')).toHaveText(sessionName, {
@@ -659,7 +872,8 @@ test('browser: Ctrl/Meta+E 可以快速连接远端 tmux 并自动聚焦', async
         },
       });
 
-    launchedSessionId = (await findSessionByDisplayName(request, sessionName))?.id;
+    launchedSessionId = (await findSessionByDisplayName(request, sessionName))
+      ?.id;
 
     await page.getByRole('button', { name: '返回宫格' }).click();
 
@@ -670,7 +884,9 @@ test('browser: Ctrl/Meta+E 可以快速连接远端 tmux 并自动聚焦', async
     await expect(card.locator('.grid-card-tag')).toHaveText('tmux');
   } finally {
     if (launchedSessionId) {
-      await request.delete(backendPath(`/api/agent-sessions/${launchedSessionId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
     }
 
     if (hm24) {
@@ -740,12 +956,14 @@ test('browser: 扫描结果会合并 tmux 运行态并支持 tmux 恢复', async
       timeout: 15000,
     });
 
-    const scanStyles = await page.locator('.discovery-list').evaluate((element) => {
-      const styles = window.getComputedStyle(element);
-      return {
-        overflowY: styles.overflowY,
-      };
-    });
+    const scanStyles = await page
+      .locator('.discovery-list')
+      .evaluate((element) => {
+        const styles = window.getComputedStyle(element);
+        return {
+          overflowY: styles.overflowY,
+        };
+      });
 
     expect(scanStyles.overflowY).toBe('auto');
 
@@ -754,9 +972,7 @@ test('browser: 扫描结果会合并 tmux 运行态并支持 tmux 恢复', async
       .filter({ hasText: runningSessionName });
     await expect(runningItem).toContainText('copilot');
     await expect(runningItem).toContainText('tmux');
-    await runningItem
-      .getByRole('button', { name: '从 tmux 加入宫格' })
-      .click();
+    await runningItem.getByRole('button', { name: '从 tmux 加入宫格' }).click();
 
     await expect
       .poll(async () => findSessionByDisplayName(request, runningSessionName), {
@@ -769,7 +985,9 @@ test('browser: 扫描结果会合并 tmux 运行态并支持 tmux 恢复', async
         },
       });
 
-    attachedRunningId = (await findSessionByDisplayName(request, runningSessionName))?.id;
+    attachedRunningId = (
+      await findSessionByDisplayName(request, runningSessionName)
+    )?.id;
 
     const runningCard = page.locator('.grid-card', {
       has: page.locator('.grid-card-name', { hasText: runningSessionName }),
@@ -794,13 +1012,19 @@ test('browser: 扫描结果会合并 tmux 运行态并支持 tmux 恢复', async
         displayName: stoppedSessionName,
       });
 
-    resumedStoppedId = (await findSessionByDisplayName(request, stoppedSessionName))?.id;
+    resumedStoppedId = (
+      await findSessionByDisplayName(request, stoppedSessionName)
+    )?.id;
   } finally {
     if (attachedRunningId) {
-      await request.delete(backendPath(`/api/agent-sessions/${attachedRunningId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${attachedRunningId}`),
+      );
     }
     if (resumedStoppedId) {
-      await request.delete(backendPath(`/api/agent-sessions/${resumedStoppedId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${resumedStoppedId}`),
+      );
     }
 
     await deleteSessionIfPresent(request, runningSessionName);
@@ -890,23 +1114,20 @@ test('browser: 扫描应用中的 tmux 结果同时支持直接加入和从 tmux
       )
       .toBe(true);
 
-    directSessionId = (await findSessionsByDisplayName(request, runningSessionName)).find(
-      (session) => !session.transportRef?.tmuxSession,
-    )?.id;
+    directSessionId = (
+      await findSessionsByDisplayName(request, runningSessionName)
+    ).find((session) => !session.transportRef?.tmuxSession)?.id;
 
     expect(directSessionId).toBeTruthy();
 
-    await runningItem
-      .getByRole('button', { name: '从 tmux 加入宫格' })
-      .click();
+    await runningItem.getByRole('button', { name: '从 tmux 加入宫格' }).click();
 
     await expect
       .poll(
         async () =>
-          (
-            await findSessionsByDisplayName(request, runningSessionName)
-          ).some(
-            (session) => session.transportRef?.tmuxSession === runningSessionName,
+          (await findSessionsByDisplayName(request, runningSessionName)).some(
+            (session) =>
+              session.transportRef?.tmuxSession === runningSessionName,
           ),
         {
           timeout: 15000,
@@ -914,14 +1135,18 @@ test('browser: 扫描应用中的 tmux 结果同时支持直接加入和从 tmux
       )
       .toBe(true);
 
-    tmuxSessionId = (await findSessionsByDisplayName(request, runningSessionName)).find(
+    tmuxSessionId = (
+      await findSessionsByDisplayName(request, runningSessionName)
+    ).find(
       (session) => session.transportRef?.tmuxSession === runningSessionName,
     )?.id;
 
     expect(tmuxSessionId).toBeTruthy();
   } finally {
     if (directSessionId) {
-      await request.delete(backendPath(`/api/agent-sessions/${directSessionId}`));
+      await request.delete(
+        backendPath(`/api/agent-sessions/${directSessionId}`),
+      );
     }
     if (tmuxSessionId) {
       await request.delete(backendPath(`/api/agent-sessions/${tmuxSessionId}`));
