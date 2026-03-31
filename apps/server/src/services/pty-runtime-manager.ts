@@ -39,6 +39,11 @@ function buildPtyEnv(agentKind?: string): Record<string, string> {
     }
   }
 
+  // Prevent "sessions should be nested with care" error when the server
+  // itself runs inside a tmux session and a PTY tries to run `tmux attach`.
+  delete env.TMUX;
+  delete env.TMUX_PANE;
+
   if (agentKind === "copilot") {
     env.NPM_CONFIG_USERCONFIG = devNull;
     env.NPM_CONFIG_GLOBALCONFIG = devNull;

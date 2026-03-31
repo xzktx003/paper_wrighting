@@ -38,26 +38,42 @@ export function AgentFocusView({
   getCaptureStream,
 }: AgentFocusViewProps) {
   useEffect(() => {
+    function isInTerminal(node: HTMLElement | null): boolean {
+      return Boolean(
+        node?.closest(".focus-main-terminal") ||
+          node?.classList.contains("xterm-helper-textarea"),
+      );
+    }
+
     function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const active = document.activeElement as HTMLElement | null;
+
       if (e.key === "Escape") {
         // Don't intercept Escape when terminal has focus
-        const target = e.target as HTMLElement | null;
-        const active = document.activeElement;
-        const inTerminal =
-          target?.closest(".focus-main-terminal") ||
-          target?.classList.contains("xterm-helper-textarea") ||
-          active?.closest(".focus-main-terminal") ||
-          active?.classList.contains("xterm-helper-textarea");
-        if (inTerminal) {
+        if (isInTerminal(target) || isInTerminal(active)) {
           return;
         }
-
         onExit();
+        return;
+      }
+
+      // If focus is outside the terminal and outside a text input, redirect it
+      // to the xterm textarea so the keypress reaches the running process.
+      const inInput =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active?.isContentEditable;
+      if (!inInput && !isInTerminal(target) && !isInTerminal(active)) {
+        const textarea = document.querySelector(
+          ".focus-main-terminal .xterm-helper-textarea",
+        ) as HTMLTextAreaElement | null;
+        textarea?.focus();
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onExit]);
 
   const otherSessions = sessions.filter((s) => s.id !== focusedSession.id);
