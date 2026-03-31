@@ -234,13 +234,16 @@ export function SideDrawer({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
             />
-            <fieldset className="drawer-agent-field" data-testid="new-session-kind">
+            <fieldset
+              className="drawer-agent-field"
+              data-testid="new-session-kind"
+            >
               <legend className="drawer-agent-label">Agent</legend>
               <div className="drawer-agent-toggle">
-                {['copilot', 'codex', 'claude', 'shell'].map((kind) => (
+                {["copilot", "codex", "claude", "shell"].map((kind) => (
                   <label
                     key={kind}
-                    className={`drawer-agent-btn${newKind === kind ? ' is-active' : ''}`}
+                    className={`drawer-agent-btn${newKind === kind ? " is-active" : ""}`}
                     data-testid={`new-session-kind-${kind}`}
                   >
                     <input

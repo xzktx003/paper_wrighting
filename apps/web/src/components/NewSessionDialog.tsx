@@ -336,10 +336,10 @@ export function NewSessionDialog({
           >
             <legend className="new-session-label">Agent</legend>
             <div className="new-session-mode-toggle new-session-agent-toggle">
-              {['copilot', 'codex', 'claude', 'shell'].map((kind) => (
+              {["copilot", "codex", "claude", "shell"].map((kind) => (
                 <label
                   key={kind}
-                  className={`new-session-mode-btn new-session-agent-btn${newKind === kind ? ' is-active' : ''}`}
+                  className={`new-session-mode-btn new-session-agent-btn${newKind === kind ? " is-active" : ""}`}
                   data-testid={`new-session-kind-${kind}`}
                 >
                   <input

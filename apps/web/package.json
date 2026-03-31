@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "dev": "pnpm --filter @agent-orchestrator/shared build && pnpm run dev:app",
+    "dev:app": "vite",
+    "build": "pnpm --filter @agent-orchestrator/shared build && tsc -p tsconfig.json && vite build",
     "test": "tsx --test src/**/*.test.ts",
     "format": "prettier --write 'src/**/*.{ts,tsx,css}'"
   },
