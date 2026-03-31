@@ -63,6 +63,17 @@ async function getSessionOutputText(
     .join('\n');
 }
 
+async function openNewSessionForHost(
+  page: import('@playwright/test').Page,
+  hostLabel: string,
+) {
+  await page.getByTestId('new-session-toggle').click();
+  await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+  await page.locator('.host-dropdown-item', { hasText: hostLabel }).click();
+  await expect(page.getByTestId('new-session-dialog')).toBeVisible();
+}
+
 test('browser: 默认本机 copilot 直接创建不会带出 npm 环境污染警告', async ({
   page,
   request,
@@ -73,8 +84,7 @@ test('browser: 默认本机 copilot 直接创建不会带出 npm 环境污染警
   try {
     await page.goto('/');
 
-    await page.getByTestId('new-session-toggle').click();
-    await page.getByTestId('new-session-host-option-local').click();
+    await openNewSessionForHost(page, '本机');
     await page.getByTestId('new-session-name').fill(directName);
     await page.getByTestId('new-session-kind').selectOption('copilot');
     await page.getByTestId('new-session-mode-direct').click();
@@ -132,8 +142,7 @@ test('browser: direct and tmux creation both work from the new session form', as
   try {
     await page.goto('/');
 
-    await page.getByTestId('new-session-toggle').click();
-    await page.getByTestId('new-session-host-option-local').click();
+    await openNewSessionForHost(page, '本机');
 
     await page.getByTestId('new-session-name').fill(directName);
     await page.getByTestId('new-session-kind').selectOption('copilot');
@@ -161,11 +170,10 @@ test('browser: direct and tmux creation both work from the new session form', as
     directSessionId = directSession?.id;
     expect(directSession?.transportRef?.tmuxSession).toBeFalsy();
 
-    await page.getByTestId('new-session-toggle').click();
-  await page.getByTestId('new-session-host-option-local').click();
+    await openNewSessionForHost(page, '本机');
     await page.getByTestId('new-session-name').fill(tmuxName);
     await page.getByTestId('new-session-kind').selectOption('copilot');
-  await page.getByTestId('new-session-mode-tmux').click();
+    await page.getByTestId('new-session-mode-tmux').click();
     await page.getByTestId('new-session-dir').fill('');
 
     await expect(page.getByTestId('new-session-tmux-note')).toContainText(

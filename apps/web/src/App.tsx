@@ -84,7 +84,9 @@ export default function App() {
   );
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [newSessionHost, setNewSessionHost] = useState<SelectedHost | null>(
+    null,
+  );
   const [quickTmuxOpen, setQuickTmuxOpen] = useState(false);
   const [layoutState, setLayoutState] = useState<LayoutState>(loadLayoutState);
   const [sshHosts, setSshHosts] = useState<SshHostPreset[]>([]);
@@ -593,7 +595,7 @@ export default function App() {
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
         }
-        onOpenNewSession={() => setNewSessionOpen(true)}
+        onOpenNewSession={setNewSessionHost}
         onScanTmux={handleScanTmux}
         onScanApps={handleScanApps}
         onOpenQuickTmuxConnect={() => setQuickTmuxOpen(true)}
@@ -649,9 +651,9 @@ export default function App() {
       <BottomBar />
 
       <NewSessionDialog
-        open={newSessionOpen}
-        sshHosts={sshHosts}
-        onClose={() => setNewSessionOpen(false)}
+        open={Boolean(newSessionHost)}
+        host={newSessionHost}
+        onClose={() => setNewSessionHost(null)}
         onLaunched={handleLaunched}
       />
 

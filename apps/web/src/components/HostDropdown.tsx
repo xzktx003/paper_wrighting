@@ -11,6 +11,9 @@ interface HostDropdownProps {
   onSelectHost: (host: SelectedHost) => void;
   triggerLabel: string;
   disabled?: boolean;
+  buttonTestId?: string;
+  menuTestId?: string;
+  triggerClassName?: string;
 }
 
 export function HostDropdown({
@@ -18,6 +21,9 @@ export function HostDropdown({
   onSelectHost,
   triggerLabel,
   disabled,
+  buttonTestId,
+  menuTestId,
+  triggerClassName,
 }: HostDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -36,21 +42,26 @@ export function HostDropdown({
   return (
     <div className="host-dropdown" ref={ref}>
       <button
-        className="top-bar-action"
+        className={triggerClassName ?? "top-bar-action"}
         onClick={() => setOpen(!open)}
         disabled={disabled}
-        data-testid={`btn-${triggerLabel}`}
+        data-testid={buttonTestId ?? `btn-${triggerLabel}`}
+        type="button"
       >
         {triggerLabel} ▾
       </button>
       {open && (
-        <div className="host-dropdown-menu" data-testid="host-dropdown-menu">
+        <div
+          className="host-dropdown-menu"
+          data-testid={menuTestId ?? "host-dropdown-menu"}
+        >
           <button
             className="host-dropdown-item"
             onClick={() => {
               onSelectHost({ type: "local" });
               setOpen(false);
             }}
+            type="button"
           >
             🖥 本机
           </button>
@@ -62,6 +73,7 @@ export function HostDropdown({
                 onSelectHost({ type: "ssh", preset: h });
                 setOpen(false);
               }}
+              type="button"
             >
               🌐 {h.name}
               <span className="host-dropdown-detail">

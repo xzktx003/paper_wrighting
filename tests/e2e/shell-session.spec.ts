@@ -44,6 +44,17 @@ async function getSessionOutput(
     .join('\n');
 }
 
+async function openNewSessionForHost(
+  page: import('@playwright/test').Page,
+  hostLabel: string,
+) {
+  await page.getByTestId('new-session-toggle').click();
+  await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+  await page.locator('.host-dropdown-item', { hasText: hostLabel }).click();
+  await expect(page.getByTestId('new-session-dialog')).toBeVisible();
+}
+
 test('browser: shell session launches an interactive shell instead of running a nonexistent shell binary', async ({
   page,
   request,
@@ -54,8 +65,7 @@ test('browser: shell session launches an interactive shell instead of running a 
   try {
     await page.goto('/');
 
-    await page.getByTestId('new-session-toggle').click();
-    await page.getByTestId('new-session-host-option-local').click();
+    await openNewSessionForHost(page, '本机');
     await page.getByTestId('new-session-name').fill(displayName);
     await page.getByTestId('new-session-kind').selectOption('shell');
     await page.getByTestId('new-session-mode-direct').click();

@@ -17,7 +17,10 @@ test('terminal session shows awaiting-input state in yellow', async ({ page }) =
     await page.getByRole('textbox', { name: '目录' }).fill('');
 
     await page.getByTestId('new-session-toggle').click();
-    await page.getByTestId('new-session-host-option-local').click();
+    await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
+    await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+    await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
+    await expect(page.getByTestId('new-session-dialog')).toBeVisible();
     await page.getByTestId('new-session-name').fill(displayName);
     await page.getByTestId('new-session-kind').selectOption('shell');
     await page.getByTestId('new-session-mode-direct').click();

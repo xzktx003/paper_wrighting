@@ -106,6 +106,10 @@ test('v2: 顶栏新建会话弹层可以打开和关闭', async ({ page }) => {
   await expect(page.locator('.side-drawer')).toHaveCount(0);
 
   await page.getByTestId('new-session-toggle').click();
+  await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+  await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
+
+  await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
   await expect(page.getByTestId('new-session-dialog')).toBeVisible();
 
   await page.getByRole('button', { name: '关闭' }).click();

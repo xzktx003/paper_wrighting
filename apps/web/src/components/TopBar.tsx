@@ -12,7 +12,7 @@ interface TopBarProps {
   collapsed: boolean;
   sshHosts: SshHostPreset[];
   onToggleCollapsed: () => void;
-  onOpenNewSession: () => void;
+  onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
   onOpenQuickTmuxConnect: () => void;
@@ -63,13 +63,13 @@ export function TopBar({
         <h1 className="top-bar-title">Coding Kanban</h1>
       </div>
       <div className="top-bar-stats">
-        <button
-          className="top-bar-action top-bar-action--primary"
-          data-testid="new-session-toggle"
-          onClick={onOpenNewSession}
-        >
-          新建会话
-        </button>
+        <HostDropdown
+          sshHosts={sshHosts}
+          onSelectHost={onOpenNewSession}
+          triggerLabel="新建会话"
+          buttonTestId="new-session-toggle"
+          triggerClassName="top-bar-action top-bar-action--primary"
+        />
         <HostDropdown
           sshHosts={sshHosts}
           onSelectHost={onScanTmux}

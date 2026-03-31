@@ -35,6 +35,17 @@ async function mockShell(page: import('@playwright/test').Page) {
   });
 }
 
+async function openNewSessionForHost(
+  page: import('@playwright/test').Page,
+  hostLabel: string,
+) {
+  await page.getByTestId('new-session-toggle').click();
+  await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+  await page.locator('.host-dropdown-item', { hasText: hostLabel }).click();
+  await expect(page.getByTestId('new-session-dialog')).toBeVisible();
+}
+
 test('app discovery: 选择 SSH 主机后扫描请求会带上 sshTarget', async ({
   page,
 }) => {
@@ -73,17 +84,19 @@ test('app discovery: 选择 SSH 主机后扫描请求会带上 sshTarget', async
     });
 });
 
-test('new session: 先选服务器再显示会话详情字段', async ({ page }) => {
+test('new session: 点击后先打开 host 下拉，选中后直接进入会话详情', async ({ page }) => {
   await mockShell(page);
 
   await page.goto('/');
   await page.getByTestId('new-session-toggle').click();
 
-  await expect(page.getByTestId('new-session-host-step')).toBeVisible();
+  await expect(page.getByTestId('host-dropdown-menu')).toBeVisible();
+  await expect(page.getByTestId('new-session-dialog')).toHaveCount(0);
   await expect(page.getByTestId('new-session-details-step')).toHaveCount(0);
 
-  await page.getByTestId('new-session-host-option-local').click();
+  await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
 
+  await expect(page.getByTestId('new-session-host-step')).toHaveCount(0);
   await expect(page.getByTestId('new-session-details-step')).toBeVisible();
   await expect(page.getByTestId('new-session-name')).toBeVisible();
   await expect(page.getByTestId('new-session-kind')).toBeVisible();
@@ -93,8 +106,7 @@ test('new session: 启动方式使用二选一按钮而不是下拉框', async (
   await mockShell(page);
 
   await page.goto('/');
-  await page.getByTestId('new-session-toggle').click();
-  await page.getByTestId('new-session-host-option-local').click();
+  await openNewSessionForHost(page, '本机');
 
   await expect(page.getByTestId('new-session-mode')).toHaveCount(0);
   await expect(page.getByTestId('new-session-mode-direct')).toBeVisible();
@@ -125,8 +137,7 @@ test('new session: 目录建议仅在后端声明可用时显示候选框', asyn
   });
 
   await page.goto('/');
-  await page.getByTestId('new-session-toggle').click();
-  await page.getByTestId('new-session-host-option-hm15').click();
+  await openNewSessionForHost(page, 'hm15');
   await page.getByTestId('new-session-dir').fill('/data01/home/hou');
 
   await expect.poll(() => enabledRequests).toBeGreaterThan(0);
@@ -152,8 +163,7 @@ test('new session: 远端目录建议不可用时不显示候选框', async ({ p
   });
 
   await page.goto('/');
-  await page.getByTestId('new-session-toggle').click();
-  await page.getByTestId('new-session-host-option-hm15').click();
+  await openNewSessionForHost(page, 'hm15');
   await page.getByTestId('new-session-dir').fill('/data01/home/hou');
 
   await expect.poll(() => disabledRequests).toBeGreaterThan(0);
