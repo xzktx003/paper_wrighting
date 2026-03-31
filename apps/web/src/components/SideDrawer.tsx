@@ -14,8 +14,8 @@ import {
   buildTmuxLaunchCommand,
   buildRemoteDirectLaunchCommand,
   wrapRemoteInteractiveCommand,
-  buildDefaultSessionName,
 } from "../lib/session-matching";
+import { buildDefaultSessionName } from "../lib/session-naming";
 import type { SelectedHost } from "./HostDropdown";
 
 interface SideDrawerProps {

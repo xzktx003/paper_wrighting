@@ -13,12 +13,12 @@ import {
 } from "../lib/api";
 import type { LaunchMode } from "../lib/session-matching";
 import {
-  buildDefaultSessionName,
   buildDirectLaunchCommand,
   buildRemoteDirectLaunchCommand,
   buildTmuxLaunchCommand,
   wrapRemoteInteractiveCommand,
 } from "../lib/session-matching";
+import { buildDefaultSessionName } from "../lib/session-naming";
 import type { SelectedHost } from "./HostDropdown";
 
 interface NewSessionDialogProps {
