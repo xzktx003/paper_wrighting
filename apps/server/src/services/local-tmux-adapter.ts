@@ -119,10 +119,7 @@ export function summarizeTmuxSessions(
       };
     })
     .sort((left, right) => {
-      if (left.isAttached !== right.isAttached) {
-        return left.isAttached ? -1 : 1;
-      }
-
+      // Only sort by sessionName (宫格名)
       return left.sessionName.localeCompare(right.sessionName);
     });
 }

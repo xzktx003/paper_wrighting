@@ -16,12 +16,7 @@ const kindPriority: Record<string, number> = {
 
 export function sortScanResults(results: ScanResult[]): ScanResult[] {
   return [...results].sort((a, b) => {
-    if (a.status !== b.status) {
-      return a.status === "running" ? -1 : 1;
-    }
-    const ap = kindPriority[a.agentKind] ?? 99;
-    const bp = kindPriority[b.agentKind] ?? 99;
-    if (ap !== bp) return ap - bp;
+    // Only sort by displayName (宫格名)
     return a.displayName.localeCompare(b.displayName);
   });
 }

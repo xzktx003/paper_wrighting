@@ -67,22 +67,8 @@ function byInteractionState(
   right: AgentSessionRecord,
   getSessionOrder: (agentSessionId: string) => number,
 ): number {
-  const leftIndex = interactionStateOrder.indexOf(left.interactionState);
-  const rightIndex = interactionStateOrder.indexOf(right.interactionState);
-
-  if (leftIndex !== rightIndex) {
-    return leftIndex - rightIndex;
-  }
-
-  const leftTime = left.lastOutputAt ?? "";
-  const rightTime = right.lastOutputAt ?? "";
-
-  const timeCompare = rightTime.localeCompare(leftTime);
-  if (timeCompare !== 0) {
-    return timeCompare;
-  }
-
-  return getSessionOrder(left.id) - getSessionOrder(right.id);
+  // Only sort by displayName (宫格名)
+  return left.displayName.localeCompare(right.displayName);
 }
 
 export class AgentSessionRegistry {

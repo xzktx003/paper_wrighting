@@ -23,12 +23,8 @@ function sortHiddenSessions(
   sessions: AgentSessionRecord[],
 ): AgentSessionRecord[] {
   return [...sessions].sort((a, b) => {
-    const ai = interactionStateOrder.indexOf(a.interactionState);
-    const bi = interactionStateOrder.indexOf(b.interactionState);
-    if (ai !== bi) return ai - bi;
-    const aTime = a.lastOutputAt ?? "";
-    const bTime = b.lastOutputAt ?? "";
-    return bTime.localeCompare(aTime);
+    // Only sort by displayName (宫格名)
+    return a.displayName.localeCompare(b.displayName);
   });
 }
 

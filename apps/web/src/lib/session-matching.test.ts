@@ -40,24 +40,26 @@ function makeSession(partial: Partial<AgentSessionRecord>): AgentSessionRecord {
 }
 
 describe("sortScanResults", () => {
-  it("sorts running before stopped", () => {
+  it("sorts by displayName only", () => {
     const results = sortScanResults([
-      makeScanResult({ status: "stopped", displayName: "a" }),
+      makeScanResult({ status: "stopped", displayName: "c" }),
+      makeScanResult({ status: "running", displayName: "a" }),
       makeScanResult({ status: "running", displayName: "b" }),
     ]);
-    assert.equal(results[0].displayName, "b");
-    assert.equal(results[1].displayName, "a");
+    assert.equal(results[0].displayName, "a");
+    assert.equal(results[1].displayName, "b");
+    assert.equal(results[2].displayName, "c");
   });
 
-  it("sorts by kind priority then name", () => {
+  it("sorts by displayName ignoring kind and status", () => {
     const results = sortScanResults([
       makeScanResult({ agentKind: "shell", displayName: "z" }),
       makeScanResult({ agentKind: "copilot", displayName: "a" }),
       makeScanResult({ agentKind: "claude", displayName: "b" }),
     ]);
-    assert.equal(results[0].agentKind, "copilot");
-    assert.equal(results[1].agentKind, "claude");
-    assert.equal(results[2].agentKind, "shell");
+    assert.equal(results[0].displayName, "a");
+    assert.equal(results[1].displayName, "b");
+    assert.equal(results[2].displayName, "z");
   });
 });
 

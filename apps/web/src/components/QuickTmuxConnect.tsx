@@ -5,7 +5,7 @@ import type {
   SshHostPreset,
 } from "@agent-orchestrator/shared";
 
-import { getSshHosts, launchSshPtyAgent } from "../lib/api";
+import { getSshHosts, launchPtyAgent, launchSshPtyAgent } from "../lib/api";
 
 interface QuickTmuxConnectProps {
   open: boolean;
@@ -70,25 +70,43 @@ function matchesHost(host: SshHostPreset, query: string): boolean {
   );
 }
 
+// Virtual localhost host for quick tmux connection
+const LOCALHOST_HOST: SshHostPreset = {
+  name: "本机",
+  host: "localhost",
+  username: "",
+  port: 22,
+  identityFile: "",
+  defaultPath: "~/",
+};
+
+interface ExtendedHost extends SshHostPreset {
+  isLocalhost?: boolean;
+}
+
 export function QuickTmuxConnect({
   open,
   onClose,
   onConnected,
 }: QuickTmuxConnectProps) {
-  const [hosts, setHosts] = useState<SshHostPreset[]>([]);
+  const [hosts, setHosts] = useState<ExtendedHost[]>([]);
   const [loadingHosts, setLoadingHosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hostQuery, setHostQuery] = useState("");
-  const [selectedHost, setSelectedHost] = useState<SshHostPreset | null>(null);
+  const [selectedHost, setSelectedHost] = useState<ExtendedHost | null>(null);
   const [sessionName, setSessionName] = useState("");
   const [workingDirectory, setWorkingDirectory] = useState("");
   const hostSearchRef = useRef<HTMLInputElement>(null);
   const sessionNameRef = useRef<HTMLInputElement>(null);
 
+  const allHosts = useMemo<ExtendedHost[]>(() => {
+    return [{ ...LOCALHOST_HOST, isLocalhost: true }, ...hosts];
+  }, [hosts]);
+
   const filteredHosts = useMemo(
-    () => hosts.filter((host) => matchesHost(host, hostQuery)),
-    [hostQuery, hosts],
+    () => allHosts.filter((host) => matchesHost(host, hostQuery)),
+    [hostQuery, allHosts],
   );
 
   useEffect(() => {
@@ -159,7 +177,7 @@ export function QuickTmuxConnect({
     onClose();
   }
 
-  function handleSelectHost(host: SshHostPreset) {
+  function handleSelectHost(host: ExtendedHost) {
     setSelectedHost(host);
     setErrorMessage(null);
     setWorkingDirectory(host.defaultPath || "~/");
@@ -218,23 +236,32 @@ export function QuickTmuxConnect({
     setErrorMessage(null);
 
     try {
-      const launchedSession = await launchSshPtyAgent({
-        workspaceId: "default",
-        displayName: nextSessionName,
-        agentKind: "shell",
-        sshTarget: {
-          host: selectedHost.host,
-          port: selectedHost.port,
-          username: selectedHost.username,
-          identityFile: selectedHost.identityFile,
-        },
-        remoteCommand: buildQuickTmuxCommand(
-          nextSessionName,
-          nextWorkingDirectory,
-        ),
-        workingDirectory: nextWorkingDirectory,
-        tmuxSessionName: nextSessionName,
-      });
+      const launchedSession = selectedHost.isLocalhost
+        ? await launchPtyAgent({
+            workspaceId: "default",
+            displayName: nextSessionName,
+            agentKind: "shell",
+            command: buildQuickTmuxCommand(nextSessionName, nextWorkingDirectory),
+            workingDirectory: nextWorkingDirectory,
+            tmuxSessionName: nextSessionName,
+          })
+        : await launchSshPtyAgent({
+            workspaceId: "default",
+            displayName: nextSessionName,
+            agentKind: "shell",
+            sshTarget: {
+              host: selectedHost.host,
+              port: selectedHost.port,
+              username: selectedHost.username,
+              identityFile: selectedHost.identityFile,
+            },
+            remoteCommand: buildQuickTmuxCommand(
+              nextSessionName,
+              nextWorkingDirectory,
+            ),
+            workingDirectory: nextWorkingDirectory,
+            tmuxSessionName: nextSessionName,
+          });
 
       onConnected(launchedSession);
       onClose();
@@ -304,11 +331,15 @@ export function QuickTmuxConnect({
                     type="button"
                   >
                     <span className="quick-tmux-host-name">{host.name}</span>
-                    <span className="quick-tmux-host-detail">
-                      {host.username ? `${host.username}@` : ""}
-                      {host.host}
-                      {host.port !== 22 ? `:${host.port}` : ""}
-                    </span>
+                    {host.isLocalhost ? (
+                      <span className="quick-tmux-host-detail">本机 tmux</span>
+                    ) : (
+                      <span className="quick-tmux-host-detail">
+                        {host.username ? `${host.username}@` : ""}
+                        {host.host}
+                        {host.port !== 22 ? `:${host.port}` : ""}
+                      </span>
+                    )}
                   </button>
                 ))
               )}
