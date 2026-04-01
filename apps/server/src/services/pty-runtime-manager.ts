@@ -8,6 +8,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
+import { resolveCopilotBinary } from "./copilot-binary.js";
 import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
 import { resolvePreferredShell } from "./runtime-compat.js";
 import { buildSshArgs, formatSshDestination } from "./ssh-command.js";
@@ -81,7 +82,7 @@ function buildLocalSpawnPlan(
     const directArgs = parseDirectCopilotArgs(input.command);
     if (directArgs) {
       return {
-        file: "copilot",
+        file: resolveCopilotBinary() ?? "copilot",
         args: directArgs,
         env: buildPtyEnv("copilot"),
         sendInitialCommand: false,
