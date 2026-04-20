@@ -41,7 +41,7 @@ export function AgentFocusView({
     function isInTerminal(node: HTMLElement | null): boolean {
       return Boolean(
         node?.closest(".focus-main-terminal") ||
-          node?.classList.contains("xterm-helper-textarea"),
+        node?.classList.contains("xterm-helper-textarea"),
       );
     }
 
@@ -58,17 +58,46 @@ export function AgentFocusView({
         return;
       }
 
-      // If focus is outside the terminal and outside a text input, redirect it
-      // to the xterm textarea so the keypress reaches the running process.
+      // If focus is outside the terminal and outside any interactive element,
+      // redirect the keypress to the xterm textarea so it reaches the running
+      // process. Buttons, selects, and dialog descendants are intentional focus
+      // targets and must not have their keyboard events hijacked.
       const inInput =
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement ||
-        active?.isContentEditable;
+        active instanceof HTMLButtonElement ||
+        active instanceof HTMLSelectElement ||
+        active instanceof HTMLAnchorElement ||
+        active?.isContentEditable ||
+        active?.closest('[role="dialog"]') !== null ||
+        active?.closest('[role="alertdialog"]') !== null;
       if (!inInput && !isInTerminal(target) && !isInTerminal(active)) {
         const textarea = document.querySelector(
           ".focus-main-terminal .xterm-helper-textarea",
         ) as HTMLTextAreaElement | null;
-        textarea?.focus();
+        if (textarea) {
+          textarea.focus();
+          // Re-dispatch the current key event on the now-focused textarea so
+          // xterm.js processes it. Without this, the first character typed after
+          // a focus redirect is silently dropped, which breaks readline-based
+          // interactive CLIs like `copilot --resume`.
+          const forwarded = new KeyboardEvent("keydown", {
+            key: e.key,
+            code: e.code,
+            keyCode: e.keyCode,
+            which: e.which,
+            ctrlKey: e.ctrlKey,
+            altKey: e.altKey,
+            shiftKey: e.shiftKey,
+            metaKey: e.metaKey,
+            repeat: e.repeat,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          });
+          textarea.dispatchEvent(forwarded);
+          e.stopPropagation();
+        }
       }
     }
 

@@ -3,13 +3,20 @@ import type {
   AgentSessionDetailResponse,
   AgentSessionSnapshotEvent,
   AgentSessionRecord,
+  ChmodInput,
   CreateWindowCaptureSessionInput,
   CreateWindowCaptureSessionResponse,
   DirectorySuggestionsInput,
   DirectorySuggestionsResponse,
   DiscoverTmuxInput,
   DiscoverTmuxSessionsResponse,
+  FileOperationInput,
+  FilePreviewInput,
+  FilePreviewResponse,
+  FileUploadResponse,
   FocusAgentSessionInput,
+  ListFilesInput,
+  ListFilesResponse,
   LaunchLocalAgentInput,
   LaunchRemoteAgentInput,
   LaunchSshPtyInput,
@@ -258,6 +265,112 @@ export function getDirectorySuggestions(
   return request<DirectorySuggestionsResponse>("/api/directory-suggestions", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export function listFiles(body: ListFilesInput): Promise<ListFilesResponse> {
+  return request<ListFilesResponse>("/api/fs/list", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function fileOperation(body: FileOperationInput): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/fs/operation", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function previewFile(
+  body: FilePreviewInput,
+): Promise<FilePreviewResponse> {
+  return request<FilePreviewResponse>("/api/fs/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function chmodFile(body: ChmodInput): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/fs/chmod", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function downloadFile(body: {
+  path: string;
+  sshTarget?: ListFilesInput["sshTarget"];
+}): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/fs/download`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = body.path.split("/").filter(Boolean).pop() ?? "download";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function uploadFiles(options: {
+  path?: string;
+  overwritePath?: string;
+  sshTarget?: ListFilesInput["sshTarget"];
+  files: File[];
+  onProgress?: (progress: number) => void;
+}): Promise<FileUploadResponse> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+
+    if (options.path) {
+      formData.append("path", options.path);
+    }
+
+    if (options.overwritePath) {
+      formData.append("overwritePath", options.overwritePath);
+    }
+
+    if (options.sshTarget) {
+      formData.append("sshTarget", JSON.stringify(options.sshTarget));
+    }
+
+    for (const file of options.files) {
+      formData.append("files", file);
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBaseUrl}/api/fs/upload`);
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        options.onProgress?.(event.loaded / event.total);
+      }
+    };
+    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(`Upload failed: ${xhr.status}`));
+        return;
+      }
+
+      resolve(
+        (xhr.response ?? JSON.parse(xhr.responseText)) as FileUploadResponse,
+      );
+    };
+    xhr.send(formData);
   });
 }
 

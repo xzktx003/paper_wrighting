@@ -84,10 +84,20 @@ export function resolveCopilotBinary(
   env: NodeJS.ProcessEnv = process.env,
   nodeExecPath = process.execPath,
 ): string | undefined {
+  const pathMatches = listCommandMatches("copilot", env.PATH);
+  if (env.PLAYWRIGHT_TEST === "1") {
+    const playwrightMatch = pathMatches.find((candidate) =>
+      normalize(candidate).includes(normalize("/.playwright-bin/")),
+    );
+    if (playwrightMatch) {
+      return playwrightMatch;
+    }
+  }
+
   const candidates = [
     join(dirname(nodeExecPath), "copilot"),
     ...(env.NVM_BIN ? [join(env.NVM_BIN, "copilot")] : []),
-    ...listCommandMatches("copilot", env.PATH),
+    ...pathMatches,
   ].filter(isExecutablePath);
 
   if (candidates.length === 0) {

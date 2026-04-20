@@ -11,4 +11,11 @@ describe("stripTerminalResponsePayload", () => {
   it("keeps normal arrow-key input intact", () => {
     assert.equal(stripTerminalResponsePayload("\u001b[A"), "\u001b[A");
   });
+
+  it("keeps cursor position report replies intact", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b[12;42R"),
+      "\u001b[12;42R",
+    );
+  });
 });

@@ -11,7 +11,9 @@ interface TopBarProps {
   sessions: AgentSessionRecord[];
   collapsed: boolean;
   sshHosts: SshHostPreset[];
+  fileBrowserOpen: boolean;
   onToggleCollapsed: () => void;
+  onToggleFileBrowser: () => void;
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
@@ -25,7 +27,9 @@ export function TopBar({
   sessions,
   collapsed,
   sshHosts,
+  fileBrowserOpen,
   onToggleCollapsed,
+  onToggleFileBrowser,
   onOpenNewSession,
   onScanTmux,
   onScanApps,
@@ -61,6 +65,14 @@ export function TopBar({
     <header className="top-bar">
       <div className="top-bar-left">
         <h1 className="top-bar-title">Coding Kanban</h1>
+        <button
+          className={`top-bar-action${fileBrowserOpen ? " top-bar-action--active" : ""}`}
+          data-testid="file-browser-toggle"
+          onClick={onToggleFileBrowser}
+          type="button"
+        >
+          📁 文件
+        </button>
       </div>
       <div className="top-bar-stats">
         <HostDropdown

@@ -18,6 +18,25 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForInteractionState(
+  registry: AgentSessionRegistry,
+  sessionId: string,
+  expectedState: "running" | "awaiting_input",
+  timeoutMs = 3_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (registry.get(sessionId).interactionState === expectedState) {
+      return;
+    }
+
+    await wait(10);
+  }
+
+  assert.equal(registry.get(sessionId).interactionState, expectedState);
+}
+
 test("marks direct sessions awaiting_input after screen stays unchanged", async () => {
   const registry = new AgentSessionRegistry(20);
   const session = createSession(registry);
@@ -27,9 +46,7 @@ test("marks direct sessions awaiting_input after screen stays unchanged", async 
   assert.equal(updated.interactionState, "running");
   assert.equal(updated.stateConfidence, "medium");
 
-  await wait(60);
-
-  assert.equal(registry.get(session.id).interactionState, "awaiting_input");
+  await waitForInteractionState(registry, session.id, "awaiting_input");
   assert.equal(registry.get(session.id).stateConfidence, "medium");
 });
 
@@ -46,8 +63,7 @@ test("user input resets inactivity timer and later returns to awaiting_input", a
   await wait(10);
   assert.equal(registry.get(session.id).interactionState, "running");
 
-  await wait(40);
-  assert.equal(registry.get(session.id).interactionState, "awaiting_input");
+  await waitForInteractionState(registry, session.id, "awaiting_input");
 });
 
 test("repeated identical terminal redraws do not keep sessions running", async () => {
@@ -58,9 +74,7 @@ test("repeated identical terminal redraws do not keep sessions running", async (
   await wait(25);
 
   registry.appendOutput(session.id, "\u001b[2K\rprompt> ", "stdout");
-  await wait(40);
-
-  assert.equal(registry.get(session.id).interactionState, "awaiting_input");
+  await waitForInteractionState(registry, session.id, "awaiting_input");
 });
 
 test("identical redraws do not reorder sessions in the board", async () => {

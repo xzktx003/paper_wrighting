@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import type {
   AgentSessionRecord,
@@ -12,6 +18,7 @@ import { BottomBar } from "./components/BottomBar";
 import type { DiscoveryMode } from "./components/DiscoveryDialog";
 import { DiscoveryDialog } from "./components/DiscoveryDialog";
 import type { AddToGridItem } from "./components/DiscoveryDialog";
+import { FileBrowserDrawer } from "./components/FileBrowserDrawer";
 import type { FilterState } from "./components/FilterBar";
 import { HiddenSessionsDrawer } from "./components/HiddenSessionsDrawer";
 import type { SelectedHost } from "./components/HostDropdown";
@@ -57,6 +64,47 @@ import "./app.css";
 
 type ViewMode = "grid" | "focus";
 
+const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
+
+interface FileBrowserUiState {
+  open: boolean;
+  width: number;
+}
+
+function loadFileBrowserUiState(): FileBrowserUiState {
+  try {
+    const raw = localStorage.getItem(FILE_BROWSER_UI_STORAGE_KEY);
+    if (!raw) {
+      return {
+        open: false,
+        width: 540,
+      };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<FileBrowserUiState>;
+    return {
+      open: Boolean(parsed.open),
+      width:
+        typeof parsed.width === "number" && Number.isFinite(parsed.width)
+          ? parsed.width
+          : 540,
+    };
+  } catch {
+    return {
+      open: false,
+      width: 540,
+    };
+  }
+}
+
+function saveFileBrowserUiState(state: FileBrowserUiState) {
+  try {
+    localStorage.setItem(FILE_BROWSER_UI_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 interface CaptureEntry {
   stream: MediaStream;
   observeToken: string;
@@ -91,6 +139,11 @@ export default function App() {
     null,
   );
   const [quickTmuxOpen, setQuickTmuxOpen] = useState(false);
+  const [fileBrowserUiState, setFileBrowserUiState] =
+    useState<FileBrowserUiState>(loadFileBrowserUiState);
+  const [fileBrowserHost, setFileBrowserHost] = useState<SelectedHost>({
+    type: "local",
+  });
   const [layoutState, setLayoutState] = useState<LayoutState>(loadLayoutState);
   const [sshHosts, setSshHosts] = useState<SshHostPreset[]>([]);
   const [discoveryState, setDiscoveryState] = useState<{
@@ -111,6 +164,11 @@ export default function App() {
   const [windowCaptureAvailability] = useState(() =>
     getWindowCaptureAvailability(),
   );
+  const mainLayoutRef = useRef<HTMLDivElement | null>(null);
+  const fileBrowserResizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   // Window capture local store
   const captureStoreRef = useRef<Map<string, CaptureEntry>>(new Map());
@@ -208,6 +266,10 @@ export default function App() {
       );
     }
   }, [windowCaptureAvailability]);
+
+  useEffect(() => {
+    saveFileBrowserUiState(fileBrowserUiState);
+  }, [fileBrowserUiState]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -541,6 +603,59 @@ export default function App() {
     setDiscoveryState(null);
   }
 
+  const beginFileBrowserResize = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      fileBrowserResizeRef.current = {
+        startX: event.clientX,
+        startWidth: fileBrowserUiState.width,
+      };
+      event.preventDefault();
+    },
+    [fileBrowserUiState.width],
+  );
+
+  const updateFileBrowserWidth = useCallback((clientX: number) => {
+    const resizeState = fileBrowserResizeRef.current;
+    const mainLayout = mainLayoutRef.current;
+    if (!resizeState || !mainLayout) {
+      return;
+    }
+
+    const delta = clientX - resizeState.startX;
+    const maxWidth = Math.max(420, mainLayout.clientWidth - 320);
+    const nextWidth = Math.min(
+      maxWidth,
+      Math.max(360, resizeState.startWidth + delta),
+    );
+
+    setFileBrowserUiState((current) => ({
+      ...current,
+      width: nextWidth,
+    }));
+  }, []);
+
+  const endFileBrowserResize = useCallback(() => {
+    fileBrowserResizeRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    function handlePointerMove(event: MouseEvent) {
+      updateFileBrowserWidth(event.clientX);
+    }
+
+    function handlePointerUp() {
+      endFileBrowserResize();
+    }
+
+    window.addEventListener("mousemove", handlePointerMove);
+    window.addEventListener("mouseup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+    };
+  }, [endFileBrowserResize, updateFileBrowserWidth]);
+
   async function handleAddToGrid(items: AddToGridItem[]) {
     for (const item of items) {
       try {
@@ -614,8 +729,15 @@ export default function App() {
         sessions={sessions}
         collapsed={layoutState.topbarCollapsed}
         sshHosts={sshHosts}
+        fileBrowserOpen={fileBrowserUiState.open}
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
+        }
+        onToggleFileBrowser={() =>
+          setFileBrowserUiState((current) => ({
+            ...current,
+            open: !current.open,
+          }))
         }
         onOpenNewSession={setNewSessionHost}
         onScanTmux={handleScanTmux}
@@ -632,7 +754,28 @@ export default function App() {
         </div>
       )}
 
-      <div className="main-layout">
+      <div className="main-layout" ref={mainLayoutRef}>
+        {fileBrowserUiState.open && (
+          <>
+            <div
+              className="file-browser-shell"
+              style={{ width: `${fileBrowserUiState.width}px` }}
+            >
+              <FileBrowserDrawer
+                open={fileBrowserUiState.open}
+                selectedHost={fileBrowserHost}
+                onSelectHost={setFileBrowserHost}
+                sshHosts={sshHosts}
+              />
+            </div>
+            <div
+              className="main-layout-splitter"
+              data-testid="file-browser-main-splitter"
+              onMouseDown={beginFileBrowserResize}
+              role="separator"
+            />
+          </>
+        )}
         <div className="main-content">
           {isLoading ? (
             <div className="grid-empty">

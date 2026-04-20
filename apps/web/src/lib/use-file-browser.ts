@@ -1,0 +1,470 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type {
+  FileEntry,
+  FilePreviewResponse,
+  SshTarget,
+} from "@agent-orchestrator/shared";
+
+import {
+  chmodFile,
+  downloadFile,
+  fileOperation,
+  listFiles,
+  previewFile,
+  uploadFiles,
+} from "./api";
+
+export type SortKey = "name" | "size" | "modifiedAt" | "permissions";
+export type SortDirection = "asc" | "desc";
+
+function getParentPath(inputPath: string): string {
+  if (!inputPath || inputPath === "/") {
+    return "/";
+  }
+
+  const trimmed = inputPath.replace(/\/+$/, "");
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length <= 1) {
+    return trimmed.startsWith("/") ? "/" : (parts[0] ?? "/");
+  }
+
+  return `${trimmed.startsWith("/") ? "/" : ""}${parts.slice(0, -1).join("/")}`;
+}
+
+function joinPath(basePath: string, name: string): string {
+  if (!basePath || basePath === "/") {
+    return `/${name}`;
+  }
+
+  return `${basePath.replace(/\/+$/, "")}/${name}`;
+}
+
+function toSshTarget(
+  host:
+    | { type: "local" }
+    | {
+        type: "ssh";
+        preset: {
+          host: string;
+          port: number;
+          username?: string;
+          identityFile?: string;
+        };
+      },
+): SshTarget | undefined {
+  if (host.type === "local") {
+    return undefined;
+  }
+
+  return {
+    host: host.preset.host,
+    port: host.preset.port,
+    username: host.preset.username,
+    identityFile: host.preset.identityFile,
+  };
+}
+
+export interface UseFileBrowserHost {
+  type: "local" | "ssh";
+  preset?: {
+    host: string;
+    port: number;
+    username?: string;
+    identityFile?: string;
+    defaultPath: string;
+  };
+}
+
+export function useFileBrowser(
+  selectedHost: UseFileBrowserHost,
+  active: boolean,
+) {
+  const sshTarget = useMemo(
+    () =>
+      selectedHost.type === "ssh" && selectedHost.preset
+        ? toSshTarget({ type: "ssh", preset: selectedHost.preset })
+        : undefined,
+    [selectedHost],
+  );
+  const hostDefaultPath =
+    selectedHost.type === "ssh" && selectedHost.preset
+      ? selectedHost.preset.defaultPath
+      : "~";
+
+  const [currentPath, setCurrentPath] = useState(hostDefaultPath);
+  const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [filterQuery, setFilterQuery] = useState("");
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [preview, setPreview] = useState<FilePreviewResponse | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const currentPathRef = useRef(currentPath);
+  const listRequestIdRef = useRef(0);
+  const previewRequestIdRef = useRef(0);
+  const hostKeyRef = useRef(
+    `${selectedHost.type}:${selectedHost.type === "ssh" ? (selectedHost.preset?.host ?? "") : "local"}`,
+  );
+  const hiddenPrefRef = useRef(showHidden);
+
+  const runDirectoryLoad = useCallback(
+    async (requestedPath: string) => {
+      const requestId = ++listRequestIdRef.current;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await listFiles({
+          path: requestedPath,
+          sshTarget,
+          showHidden,
+        });
+
+        if (requestId !== listRequestIdRef.current) {
+          return null;
+        }
+
+        setEntries(response.entries);
+        setCurrentPath(response.path);
+        currentPathRef.current = response.path;
+        setSelectedPaths([]);
+        setLastSelectedPath(null);
+        return response;
+      } catch (caughtError) {
+        if (requestId === listRequestIdRef.current) {
+          setError(
+            caughtError instanceof Error ? caughtError.message : "读取目录失败",
+          );
+        }
+        return null;
+      } finally {
+        if (requestId === listRequestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [showHidden, sshTarget],
+  );
+
+  const refresh = useCallback(
+    async (pathOverride?: string) => {
+      await runDirectoryLoad(pathOverride ?? currentPathRef.current);
+    },
+    [runDirectoryLoad],
+  );
+
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+
+  useEffect(() => {
+    listRequestIdRef.current += 1;
+    previewRequestIdRef.current += 1;
+    currentPathRef.current = hostDefaultPath;
+    setCurrentPath(hostDefaultPath);
+    setEntries([]);
+    setSelectedPaths([]);
+    setPreview(null);
+    setError(null);
+    hostKeyRef.current = `${selectedHost.type}:${selectedHost.type === "ssh" ? (selectedHost.preset?.host ?? "") : "local"}`;
+    hiddenPrefRef.current = showHidden;
+  }, [hostDefaultPath, selectedHost.type]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    void runDirectoryLoad(hostDefaultPath);
+  }, [active, hostDefaultPath, runDirectoryLoad]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    const nextHostKey = `${selectedHost.type}:${selectedHost.type === "ssh" ? (selectedHost.preset?.host ?? "") : "local"}`;
+    if (hostKeyRef.current !== nextHostKey) {
+      hostKeyRef.current = nextHostKey;
+      hiddenPrefRef.current = showHidden;
+      return;
+    }
+
+    if (hiddenPrefRef.current === showHidden) {
+      return;
+    }
+
+    hiddenPrefRef.current = showHidden;
+    void refresh();
+  }, [active, refresh, selectedHost, showHidden]);
+
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = filterQuery.trim().toLowerCase();
+    const filtered = normalizedQuery
+      ? entries.filter((entry) =>
+          entry.name.toLowerCase().includes(normalizedQuery),
+        )
+      : entries;
+
+    const factor = sortDirection === "asc" ? 1 : -1;
+    return [...filtered].sort((left, right) => {
+      if (left.type === "directory" && right.type !== "directory") {
+        return -1;
+      }
+
+      if (left.type !== "directory" && right.type === "directory") {
+        return 1;
+      }
+
+      if (sortKey === "size") {
+        return (left.size - right.size) * factor;
+      }
+
+      if (sortKey === "modifiedAt") {
+        return (
+          (new Date(left.modifiedAt).getTime() -
+            new Date(right.modifiedAt).getTime()) *
+          factor
+        );
+      }
+
+      if (sortKey === "permissions") {
+        return left.permissions.localeCompare(right.permissions) * factor;
+      }
+
+      return left.name.localeCompare(right.name) * factor;
+    });
+  }, [entries, filterQuery, sortDirection, sortKey]);
+
+  useEffect(() => {
+    const selectedPath =
+      selectedPaths.length === 1
+        ? filteredEntries.find((entry) => entry.path === selectedPaths[0])
+        : undefined;
+
+    if (!selectedPath || selectedPath.type === "directory") {
+      setPreview(null);
+      return;
+    }
+
+    const requestId = ++previewRequestIdRef.current;
+
+    previewFile({
+      path: selectedPath.path,
+      sshTarget,
+    })
+      .then((response) => {
+        if (requestId === previewRequestIdRef.current) {
+          setPreview(response);
+        }
+      })
+      .catch(() => {
+        if (requestId === previewRequestIdRef.current) {
+          setPreview(null);
+        }
+      });
+  }, [filteredEntries, selectedPaths, sshTarget]);
+
+  const navigate = useCallback(
+    async (nextPath: string) => {
+      await refresh(nextPath);
+    },
+    [refresh],
+  );
+
+  const toggleSort = useCallback((nextKey: SortKey) => {
+    setSortKey((current) => {
+      if (current === nextKey) {
+        setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
+        return current;
+      }
+
+      setSortDirection("asc");
+      return nextKey;
+    });
+  }, []);
+
+  const selectPath = useCallback(
+    (
+      pathValue: string,
+      modifiers?: { additive?: boolean; range?: boolean },
+    ) => {
+      if (modifiers?.range && lastSelectedPath) {
+        const visiblePaths = filteredEntries.map((entry) => entry.path);
+        const start = visiblePaths.indexOf(lastSelectedPath);
+        const end = visiblePaths.indexOf(pathValue);
+        if (start >= 0 && end >= 0) {
+          const [from, to] = start < end ? [start, end] : [end, start];
+          setSelectedPaths(visiblePaths.slice(from, to + 1));
+          return;
+        }
+      }
+
+      if (modifiers?.additive) {
+        setSelectedPaths((current) =>
+          current.includes(pathValue)
+            ? current.filter((value) => value !== pathValue)
+            : [...current, pathValue],
+        );
+        setLastSelectedPath(pathValue);
+        return;
+      }
+
+      setSelectedPaths([pathValue]);
+      setLastSelectedPath(pathValue);
+    },
+    [filteredEntries, lastSelectedPath],
+  );
+
+  const setCheckboxSelection = useCallback(
+    (pathValue: string, checked: boolean) => {
+      setSelectedPaths((current) => {
+        if (checked) {
+          return current.includes(pathValue)
+            ? current
+            : [...current, pathValue];
+        }
+
+        return current.filter((value) => value !== pathValue);
+      });
+      setLastSelectedPath(pathValue);
+    },
+    [],
+  );
+
+  const createFolder = useCallback(
+    async (folderName: string) => {
+      if (!currentPath.trim()) {
+        throw new Error("当前目录尚未准备好");
+      }
+      await fileOperation({
+        operation: "mkdir",
+        path: joinPath(currentPath, folderName),
+        sshTarget,
+      });
+      await refresh();
+    },
+    [currentPath, refresh, sshTarget],
+  );
+
+  const renameEntry = useCallback(
+    async (entryPath: string, nextName: string) => {
+      const parentPath = getParentPath(entryPath);
+      await fileOperation({
+        operation: "rename",
+        path: entryPath,
+        newPath: joinPath(parentPath, nextName),
+        sshTarget,
+      });
+      await refresh();
+    },
+    [refresh, sshTarget],
+  );
+
+  const deleteEntries = useCallback(
+    async (paths: string[]) => {
+      for (const pathValue of paths) {
+        await fileOperation({
+          operation: "delete",
+          path: pathValue,
+          sshTarget,
+        });
+      }
+      await refresh();
+    },
+    [refresh, sshTarget],
+  );
+
+  const upload = useCallback(
+    async (files: File[], overwritePath?: string) => {
+      if (!overwritePath && !currentPath.trim()) {
+        throw new Error("当前目录尚未准备好");
+      }
+      setUploadProgress(0);
+      try {
+        await uploadFiles({
+          path: overwritePath ? undefined : currentPath,
+          overwritePath,
+          sshTarget,
+          files,
+          onProgress: setUploadProgress,
+        });
+        await refresh();
+      } finally {
+        setUploadProgress(null);
+      }
+    },
+    [currentPath, refresh, sshTarget],
+  );
+
+  const saveTextFile = useCallback(
+    async (filePath: string, content: string) => {
+      const name = filePath.split("/").filter(Boolean).pop() ?? "file.txt";
+      await upload(
+        [new File([content], name, { type: "text/plain" })],
+        filePath,
+      );
+    },
+    [upload],
+  );
+
+  const downloadEntries = useCallback(
+    async (paths: string[]) => {
+      for (const pathValue of paths) {
+        await downloadFile({ path: pathValue, sshTarget });
+      }
+    },
+    [sshTarget],
+  );
+
+  const updatePermissions = useCallback(
+    async (filePath: string, mode: string) => {
+      await chmodFile({
+        path: filePath,
+        mode,
+        sshTarget,
+      });
+      await refresh();
+    },
+    [refresh, sshTarget],
+  );
+
+  const ready = currentPath.trim().length > 0;
+
+  return {
+    ready,
+    currentPath,
+    entries: filteredEntries,
+    loading,
+    error,
+    showHidden,
+    setShowHidden,
+    filterQuery,
+    setFilterQuery,
+    selectedPaths,
+    sortKey,
+    sortDirection,
+    preview,
+    uploadProgress,
+    sshTarget,
+    navigate,
+    refresh,
+    toggleSort,
+    selectPath,
+    setCheckboxSelection,
+    createFolder,
+    renameEntry,
+    deleteEntries,
+    upload,
+    saveTextFile,
+    downloadEntries,
+    updatePermissions,
+    goHome: () => refresh(hostDefaultPath),
+    goUp: () => refresh(getParentPath(currentPath)),
+  };
+}

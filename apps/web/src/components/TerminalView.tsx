@@ -162,8 +162,30 @@ export function TerminalView({
     termRef.current = term;
     fitRef.current = fitAddon;
 
+    const isIntentionalExternalFocus = (): boolean => {
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || active === document.body) return false;
+      if (active.classList.contains("xterm-helper-textarea")) return false;
+      return (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLButtonElement ||
+        active instanceof HTMLSelectElement ||
+        active instanceof HTMLTextAreaElement ||
+        Boolean(active.isContentEditable) ||
+        active.closest('[role="dialog"]') !== null ||
+        active.closest('[role="alertdialog"]') !== null
+      );
+    };
+
     const focusInteractiveTerminal = (unlockInput = false) => {
       if (!interactive) {
+        return;
+      }
+
+      // When called passively (not from a direct user click on the terminal),
+      // don't steal focus from intentional interactive elements such as buttons,
+      // inputs, or open dialogs.
+      if (!unlockInput && isIntentionalExternalFocus()) {
         return;
       }
 
@@ -208,6 +230,18 @@ export function TerminalView({
     const wsUrl = buildTerminalWebSocketUrl(agentSessionId);
     let ws: WebSocket | null = null;
     let replayComplete = false;
+
+    // Safety net: if the WebSocket never sends replay-complete (e.g. connection
+    // refused, server error, or long replay transfer), unblock stdin after 8
+    // seconds so the user is never permanently locked out.
+    timeoutIds.push(
+      window.setTimeout(() => {
+        if (!disposed) {
+          enableTerminalInput();
+        }
+      }, 8000),
+    );
+
     const connectTimeoutId = window.setTimeout(() => {
       if (disposed) {
         return;
@@ -240,6 +274,10 @@ export function TerminalView({
           return;
         }
 
+        // Ensure stdin is always unblocked even if the connection dropped
+        // before the server sent replay-complete. Without this, disableStdin
+        // stays true permanently and the terminal silently ignores all input.
+        enableTerminalInput();
         term.write("\r\n\x1b[33m[连接已断开]\x1b[0m\r\n");
       };
     }, 0);

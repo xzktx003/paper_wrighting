@@ -13,6 +13,7 @@ interface HostDropdownProps {
   disabled?: boolean;
   buttonTestId?: string;
   menuTestId?: string;
+  menuAlign?: "start" | "end";
   triggerClassName?: string;
 }
 
@@ -23,6 +24,7 @@ export function HostDropdown({
   disabled,
   buttonTestId,
   menuTestId,
+  menuAlign = "start",
   triggerClassName,
 }: HostDropdownProps) {
   const [open, setOpen] = useState(false);
@@ -52,7 +54,7 @@ export function HostDropdown({
       </button>
       {open && (
         <div
-          className="host-dropdown-menu"
+          className={`host-dropdown-menu${menuAlign === "end" ? " host-dropdown-menu--end" : ""}`}
           data-testid={menuTestId ?? "host-dropdown-menu"}
         >
           <button
@@ -63,7 +65,7 @@ export function HostDropdown({
             }}
             type="button"
           >
-            🖥 本机
+            <span className="host-dropdown-name">🖥 本机</span>
           </button>
           {sshHosts.map((h) => (
             <button
@@ -75,7 +77,7 @@ export function HostDropdown({
               }}
               type="button"
             >
-              🌐 {h.name}
+              <span className="host-dropdown-name">🌐 {h.name}</span>
               <span className="host-dropdown-detail">
                 {h.username ? `${h.username}@` : ""}
                 {h.host}

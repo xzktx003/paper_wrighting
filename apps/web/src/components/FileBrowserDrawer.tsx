@@ -1,0 +1,1007 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import type {
+  FileEntry,
+  FilePreviewResponse,
+} from "@agent-orchestrator/shared";
+
+import { listFiles, previewFile } from "../lib/api";
+import { useFileBrowser } from "../lib/use-file-browser";
+
+import { HostDropdown, type SelectedHost } from "./HostDropdown";
+
+interface FileBrowserDrawerProps {
+  open: boolean;
+  sshHosts: Array<{
+    name: string;
+    host: string;
+    port: number;
+    username?: string;
+    identityFile?: string;
+    defaultPath: string;
+  }>;
+  selectedHost: SelectedHost;
+  onSelectHost: (host: SelectedHost) => void;
+}
+
+interface TreeState {
+  [path: string]: FileEntry[];
+}
+
+interface ContextMenuState {
+  entry: FileEntry;
+  x: number;
+  y: number;
+}
+
+interface RenameState {
+  path: string;
+  value: string;
+}
+
+interface EditorState {
+  path: string;
+  content: string;
+}
+
+interface ChmodState {
+  path: string;
+  value: string;
+}
+
+function joinPath(basePath: string, name: string): string {
+  if (!basePath || basePath === "/") {
+    return `/${name}`;
+  }
+
+  return `${basePath.replace(/\/+$/, "")}/${name}`;
+}
+
+function getFileIcon(entry: FileEntry): string {
+  if (entry.type === "directory") {
+    return "📁";
+  }
+
+  const lower = entry.name.toLowerCase();
+  if (/\.(png|jpg|jpeg|gif|svg|webp)$/.test(lower)) {
+    return "🖼";
+  }
+  if (/\.(ts|tsx|js|jsx|py|go|rs|java|rb|sh|bash)$/.test(lower)) {
+    return "🔧";
+  }
+  if (/\.(txt|md|log|json|yaml|yml)$/.test(lower)) {
+    return "📄";
+  }
+  if (/\.(zip|tar|gz|rar|7z)$/.test(lower)) {
+    return "📦";
+  }
+  if (/\.(app|exe|bin)$/.test(lower)) {
+    return "⚙️";
+  }
+  return "📋";
+}
+
+function buildBreadcrumbs(
+  pathValue: string,
+): Array<{ label: string; path: string }> {
+  if (!pathValue) {
+    return [{ label: "Home", path: "" }];
+  }
+
+  const absolute = pathValue.startsWith("/");
+  const segments = pathValue.split("/").filter(Boolean);
+
+  if (segments.length === 0) {
+    return [{ label: "/", path: "/" }];
+  }
+
+  return segments.map((segment, index) => ({
+    label: segment,
+    path: `${absolute ? "/" : ""}${segments.slice(0, index + 1).join("/")}`,
+  }));
+}
+
+function formatSize(size: number): string {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  if (size < 1024 * 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function toModeFromPermissions(permissions: string): string {
+  const symbols = permissions.slice(1).split("");
+  const groups = [
+    symbols.slice(0, 3),
+    symbols.slice(3, 6),
+    symbols.slice(6, 9),
+  ];
+  return groups
+    .map(
+      (group) =>
+        (group[0] === "r" ? 4 : 0) +
+        (group[1] === "w" ? 2 : 0) +
+        (group[2] === "x" ? 1 : 0),
+    )
+    .join("");
+}
+
+function updateModeDigit(
+  currentDigit: string,
+  offset: number,
+  enabled: boolean,
+): string {
+  const numeric = Number(currentDigit);
+  const next = enabled ? numeric | offset : numeric & ~offset;
+  return String(next);
+}
+
+function isTextPreview(
+  preview: FilePreviewResponse | null,
+): preview is FilePreviewResponse {
+  return Boolean(preview && preview.encoding === "utf8");
+}
+
+export function FileBrowserDrawer({
+  open,
+  sshHosts,
+  selectedHost,
+  onSelectHost,
+}: FileBrowserDrawerProps) {
+  const PREVIEW_HEIGHT_STORAGE_KEY = "file-browser-preview-height";
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewResizeRef = useRef<{
+    startY: number;
+    startHeight: number;
+  } | null>(null);
+  const previewLayoutRef = useRef<HTMLDivElement | null>(null);
+  const hostScopeRef = useRef("local");
+  const [directoryTree, setDirectoryTree] = useState<TreeState>({});
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [renameState, setRenameState] = useState<RenameState | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const [chmodState, setChmodState] = useState<ChmodState | null>(null);
+  const [dragDepth, setDragDepth] = useState(0);
+  const [previewHeight, setPreviewHeight] = useState(() => {
+    try {
+      const raw = localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY);
+      if (!raw) {
+        return 240;
+      }
+
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : 240;
+    } catch {
+      return 240;
+    }
+  });
+
+  const {
+    ready,
+    currentPath,
+    entries,
+    loading,
+    error,
+    showHidden,
+    setShowHidden,
+    filterQuery,
+    setFilterQuery,
+    selectedPaths,
+    sortKey,
+    sortDirection,
+    preview,
+    uploadProgress,
+    sshTarget,
+    navigate,
+    refresh,
+    toggleSort,
+    selectPath,
+    setCheckboxSelection,
+    createFolder,
+    renameEntry,
+    deleteEntries,
+    upload,
+    saveTextFile,
+    downloadEntries,
+    updatePermissions,
+    goHome,
+    goUp,
+  } = useFileBrowser(selectedHost, open);
+
+  useEffect(() => {
+    hostScopeRef.current =
+      selectedHost.type === "ssh"
+        ? `ssh:${selectedHost.preset.host}:${selectedHost.preset.port}:${selectedHost.preset.identityFile ?? ""}`
+        : "local";
+    setDirectoryTree({});
+    setExpandedPaths(new Set());
+    setContextMenu(null);
+  }, [selectedHost]);
+
+  useEffect(() => {
+    if (!currentPath) {
+      return;
+    }
+
+    setDirectoryTree((current) => ({
+      ...current,
+      [currentPath]: entries.filter((entry) => entry.type === "directory"),
+    }));
+  }, [currentPath, entries]);
+
+  useEffect(() => {
+    function handleCloseContextMenu() {
+      setContextMenu(null);
+    }
+
+    document.addEventListener("click", handleCloseContextMenu);
+    return () => document.removeEventListener("click", handleCloseContextMenu);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(previewHeight));
+    } catch {
+      // ignore storage failures
+    }
+  }, [previewHeight]);
+
+  useEffect(() => {
+    function handleMouseMove(event: MouseEvent) {
+      updatePreviewHeight(event.clientY);
+    }
+
+    function handleMouseUp() {
+      previewResizeRef.current = null;
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const breadcrumbs = useMemo(
+    () => buildBreadcrumbs(currentPath),
+    [currentPath],
+  );
+  const selectedEntries = entries.filter((entry) =>
+    selectedPaths.includes(entry.path),
+  );
+  const selectedFile = selectedEntries.length === 1 ? selectedEntries[0] : null;
+  const imagePreview =
+    preview &&
+    preview.encoding === "binary" &&
+    preview.mimeType?.startsWith("image/")
+      ? preview
+      : null;
+  const dragActive = dragDepth > 0;
+
+  async function loadTreeNode(pathValue: string) {
+    if (directoryTree[pathValue]) {
+      return;
+    }
+
+    const requestedScope = hostScopeRef.current;
+    const response = await listFiles({
+      path: pathValue,
+      sshTarget,
+      showHidden,
+    });
+
+    if (requestedScope !== hostScopeRef.current) {
+      return;
+    }
+
+    setDirectoryTree((current) => ({
+      ...current,
+      [pathValue]: response.entries.filter(
+        (entry) => entry.type === "directory",
+      ),
+    }));
+  }
+
+  function toggleExpanded(pathValue: string) {
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(pathValue)) {
+        next.delete(pathValue);
+      } else {
+        next.add(pathValue);
+      }
+      return next;
+    });
+  }
+
+  async function handleOpenEditor(entry: FileEntry) {
+    const filePreview =
+      preview && preview.path === entry.path
+        ? preview
+        : await previewFile({ path: entry.path, sshTarget });
+
+    if (filePreview.encoding !== "utf8") {
+      return;
+    }
+
+    setEditorState({
+      path: entry.path,
+      content: filePreview.content,
+    });
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedPaths.length === 0) {
+      return;
+    }
+
+    if (!window.confirm(`确认删除 ${selectedPaths.length} 个条目？`)) {
+      return;
+    }
+
+    await deleteEntries(selectedPaths);
+  }
+
+  function renderTree(pathValue: string, depth = 0) {
+    const children = directoryTree[pathValue] ?? [];
+    return children.map((entry) => {
+      const expanded = expandedPaths.has(entry.path);
+
+      return (
+        <div key={entry.path}>
+          <button
+            className={`file-browser-tree-node${currentPath === entry.path ? " is-active" : ""}`}
+            onClick={async () => {
+              await loadTreeNode(entry.path);
+              toggleExpanded(entry.path);
+              await navigate(entry.path);
+            }}
+            style={{ paddingLeft: `${12 + depth * 14}px` }}
+            type="button"
+          >
+            <span className="file-browser-tree-toggle">
+              {expanded ? "▾" : "▸"}
+            </span>
+            <span>📁 {entry.name}</span>
+          </button>
+          {expanded && renderTree(entry.path, depth + 1)}
+        </div>
+      );
+    });
+  }
+
+  if (!open) {
+    return null;
+  }
+
+  function updatePreviewHeight(clientY: number) {
+    const resizeState = previewResizeRef.current;
+    const layout = previewLayoutRef.current;
+    if (!resizeState || !layout) {
+      return;
+    }
+
+    const delta = resizeState.startY - clientY;
+    const maxHeight = Math.max(180, layout.clientHeight - 180);
+    const nextHeight = Math.min(
+      maxHeight,
+      Math.max(160, resizeState.startHeight + delta),
+    );
+    setPreviewHeight(nextHeight);
+  }
+
+  return (
+    <aside
+      className={`file-browser-drawer${dragActive ? " is-drag-active" : ""}`}
+      data-testid="file-browser-drawer"
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDragDepth((current) => current + 1);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        setDragDepth((current) => Math.max(0, current - 1));
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+      }}
+      onDrop={async (event) => {
+        event.preventDefault();
+        setDragDepth(0);
+        const files = Array.from(event.dataTransfer.files);
+        if (files.length > 0) {
+          await upload(files);
+        }
+      }}
+    >
+      <header className="file-browser-header">
+        <div>
+          <div className="file-browser-title">文件浏览器</div>
+          <div className="file-browser-subtitle">
+            {selectedHost.type === "local"
+              ? "本地文件系统"
+              : `SSH / SFTP · ${selectedHost.preset.name}`}
+          </div>
+        </div>
+        <HostDropdown
+          sshHosts={sshHosts}
+          onSelectHost={onSelectHost}
+          triggerLabel="目标"
+          buttonTestId="file-browser-host-toggle"
+          menuTestId="file-browser-host-menu"
+          menuAlign="end"
+          triggerClassName="file-browser-pill"
+        />
+      </header>
+
+      <div className="file-browser-toolbar">
+        <button className="file-browser-pill" onClick={goHome} type="button">
+          Home
+        </button>
+        <button
+          className="file-browser-pill"
+          disabled={!ready}
+          onClick={goUp}
+          type="button"
+        >
+          上级
+        </button>
+        <button
+          className="file-browser-pill"
+          onClick={() => refresh()}
+          type="button"
+        >
+          刷新
+        </button>
+        <button
+          className="file-browser-pill"
+          disabled={!ready}
+          onClick={() => setNewFolderName("新建文件夹")}
+          type="button"
+        >
+          新建
+        </button>
+        <button
+          className="file-browser-pill"
+          disabled={!ready}
+          onClick={() => fileInputRef.current?.click()}
+          type="button"
+        >
+          上传
+        </button>
+        <button
+          className="file-browser-pill"
+          disabled={!ready || selectedPaths.length === 0}
+          onClick={() => downloadEntries(selectedPaths)}
+          type="button"
+        >
+          下载
+        </button>
+        <button
+          className="file-browser-pill danger"
+          disabled={!ready || selectedPaths.length === 0}
+          onClick={handleDeleteSelected}
+          type="button"
+        >
+          删除
+        </button>
+        <label className="file-browser-toggle">
+          <input
+            checked={showHidden}
+            onChange={(event) => setShowHidden(event.target.checked)}
+            type="checkbox"
+          />
+          <span>显示隐藏文件</span>
+        </label>
+        <input
+          className="file-browser-filter"
+          placeholder="过滤当前目录"
+          value={filterQuery}
+          onChange={(event) => setFilterQuery(event.target.value)}
+        />
+      </div>
+
+      <div className="file-browser-breadcrumbs">
+        {breadcrumbs.map((segment) => (
+          <button
+            key={segment.path}
+            className={`file-browser-breadcrumb${segment.path === currentPath ? " is-active" : ""}`}
+            onClick={() => navigate(segment.path)}
+            type="button"
+          >
+            {segment.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="file-browser-body">
+        <section className="file-browser-tree">
+          <div className="file-browser-pane-title">目录树</div>
+          <div
+            className="file-browser-tree-rows"
+            data-testid="file-browser-tree-rows"
+          >
+            <button
+              className="file-browser-tree-node is-root"
+              onClick={() => navigate(currentPath)}
+              type="button"
+            >
+              {selectedHost.type === "local" ? "🖥" : "🌐"}{" "}
+              {currentPath || "当前目录"}
+            </button>
+            {renderTree(currentPath)}
+          </div>
+        </section>
+
+        <section
+          className="file-browser-content"
+          ref={previewLayoutRef}
+          style={{
+            gridTemplateRows: `minmax(180px, 1fr) 8px ${previewHeight}px`,
+          }}
+        >
+          <div className="file-browser-list">
+            <div className="file-browser-pane-title">
+              文件列表
+              {loading && (
+                <span className="file-browser-pane-hint">读取中…</span>
+              )}
+              {uploadProgress !== null && (
+                <span className="file-browser-pane-hint">
+                  上传 {Math.round(uploadProgress * 100)}%
+                </span>
+              )}
+            </div>
+            {error && <div className="file-browser-error">{error}</div>}
+            <div className="file-browser-table file-browser-table--header">
+              <button type="button" onClick={() => toggleSort("name")}>
+                名称{" "}
+                {sortKey === "name"
+                  ? sortDirection === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+              <button type="button" onClick={() => toggleSort("size")}>
+                大小{" "}
+                {sortKey === "size"
+                  ? sortDirection === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+              <button type="button" onClick={() => toggleSort("modifiedAt")}>
+                修改时间{" "}
+                {sortKey === "modifiedAt"
+                  ? sortDirection === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+              <button type="button" onClick={() => toggleSort("permissions")}>
+                权限{" "}
+                {sortKey === "permissions"
+                  ? sortDirection === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+            </div>
+            <div className="file-browser-rows" data-testid="file-browser-rows">
+              {entries.map((entry) => {
+                const selected = selectedPaths.includes(entry.path);
+                return (
+                  <div
+                    key={entry.path}
+                    className={`file-browser-table file-browser-row${selected ? " is-selected" : ""}`}
+                    data-testid={`file-entry-${entry.name}`}
+                    onClick={(event) =>
+                      selectPath(entry.path, {
+                        additive: event.metaKey || event.ctrlKey,
+                        range: event.shiftKey,
+                      })
+                    }
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      selectPath(entry.path);
+                      setContextMenu({
+                        entry,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                    onDoubleClick={async () => {
+                      if (entry.type === "directory") {
+                        await navigate(entry.path);
+                        return;
+                      }
+
+                      await handleOpenEditor(entry);
+                    }}
+                  >
+                    <label className="file-browser-name">
+                      <input
+                        checked={selected}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) =>
+                          setCheckboxSelection(
+                            entry.path,
+                            event.currentTarget.checked,
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      <span className="file-browser-icon">
+                        {getFileIcon(entry)}
+                      </span>
+                      <span>{entry.name}</span>
+                    </label>
+                    <span>
+                      {entry.type === "directory"
+                        ? "—"
+                        : formatSize(entry.size)}
+                    </span>
+                    <span>{new Date(entry.modifiedAt).toLocaleString()}</span>
+                    <span>{entry.permissions}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div
+            className="file-browser-preview-splitter"
+            data-testid="file-browser-preview-splitter"
+            onMouseDown={(event) => {
+              previewResizeRef.current = {
+                startY: event.clientY,
+                startHeight: previewHeight,
+              };
+              event.preventDefault();
+            }}
+            role="separator"
+          />
+
+          <div className="file-browser-preview">
+            <div className="file-browser-pane-title">
+              预览
+              {selectedFile && (
+                <span className="file-browser-pane-hint">
+                  {selectedFile.name}
+                </span>
+              )}
+            </div>
+            <div className="file-browser-preview-body">
+              {selectedFile ? (
+                isTextPreview(preview) ? (
+                  <>
+                    <div className="file-browser-preview-actions">
+                      <button
+                        className="file-browser-pill"
+                        onClick={() => handleOpenEditor(selectedFile)}
+                        type="button"
+                      >
+                        编辑
+                      </button>
+                      {sshTarget && (
+                        <button
+                          className="file-browser-pill"
+                          onClick={() =>
+                            setChmodState({
+                              path: selectedFile.path,
+                              value: toModeFromPermissions(
+                                selectedFile.permissions,
+                              ),
+                            })
+                          }
+                          type="button"
+                        >
+                          chmod
+                        </button>
+                      )}
+                    </div>
+                    <pre className="file-browser-preview-text">
+                      {preview.content}
+                    </pre>
+                  </>
+                ) : imagePreview ? (
+                  <img
+                    alt={selectedFile.name}
+                    className="file-browser-preview-image"
+                    src={`data:${imagePreview.mimeType};base64,${imagePreview.content}`}
+                  />
+                ) : (
+                  <div className="file-browser-preview-meta">
+                    <div>名称：{selectedFile.name}</div>
+                    <div>大小：{formatSize(selectedFile.size)}</div>
+                    <div>权限：{selectedFile.permissions}</div>
+                    <div>
+                      时间：{new Date(selectedFile.modifiedAt).toLocaleString()}
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="file-browser-preview-empty">
+                  选择一个文件查看预览
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {contextMenu && (
+        <div
+          className="file-browser-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => downloadEntries([contextMenu.entry.path])}
+            type="button"
+          >
+            下载
+          </button>
+          <button
+            onClick={() =>
+              setRenameState({
+                path: contextMenu.entry.path,
+                value: contextMenu.entry.name,
+              })
+            }
+            type="button"
+          >
+            重命名
+          </button>
+          <button
+            onClick={async () => {
+              if (window.confirm(`删除 ${contextMenu.entry.name}？`)) {
+                await deleteEntries([contextMenu.entry.path]);
+              }
+            }}
+            type="button"
+          >
+            删除
+          </button>
+          <button
+            onClick={() =>
+              navigator.clipboard.writeText(contextMenu.entry.path)
+            }
+            type="button"
+          >
+            复制路径
+          </button>
+          {sshTarget && (
+            <button
+              onClick={() =>
+                setChmodState({
+                  path: contextMenu.entry.path,
+                  value: toModeFromPermissions(contextMenu.entry.permissions),
+                })
+              }
+              type="button"
+            >
+              属性 / chmod
+            </button>
+          )}
+        </div>
+      )}
+
+      {newFolderName && (
+        <div className="file-browser-modal">
+          <div className="file-browser-dialog">
+            <h3>新建文件夹</h3>
+            <input
+              className="drawer-input"
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+            />
+            <div className="file-browser-dialog-actions">
+              <button
+                className="file-browser-pill"
+                onClick={() => setNewFolderName("")}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="file-browser-pill"
+                onClick={async () => {
+                  await createFolder(newFolderName);
+                  setNewFolderName("");
+                }}
+                type="button"
+              >
+                创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameState && (
+        <div className="file-browser-modal">
+          <div className="file-browser-dialog">
+            <h3>重命名</h3>
+            <input
+              className="drawer-input"
+              value={renameState.value}
+              onChange={(event) =>
+                setRenameState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        value: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+            <div className="file-browser-dialog-actions">
+              <button
+                className="file-browser-pill"
+                onClick={() => setRenameState(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="file-browser-pill"
+                onClick={async () => {
+                  await renameEntry(renameState.path, renameState.value);
+                  setRenameState(null);
+                }}
+                type="button"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorState && (
+        <div className="file-browser-modal">
+          <div className="file-browser-dialog file-browser-dialog--editor">
+            <h3>编辑 {editorState.path.split("/").filter(Boolean).pop()}</h3>
+            <textarea
+              className="file-browser-editor"
+              value={editorState.content}
+              onChange={(event) =>
+                setEditorState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        content: event.target.value,
+                      }
+                    : current,
+                )
+              }
+            />
+            <div className="file-browser-dialog-actions">
+              <button
+                className="file-browser-pill"
+                onClick={() => setEditorState(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="file-browser-pill"
+                onClick={async () => {
+                  await saveTextFile(editorState.path, editorState.content);
+                  setEditorState(null);
+                }}
+                type="button"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chmodState && (
+        <div className="file-browser-modal">
+          <div className="file-browser-dialog">
+            <h3>权限设置</h3>
+            <div className="file-browser-chmod-grid">
+              {["Owner", "Group", "Other"].map((label, groupIndex) => (
+                <div key={label} className="file-browser-chmod-group">
+                  <span>{label}</span>
+                  {[
+                    { label: "r", value: 4 },
+                    { label: "w", value: 2 },
+                    { label: "x", value: 1 },
+                  ].map((permission) => {
+                    const currentDigit = chmodState.value[groupIndex] ?? "0";
+                    const checked =
+                      (Number(currentDigit) & permission.value) ===
+                      permission.value;
+
+                    return (
+                      <label
+                        key={permission.label}
+                        className="file-browser-toggle"
+                      >
+                        <input
+                          checked={checked}
+                          onChange={(event) => {
+                            setChmodState((current) => {
+                              if (!current) {
+                                return current;
+                              }
+
+                              const digits = current.value.split("");
+                              digits[groupIndex] = updateModeDigit(
+                                digits[groupIndex] ?? "0",
+                                permission.value,
+                                event.target.checked,
+                              );
+                              return {
+                                ...current,
+                                value: digits.join(""),
+                              };
+                            });
+                          }}
+                          type="checkbox"
+                        />
+                        <span>{permission.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="file-browser-dialog-actions">
+              <button
+                className="file-browser-pill"
+                onClick={() => setChmodState(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="file-browser-pill"
+                onClick={async () => {
+                  await updatePermissions(chmodState.path, chmodState.value);
+                  setChmodState(null);
+                }}
+                type="button"
+              >
+                应用 {chmodState.value}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dragActive && (
+        <div className="file-browser-upload-zone">
+          拖入文件即可上传到 {currentPath || "当前目录"}
+        </div>
+      )}
+
+      <input
+        hidden
+        multiple
+        ref={fileInputRef}
+        type="file"
+        onChange={async (event) => {
+          const files = Array.from(event.target.files ?? []);
+          if (files.length > 0) {
+            await upload(files);
+          }
+          event.target.value = "";
+        }}
+      />
+    </aside>
+  );
+}

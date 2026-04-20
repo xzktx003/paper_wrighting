@@ -99,6 +99,11 @@ input {
   border-color: rgba(255, 143, 31, 0.38);
   color: #ffe3c4;
 }
+
+.top-bar-action--active {
+  background: rgba(246, 178, 107, 0.2);
+  border-color: rgba(246, 178, 107, 0.42);
+}
 .top-bar-action:disabled {
   cursor: not-allowed;
   opacity: 0.48;
@@ -139,6 +144,34 @@ input {
   overflow: hidden;
   position: relative;
   z-index: 1;
+}
+
+.file-browser-shell {
+  height: 100%;
+  flex-shrink: 0;
+  min-width: 360px;
+  min-height: 0;
+  max-width: calc(100vw - 320px);
+  display: flex;
+  overflow: hidden;
+}
+
+.main-layout-splitter {
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(246, 178, 107, 0.16),
+    rgba(255, 255, 255, 0.02)
+  );
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.main-layout-splitter:hover {
+  background: rgba(246, 178, 107, 0.24);
 }
 
 /* ===== Side Drawer ===== */
@@ -955,6 +988,20 @@ input {
   flex-shrink: 0;
 }
 
+.bottom-bar-action {
+  padding: 6px 12px;
+  border: 1px solid rgba(246, 178, 107, 0.24);
+  border-radius: 999px;
+  background: rgba(246, 178, 107, 0.08);
+  color: #ffd7af;
+  cursor: pointer;
+}
+
+.bottom-bar-action.is-active {
+  background: rgba(246, 178, 107, 0.18);
+  border-color: rgba(246, 178, 107, 0.42);
+}
+
 /* ===== Terminal View ===== */
 .terminal-view {
   background: #0e1217;
@@ -1576,20 +1623,29 @@ input {
   top: 100%;
   left: 0;
   margin-top: 4px;
-  min-width: 200px;
+  min-width: 360px;
+  max-width: min(520px, calc(100vw - 24px));
   max-height: min(360px, calc(100vh - 96px));
-  background: #1c2228;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #12161c;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.52);
+  backdrop-filter: none;
+  opacity: 1;
   z-index: 360;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
+.host-dropdown-menu--end {
+  left: auto;
+  right: 0;
+}
+
 .host-dropdown-item {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-direction: column;
   gap: 8px;
   width: 100%;
   padding: 8px 14px;
@@ -1601,6 +1657,13 @@ input {
   text-align: left;
 }
 
+.host-dropdown-name {
+  display: block;
+  width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .host-dropdown-item:hover {
   background: rgba(246, 178, 107, 0.12);
 }
@@ -1608,7 +1671,450 @@ input {
 .host-dropdown-detail {
   color: rgba(244, 241, 234, 0.45);
   font-size: 11px;
-  margin-left: auto;
+  margin-left: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* ===== File Browser ===== */
+.file-browser-drawer {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(246, 178, 107, 0.12),
+      transparent 32%
+    ),
+    rgba(12, 16, 21, 0.94);
+  overflow: visible;
+  position: relative;
+}
+
+.file-browser-drawer.is-drag-active {
+  box-shadow: inset 0 0 0 2px rgba(246, 178, 107, 0.4);
+}
+
+.file-browser-header,
+.file-browser-toolbar,
+.file-browser-breadcrumbs {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.file-browser-header {
+  z-index: 5;
+}
+
+.file-browser-toolbar,
+.file-browser-breadcrumbs {
+  z-index: 1;
+}
+
+.file-browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.file-browser-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffe0bc;
+}
+
+.file-browser-subtitle {
+  font-size: 12px;
+  color: rgba(244, 241, 234, 0.56);
+}
+
+.file-browser-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.file-browser-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid rgba(246, 178, 107, 0.22);
+  border-radius: 999px;
+  background: rgba(246, 178, 107, 0.08);
+  color: #ffd8af;
+  cursor: pointer;
+}
+
+.file-browser-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.file-browser-pill.danger {
+  border-color: rgba(255, 107, 107, 0.22);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb5ac;
+}
+
+.file-browser-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(244, 241, 234, 0.74);
+}
+
+.file-browser-filter {
+  flex: 1;
+  min-width: 160px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+}
+
+.file-browser-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-browser-breadcrumb {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 241, 234, 0.72);
+  cursor: pointer;
+}
+
+.file-browser-breadcrumb.is-active {
+  background: rgba(246, 178, 107, 0.18);
+  color: #ffe0bc;
+}
+
+.file-browser-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.file-browser-tree {
+  width: 34%;
+  min-width: 190px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-browser-tree-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-browser-content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.file-browser-list {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-browser-preview {
+  min-height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.file-browser-preview-splitter {
+  height: 8px;
+  cursor: row-resize;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(246, 178, 107, 0.18),
+    rgba(255, 255, 255, 0.02)
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.file-browser-preview-splitter:hover {
+  background: rgba(246, 178, 107, 0.24);
+}
+
+.file-browser-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-browser-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(244, 241, 234, 0.8);
+}
+
+.file-browser-pane-hint {
+  font-weight: 400;
+  color: rgba(244, 241, 234, 0.46);
+}
+
+.file-browser-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(244, 241, 234, 0.74);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-browser-tree-node:hover,
+.file-browser-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-browser-tree-node.is-active,
+.file-browser-row.is-selected {
+  background: rgba(246, 178, 107, 0.12);
+}
+
+.file-browser-tree-toggle {
+  width: 12px;
+  color: rgba(244, 241, 234, 0.5);
+}
+
+.file-browser-table {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.8fr) minmax(90px, 0.6fr) minmax(150px, 1fr)
+    minmax(110px, 0.7fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.file-browser-table--header {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.file-browser-table--header button {
+  border: none;
+  background: transparent;
+  color: rgba(244, 241, 234, 0.6);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-browser-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-browser-row {
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+}
+
+.file-browser-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-browser-name span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-browser-icon {
+  width: 18px;
+  text-align: center;
+}
+
+.file-browser-error {
+  margin: 0 12px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffb1aa;
+  font-size: 12px;
+}
+
+.file-browser-preview-actions,
+.file-browser-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.file-browser-preview-text {
+  flex: 1;
+  margin: 0;
+  padding: 0 12px 12px;
+  overflow: auto;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: rgba(244, 241, 234, 0.8);
+  white-space: pre-wrap;
+}
+
+.file-browser-preview-image {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  padding: 0 12px 12px;
+}
+
+.file-browser-preview-meta,
+.file-browser-preview-empty {
+  flex: 1;
+  padding: 0 12px 12px;
+  overflow: auto;
+  font-size: 12px;
+  color: rgba(244, 241, 234, 0.6);
+}
+
+.file-browser-context-menu {
+  position: fixed;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(12, 16, 21, 0.98);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.38);
+}
+
+.file-browser-context-menu button {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-browser-context-menu button:hover {
+  background: rgba(246, 178, 107, 0.1);
+}
+
+.file-browser-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 1900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.file-browser-dialog {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(14, 18, 23, 0.98);
+}
+
+.file-browser-dialog--editor {
+  width: min(760px, 100%);
+  height: min(70vh, 640px);
+}
+
+.file-browser-editor {
+  flex: 1;
+  min-height: 320px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.file-browser-chmod-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.file-browser-chmod-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.file-browser-upload-zone {
+  position: absolute;
+  inset: 12px;
+  z-index: 1600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(246, 178, 107, 0.55);
+  border-radius: 18px;
+  background: rgba(12, 16, 21, 0.82);
+  color: #ffe0bc;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 /* ── Discovery Dialog ── */

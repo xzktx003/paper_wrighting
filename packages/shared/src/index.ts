@@ -279,3 +279,58 @@ export interface ObserveStateTransitionInput {
 export type ObserveStateInput =
   | ObserveStateHeartbeatInput
   | ObserveStateTransitionInput;
+
+export type FileEntryType = "file" | "directory" | "symlink";
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  type: FileEntryType;
+  size: number;
+  modifiedAt: string;
+  permissions: string;
+  isHidden: boolean;
+}
+
+export interface ListFilesInput {
+  path: string;
+  sshTarget?: SshTarget;
+  showHidden?: boolean;
+}
+
+export interface ListFilesResponse {
+  entries: FileEntry[];
+  path: string;
+}
+
+export interface FilePreviewInput {
+  path: string;
+  sshTarget?: SshTarget;
+  maxBytes?: number;
+}
+
+export interface FilePreviewResponse {
+  path: string;
+  content: string;
+  encoding: "utf8" | "binary";
+  truncated: boolean;
+  size: number;
+  mimeType: string | null;
+}
+
+export interface ChmodInput {
+  path: string;
+  mode: string;
+  sshTarget?: SshTarget;
+}
+
+export interface FileOperationInput {
+  operation: "mkdir" | "rename" | "delete";
+  path: string;
+  newPath?: string;
+  sshTarget?: SshTarget;
+}
+
+export interface FileUploadResponse {
+  uploadedPaths: string[];
+}

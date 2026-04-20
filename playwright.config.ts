@@ -27,10 +27,11 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: 'pnpm --filter server dev',
+          command: 'pnpm --filter server run dev:app',
           env: {
             ...process.env,
             PATH: testPath,
+            PLAYWRIGHT_TEST: '1',
           },
           url: 'http://127.0.0.1:4000/api/health',
           reuseExistingServer: true,

@@ -5,16 +5,32 @@ import Fastify from "fastify";
 import type { AgentSessionSnapshotEvent } from "@agent-orchestrator/shared";
 
 import { registerAgentSessionRoutes } from "./routes/agent-sessions.js";
+import { registerFilesystemRoutes } from "./routes/filesystem.js";
 import { registerSshHostsRoutes } from "./routes/ssh-hosts.js";
 import { AgentSessionRegistry } from "./services/agent-session-registry.js";
+import { LocalFsService } from "./services/local-fs-service.js";
 import { LocalProcessRuntimeManager } from "./services/local-process-runtime-manager.js";
 import { LocalTmuxAdapter } from "./services/local-tmux-adapter.js";
 import { ObserveSessionManager } from "./services/observe-session-manager.js";
 import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
+import { SftpService } from "./services/sftp-service.js";
 import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
 import { stripTerminalResponsePayload } from "./services/terminal-control-filter.js";
 
+interface BuildServerOptions {
+  localFsService?: LocalFsService;
+  sftpService?: SftpService;
+}
+
 export function buildServer(): {
+  app: ReturnType<typeof Fastify>;
+  registry: AgentSessionRegistry;
+};
+export function buildServer(options: BuildServerOptions): {
+  app: ReturnType<typeof Fastify>;
+  registry: AgentSessionRegistry;
+};
+export function buildServer(options: BuildServerOptions = {}): {
   app: ReturnType<typeof Fastify>;
   registry: AgentSessionRegistry;
 } {
@@ -25,6 +41,8 @@ export function buildServer(): {
   const sshRuntimeManager = new SshRuntimeManager(registry);
   const ptyRuntimeManager = new PtyRuntimeManager(registry);
   const observeSessionManager = new ObserveSessionManager(registry);
+  const localFsService = options.localFsService ?? new LocalFsService();
+  const sftpService = options.sftpService ?? new SftpService();
 
   app.register(cors, {
     origin: true,
@@ -43,6 +61,10 @@ export function buildServer(): {
     });
 
     await registerSshHostsRoutes(instance);
+    await registerFilesystemRoutes(instance, {
+      localFsService,
+      sftpService,
+    });
 
     instance.get("/ws/agent-sessions", { websocket: true }, (socket) => {
       const unsubscribe = registry.subscribe((snapshot) => {
