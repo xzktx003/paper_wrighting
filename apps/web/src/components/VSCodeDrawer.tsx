@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { OpenVsCodeWebResponse } from "@agent-orchestrator/shared";
 
 import { openVsCodeWeb } from "../lib/api";
+import { openVsCodeWebOnce } from "../lib/vscode-web-open";
 
 interface VSCodeDrawerProps {
   active: boolean;
@@ -40,7 +41,7 @@ export function VSCodeDrawer({
       setError(null);
 
       try {
-        const response = await openVsCodeWeb(agentSessionId);
+        const response = await openVsCodeWebOnce(agentSessionId, openVsCodeWeb);
         if (cancelled) {
           return;
         }

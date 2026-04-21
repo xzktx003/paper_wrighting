@@ -46,6 +46,7 @@ interface VsCodeWebManagerDeps {
   installCodeServer?: () => Promise<void>;
   now?: () => number;
   removePath?: (path: string) => Promise<void>;
+  resolveExtensionsDir?: (root: string) => string;
   spawnProcess?: (
     command: string,
     args: string[],
@@ -72,9 +73,13 @@ interface DataRootPaths {
   workspacesDir: string;
 }
 
-function resolveLocalWorkingDirectory(input?: string): string {
+function resolveHomePath(input?: string): string | null {
   const trimmed = input?.trim();
-  if (!trimmed || trimmed === "~" || trimmed === "~/") {
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed === "~" || trimmed === "~/") {
     return homedir();
   }
 
@@ -83,6 +88,26 @@ function resolveLocalWorkingDirectory(input?: string): string {
   }
 
   return trimmed;
+}
+
+function resolveLocalWorkingDirectory(input?: string): string {
+  return resolveHomePath(input) ?? homedir();
+}
+
+function defaultResolveExtensionsDir(root: string): string {
+  const configuredExtensionsDir = resolveHomePath(
+    process.env.VSCODE_WEB_EXTENSIONS_DIR,
+  );
+  if (configuredExtensionsDir) {
+    return configuredExtensionsDir;
+  }
+
+  const sharedExtensionsDir = join(homedir(), ".vscode-server", "extensions");
+  if (existsSync(sharedExtensionsDir)) {
+    return sharedExtensionsDir;
+  }
+
+  return join(root, "extensions");
 }
 
 function buildEditorUrl(
@@ -97,10 +122,13 @@ function buildEditorUrl(
   return url.toString();
 }
 
-function buildStableWorkspaceFileName(workingDirectory: string): string {
+function buildStableWorkspaceFileName(
+  sessionId: string,
+  workingDirectory: string,
+): string {
   const normalized = workingDirectory.trim() || homedir();
   const digest = createHash("sha256")
-    .update(normalized)
+    .update(`${sessionId}\0${normalized}`)
     .digest("hex")
     .slice(0, 16);
   const basename =
@@ -380,6 +408,7 @@ export class VsCodeWebManager {
   private readonly installCodeServer: () => Promise<void>;
   private readonly now: () => number;
   private readonly removePath: (path: string) => Promise<void>;
+  private readonly resolveExtensionsDir: (root: string) => string;
   private readonly spawnProcess: (
     command: string,
     args: string[],
@@ -394,6 +423,7 @@ export class VsCodeWebManager {
   private dataRootPathsPromise: Promise<DataRootPaths> | null = null;
   private globalServer: RunningGlobalServer | null = null;
   private installPromise: Promise<void> | null = null;
+  private readonly workspaceContents = new Map<string, string>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
   constructor(deps: VsCodeWebManagerDeps = {}) {
@@ -405,6 +435,8 @@ export class VsCodeWebManager {
     this.installCodeServer = deps.installCodeServer ?? defaultInstallCodeServer;
     this.now = deps.now ?? (() => Date.now());
     this.removePath = deps.removePath ?? defaultRemovePath;
+    this.resolveExtensionsDir =
+      deps.resolveExtensionsDir ?? defaultResolveExtensionsDir;
     this.spawnProcess = deps.spawnProcess ?? defaultSpawnProcess;
     this.waitForUrlReady = deps.waitForUrlReady ?? defaultWaitForUrlReady;
     this.writeFile = deps.writeFile ?? defaultWriteFile;
@@ -413,11 +445,12 @@ export class VsCodeWebManager {
   private async ensureDataRootPaths(): Promise<DataRootPaths> {
     if (!this.dataRootPathsPromise) {
       this.dataRootPathsPromise = this.createDataRoot().then(async (root) => {
+        const extensionsDir = this.resolveExtensionsDir(root);
         const paths = {
           root,
           configFile: join(root, "config.yaml"),
           userDataDir: join(root, "user-data"),
-          extensionsDir: join(root, "extensions"),
+          extensionsDir,
           workspacesDir: join(root, "workspaces"),
         };
 
@@ -530,6 +563,7 @@ export class VsCodeWebManager {
           delete nextEnv.PORT;
           delete nextEnv.PASSWORD;
           delete nextEnv.HASHED_PASSWORD;
+          delete nextEnv.VSCODE_IPC_HOOK_CLI;
           return nextEnv;
         })(),
         stdio: "ignore",
@@ -624,13 +658,14 @@ export class VsCodeWebManager {
     );
     const workspacePath = join(
       dataRootPaths.workspacesDir,
-      buildStableWorkspaceFileName(workingDirectory),
+      buildStableWorkspaceFileName(session.id, workingDirectory),
     );
+    const workspaceContent = buildWorkspaceContent(session, workingDirectory);
 
-    await this.writeFile(
-      workspacePath,
-      buildWorkspaceContent(session, workingDirectory),
-    );
+    if (this.workspaceContents.get(workspacePath) !== workspaceContent) {
+      await this.writeFile(workspacePath, workspaceContent);
+      this.workspaceContents.set(workspacePath, workspaceContent);
+    }
     this.sessionWorkspacePaths.set(session.id, workspacePath);
 
     return {
@@ -677,6 +712,7 @@ export class VsCodeWebManager {
     const workspacePath = this.sessionWorkspacePaths.get(sessionId);
     this.sessionWorkspacePaths.delete(sessionId);
     if (workspacePath) {
+      this.workspaceContents.delete(workspacePath);
       await this.removePath(workspacePath).catch(() => {});
     }
 

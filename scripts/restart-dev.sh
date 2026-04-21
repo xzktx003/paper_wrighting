@@ -256,18 +256,18 @@ cd "$ROOT_DIR"
 RUNTIME_PATH="$(build_runtime_path)"
 
 log "Starting backend on ${SERVER_BIND_HOST}:${SERVER_PORT}"
-nohup env PATH="$RUNTIME_PATH" HOST="$SERVER_BIND_HOST" PORT="$SERVER_PORT" \
+nohup env -u VSCODE_IPC_HOOK_CLI PATH="$RUNTIME_PATH" HOST="$SERVER_BIND_HOST" PORT="$SERVER_PORT" \
   pnpm --dir "$SERVER_APP_DIR" dev >"$SERVER_LOG" 2>&1 &
 echo $! >"$SERVER_PID_FILE"
 
 log "Starting frontend on ${WEB_HOST}:${WEB_PORT}"
 if [[ "$WEB_HTTPS" == "1" ]]; then
   log "Frontend HTTPS enabled"
-  nohup env PATH="$RUNTIME_PATH" VITE_DEV_HTTPS=1 VITE_DEV_HTTPS_CERT="$WEB_HTTPS_CERT" VITE_DEV_HTTPS_KEY="$WEB_HTTPS_KEY" \
+  nohup env -u VSCODE_IPC_HOOK_CLI PATH="$RUNTIME_PATH" VITE_DEV_HTTPS=1 VITE_DEV_HTTPS_CERT="$WEB_HTTPS_CERT" VITE_DEV_HTTPS_KEY="$WEB_HTTPS_KEY" \
     pnpm --dir "$WEB_APP_DIR" exec vite --host "$WEB_HOST" --port "$WEB_PORT" \
     >"$WEB_LOG" 2>&1 &
 else
-  nohup env PATH="$RUNTIME_PATH" pnpm --dir "$WEB_APP_DIR" exec vite --host "$WEB_HOST" --port "$WEB_PORT" \
+  nohup env -u VSCODE_IPC_HOOK_CLI PATH="$RUNTIME_PATH" pnpm --dir "$WEB_APP_DIR" exec vite --host "$WEB_HOST" --port "$WEB_PORT" \
     >"$WEB_LOG" 2>&1 &
 fi
 echo $! >"$WEB_PID_FILE"

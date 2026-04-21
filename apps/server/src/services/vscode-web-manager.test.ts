@@ -10,6 +10,12 @@ import {
   VsCodeWebUnavailableError,
 } from "./vscode-web-manager.js";
 
+const TEST_DATA_ROOT = "/tmp/coding-kanban-vscode-root";
+
+function resolveTestExtensionsDir(root: string): string {
+  return `${root}/extensions`;
+}
+
 class FakeChildProcess extends EventEmitter {
   killed = false;
 
@@ -68,9 +74,10 @@ test("ensureSession launches one global code-server and returns session-specific
   const files = new Map<string, string>();
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43111,
-    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
+    createDataRoot: async () => TEST_DATA_ROOT,
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
     spawnProcess: (command, args) => {
       launches.push({ command, args });
       return child as never;
@@ -118,14 +125,15 @@ test("ensureSession launches one global code-server and returns session-specific
   ]);
   assert.deepEqual(launches[0].args.slice(5, 9), [
     "--config",
-    "/tmp/coding-kanban-vscode-root/config.yaml",
+    `${TEST_DATA_ROOT}/config.yaml`,
     "--user-data-dir",
-    "/tmp/coding-kanban-vscode-root/user-data",
+    `${TEST_DATA_ROOT}/user-data`,
   ]);
-  assert.match(
-    files.get("/tmp/coding-kanban-vscode-root/config.yaml") ?? "",
-    /auth: none/,
-  );
+  assert.deepEqual(launches[0].args.slice(9, 11), [
+    "--extensions-dir",
+    `${TEST_DATA_ROOT}/extensions`,
+  ]);
+  assert.match(files.get(`${TEST_DATA_ROOT}/config.yaml`) ?? "", /auth: none/);
   const sessionAWorkspacePath = [...files.keys()].find((pathValue) =>
     pathValue.includes("/workspaces/session-a-"),
   );
@@ -152,7 +160,7 @@ test("ensureSession auto-installs code-server when no provider is initially avai
   const child = new FakeChildProcess();
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43114,
-    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
+    createDataRoot: async () => TEST_DATA_ROOT,
     findCommand: async (candidate) => {
       if (candidate !== "code-server") {
         return null;
@@ -164,6 +172,7 @@ test("ensureSession auto-installs code-server when no provider is initially avai
     installCodeServer: async () => {
       installCount += 1;
     },
+    resolveExtensionsDir: resolveTestExtensionsDir,
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
     writeFile: async () => {},
@@ -182,9 +191,10 @@ test("stopSession removes only the deleted session workspace and keeps the globa
   const removedPaths: string[] = [];
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43115,
-    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
+    createDataRoot: async () => TEST_DATA_ROOT,
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
     writeFile: async () => {},
@@ -209,9 +219,10 @@ test("ensureSession prefers the request host for the returned public url", async
   const child = new FakeChildProcess();
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43116,
-    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
+    createDataRoot: async () => TEST_DATA_ROOT,
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
     writeFile: async () => {},
@@ -225,4 +236,104 @@ test("ensureSession prefers the request host for the returned public url", async
   assert.match(result.url, /^http:\/\/10\.30\.0\.22:43116\//);
 
   await manager.dispose();
+});
+
+test("ensureSession does not rewrite an unchanged workspace file", async () => {
+  const child = new FakeChildProcess();
+  const writes = new Map<string, number>();
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43117,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: () => child as never,
+    waitForUrlReady: async () => {},
+    writeFile: async (pathValue) => {
+      writes.set(pathValue, (writes.get(pathValue) ?? 0) + 1);
+    },
+  });
+
+  await manager.ensureSession(buildSession("session-1"));
+  await manager.ensureSession(buildSession("session-1"));
+
+  const workspaceWrites = [...writes.entries()].filter(([pathValue]) =>
+    pathValue.includes("/workspaces/"),
+  );
+  assert.equal(workspaceWrites.length, 1);
+  assert.equal(workspaceWrites[0]?.[1], 1);
+
+  await manager.dispose();
+});
+
+test("ensureSession uses an explicit shared extensions directory override", async () => {
+  const child = new FakeChildProcess();
+  const launches: Array<{ args: string[] }> = [];
+  const previousExtensionsDir = process.env.VSCODE_WEB_EXTENSIONS_DIR;
+  process.env.VSCODE_WEB_EXTENSIONS_DIR = "/tmp/shared-vscode-extensions";
+
+  try {
+    const manager = new VsCodeWebManager({
+      allocatePort: async () => 43118,
+      createDataRoot: async () => TEST_DATA_ROOT,
+      findCommand: async (candidate) =>
+        candidate === "code-server" ? "/usr/bin/code-server" : null,
+      spawnProcess: (_command, args) => {
+        launches.push({ args });
+        return child as never;
+      },
+      waitForUrlReady: async () => {},
+      writeFile: async () => {},
+    });
+
+    await manager.ensureSession(buildSession("session-1"));
+
+    assert.deepEqual(launches[0]?.args.slice(9, 11), [
+      "--extensions-dir",
+      "/tmp/shared-vscode-extensions",
+    ]);
+
+    await manager.dispose();
+  } finally {
+    if (previousExtensionsDir === undefined) {
+      delete process.env.VSCODE_WEB_EXTENSIONS_DIR;
+    } else {
+      process.env.VSCODE_WEB_EXTENSIONS_DIR = previousExtensionsDir;
+    }
+  }
+});
+
+test("ensureSession strips inherited VS Code IPC hooks before spawning", async () => {
+  const child = new FakeChildProcess();
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  const previousIpcHook = process.env.VSCODE_IPC_HOOK_CLI;
+  process.env.VSCODE_IPC_HOOK_CLI = "/tmp/vscode-ipc-hook.sock";
+
+  try {
+    const manager = new VsCodeWebManager({
+      allocatePort: async () => 43119,
+      createDataRoot: async () => TEST_DATA_ROOT,
+      findCommand: async (candidate) =>
+        candidate === "code-server" ? "/usr/bin/code-server" : null,
+      resolveExtensionsDir: resolveTestExtensionsDir,
+      spawnProcess: (_command, _args, options) => {
+        spawnedEnv = options.env;
+        return child as never;
+      },
+      waitForUrlReady: async () => {},
+      writeFile: async () => {},
+    });
+
+    await manager.ensureSession(buildSession("session-1"));
+
+    assert.equal(spawnedEnv?.VSCODE_IPC_HOOK_CLI, undefined);
+
+    await manager.dispose();
+  } finally {
+    if (previousIpcHook === undefined) {
+      delete process.env.VSCODE_IPC_HOOK_CLI;
+    } else {
+      process.env.VSCODE_IPC_HOOK_CLI = previousIpcHook;
+    }
+  }
 });
