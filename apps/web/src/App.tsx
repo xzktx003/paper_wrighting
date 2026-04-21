@@ -26,9 +26,9 @@ import type { SelectedHost } from "./components/HostDropdown";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { QuickTmuxConnect } from "./components/QuickTmuxConnect";
 import { TopBar } from "./components/TopBar";
+import { VSCodeDrawer } from "./components/VSCodeDrawer";
 import {
   addDiscoveredTmux,
-  createWindowCaptureSession,
   deleteAgentSession,
   focusAgentSession,
   getSshHosts,
@@ -38,7 +38,6 @@ import {
   launchSshPtyAgent,
   listAgentSessions,
   reconnectAgentSession,
-  sendObserveState,
   subscribeAgentSessions,
   unhideAgentSession,
   updateAgentSession,
@@ -54,16 +53,10 @@ import {
   buildRemoteDirectLaunchCommand,
   wrapRemoteInteractiveCommand,
 } from "./lib/session-matching";
-import {
-  createWindowCaptureActivityProbe,
-  getWindowCaptureAvailability,
-  requestWindowCapture,
-  stopCapture,
-  type CaptureActivityProbe,
-} from "./lib/window-capture";
 import "./app.css";
 
 type ViewMode = "grid" | "focus";
+type SidePanelTool = "files" | "vscode";
 
 const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
 
@@ -72,7 +65,7 @@ interface FileBrowserUiState {
 }
 
 interface FileBrowserSessionState {
-  open: boolean;
+  activeTool: SidePanelTool | null;
   selectedHost: SelectedHost;
 }
 
@@ -116,6 +109,16 @@ function buildFileBrowserDefaultHost(
   };
 }
 
+function buildDefaultSidePanelState(
+  session: AgentSessionRecord,
+  sshHosts: SshHostPreset[],
+): FileBrowserSessionState {
+  return {
+    activeTool: null,
+    selectedHost: buildFileBrowserDefaultHost(session, sshHosts),
+  };
+}
+
 function loadFileBrowserUiState(): FileBrowserUiState {
   try {
     const raw = localStorage.getItem(FILE_BROWSER_UI_STORAGE_KEY);
@@ -145,13 +148,6 @@ function saveFileBrowserUiState(state: FileBrowserUiState) {
   } catch {
     // ignore storage failures
   }
-}
-
-interface CaptureEntry {
-  stream: MediaStream;
-  observeToken: string;
-  label: string;
-  activityProbe: CaptureActivityProbe;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -194,92 +190,17 @@ export default function App() {
     host: SelectedHost;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [windowCaptureNotice, setWindowCaptureNotice] = useState<string | null>(
-    null,
-  );
   const [filters, setFilters] = useState<FilterState>({
     host: null,
     kind: null,
     transport: null,
     dirQuery: "",
   });
-  const [windowCaptureAvailability] = useState(() =>
-    getWindowCaptureAvailability(),
-  );
   const mainLayoutRef = useRef<HTMLDivElement | null>(null);
   const fileBrowserResizeRef = useRef<{
     startX: number;
     startWidth: number;
   } | null>(null);
-
-  // Window capture local store
-  const captureStoreRef = useRef<Map<string, CaptureEntry>>(new Map());
-  const [captureStoreVersion, setCaptureStoreVersion] = useState(0);
-  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const captureHeartbeatPrimeTimersRef = useRef<Map<string, number>>(new Map());
-
-  function getCaptureStore(): Map<string, CaptureEntry> {
-    return captureStoreRef.current;
-  }
-
-  function bumpCaptureVersion() {
-    setCaptureStoreVersion((v) => v + 1);
-  }
-
-  const sendCaptureHeartbeat = useCallback(
-    (sessionId: string, entry: CaptureEntry) => {
-      const screenSignature = entry.activityProbe.readScreenSignature();
-
-      return sendObserveState(sessionId, {
-        kind: "heartbeat",
-        observeToken: entry.observeToken,
-        ...(screenSignature ? { screenSignature } : {}),
-      });
-    },
-    [],
-  );
-
-  function clearCaptureHeartbeatPrime(sessionId: string) {
-    const timeoutId = captureHeartbeatPrimeTimersRef.current.get(sessionId);
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
-      captureHeartbeatPrimeTimersRef.current.delete(sessionId);
-    }
-  }
-
-  const primeCaptureHeartbeat = useCallback(
-    (sessionId: string, remainingAttempts = 20) => {
-      clearCaptureHeartbeatPrime(sessionId);
-
-      const entry = getCaptureStore().get(sessionId);
-      if (!entry) {
-        return;
-      }
-
-      const screenSignature = entry.activityProbe.readScreenSignature();
-      if (screenSignature) {
-        sendObserveState(sessionId, {
-          kind: "heartbeat",
-          observeToken: entry.observeToken,
-          screenSignature,
-        }).catch(() => {});
-        return;
-      }
-
-      if (remainingAttempts <= 0) {
-        sendCaptureHeartbeat(sessionId, entry).catch(() => {});
-        return;
-      }
-
-      const timeoutId = window.setTimeout(() => {
-        primeCaptureHeartbeat(sessionId, remainingAttempts - 1);
-      }, 500);
-      captureHeartbeatPrimeTimersRef.current.set(sessionId, timeoutId);
-    },
-    [sendCaptureHeartbeat],
-  );
 
   useEffect(() => {
     listAgentSessions()
@@ -300,14 +221,6 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (!windowCaptureAvailability.supported) {
-      setWindowCaptureNotice(
-        windowCaptureAvailability.reason ?? "当前浏览器环境不支持窗口共享。",
-      );
-    }
-  }, [windowCaptureAvailability]);
 
   useEffect(() => {
     saveFileBrowserUiState(fileBrowserUiState);
@@ -363,119 +276,6 @@ export default function App() {
       return Object.fromEntries(nextEntries);
     });
   }, [sessions]);
-
-  // Heartbeat effect for active captures
-  useEffect(() => {
-    heartbeatIntervalRef.current = setInterval(() => {
-      const store = getCaptureStore();
-      for (const [sessionId, entry] of store) {
-        sendCaptureHeartbeat(sessionId, entry).catch(() => {});
-      }
-    }, 3_000);
-
-    return () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-      }
-    };
-  }, [sendCaptureHeartbeat]);
-
-  // Cleanup captures on unmount
-  useEffect(() => {
-    return () => {
-      const store = getCaptureStore();
-      for (const timeoutId of captureHeartbeatPrimeTimersRef.current.values()) {
-        window.clearTimeout(timeoutId);
-      }
-      captureHeartbeatPrimeTimersRef.current.clear();
-      for (const [, entry] of store) {
-        entry.activityProbe.dispose();
-        stopCapture(entry.stream);
-      }
-    };
-  }, []);
-
-  const handleAddWindowCapture = useCallback(async () => {
-    if (!windowCaptureAvailability.supported) {
-      setWindowCaptureNotice(
-        windowCaptureAvailability.reason ?? "当前浏览器环境不支持窗口共享。",
-      );
-      return;
-    }
-
-    setWindowCaptureNotice(null);
-    const result = await requestWindowCapture();
-    if (!result) return;
-
-    try {
-      const { agentSession, observeToken } = await createWindowCaptureSession({
-        suggestedDisplayName: result.label,
-        windowCaptureMeta: { rawLabel: result.label },
-      });
-
-      const activityProbe = createWindowCaptureActivityProbe(result.stream);
-
-      const entry: CaptureEntry = {
-        stream: result.stream,
-        observeToken,
-        label: result.label,
-        activityProbe,
-      };
-
-      getCaptureStore().set(agentSession.id, entry);
-      bumpCaptureVersion();
-      primeCaptureHeartbeat(agentSession.id);
-
-      // Listen for track ended
-      const track = result.stream.getVideoTracks()[0];
-      if (track) {
-        track.onended = () => {
-          clearCaptureHeartbeatPrime(agentSession.id);
-          entry.activityProbe.dispose();
-          sendObserveState(agentSession.id, {
-            kind: "transition",
-            observeToken,
-            connectionState: "offline",
-            interactionState: "exited",
-            stateConfidence: "high",
-            outputPreview: "窗口共享已结束",
-          }).catch(() => {});
-          getCaptureStore().delete(agentSession.id);
-          bumpCaptureVersion();
-        };
-      }
-
-      listAgentSessions()
-        .then(setSnapshot)
-        .catch(() => {});
-    } catch {
-      stopCapture(result.stream);
-      setWindowCaptureNotice("VS Code 窗口观察启动失败，请重试。");
-    }
-  }, [windowCaptureAvailability]);
-
-  const handleStopCapture = useCallback(async (sessionId: string) => {
-    const store = getCaptureStore();
-    const entry = store.get(sessionId);
-    if (entry) {
-      clearCaptureHeartbeatPrime(sessionId);
-      entry.activityProbe.dispose();
-      stopCapture(entry.stream);
-      await sendObserveState(sessionId, {
-        kind: "transition",
-        observeToken: entry.observeToken,
-        connectionState: "offline",
-        interactionState: "exited",
-        stateConfidence: "high",
-        outputPreview: "观察已停止",
-      }).catch(() => {});
-      store.delete(sessionId);
-      bumpCaptureVersion();
-    }
-    listAgentSessions()
-      .then(setSnapshot)
-      .catch(() => {});
-  }, []);
 
   const filteredSessions = visibleSessions.filter((s) => {
     if (filters.host && (s.hostId ?? "local") !== filters.host) return false;
@@ -593,13 +393,7 @@ export default function App() {
         return;
       }
 
-      const promptMessage =
-        session.sourceType === "local-window-capture" &&
-        session.windowCaptureMeta?.rawLabel
-          ? `输入新的会话名称\n原始标签：${session.windowCaptureMeta.rawLabel}`
-          : "输入新的会话名称";
-
-      const nextName = window.prompt(promptMessage, session.displayName);
+      const nextName = window.prompt("输入新的会话名称", session.displayName);
       if (nextName === null) {
         return;
       }
@@ -625,29 +419,25 @@ export default function App() {
   const focusedSession: AgentSessionRecord | undefined = focusedId
     ? sessions.find((s) => s.id === focusedId)
     : undefined;
-  const focusedFileBrowserState = useMemo(() => {
+  const focusedSidePanelState = useMemo(() => {
     if (!focusedSession) {
       return null;
     }
 
     return (
-      fileBrowserSessionStates[focusedSession.id] ?? {
-        open: false,
-        selectedHost: buildFileBrowserDefaultHost(focusedSession, sshHosts),
-      }
+      fileBrowserSessionStates[focusedSession.id] ??
+      buildDefaultSidePanelState(focusedSession, sshHosts)
     );
   }, [fileBrowserSessionStates, focusedSession, sshHosts]);
-  const fileBrowserAvailable = viewMode === "focus" && Boolean(focusedSession);
+  const panelAvailable = viewMode === "focus" && Boolean(focusedSession);
+  const fileBrowserAvailable = panelAvailable;
+  const vscodeAvailable =
+    panelAvailable && Boolean(focusedSession) && !focusedSession?.sshTarget;
   const fileBrowserOpen =
-    fileBrowserAvailable && Boolean(focusedFileBrowserState?.open);
-
-  const getCaptureStreamForSession = useCallback(
-    (id: string): MediaStream | null => {
-      return getCaptureStore().get(id)?.stream ?? null;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [captureStoreVersion],
-  );
+    panelAvailable && focusedSidePanelState?.activeTool === "files";
+  const vscodeOpen =
+    panelAvailable && focusedSidePanelState?.activeTool === "vscode";
+  const sidePanelOpen = fileBrowserOpen || vscodeOpen;
 
   const layoutMode = deriveLayoutMode({
     ...layoutState,
@@ -802,6 +592,8 @@ export default function App() {
         sshHosts={sshHosts}
         fileBrowserAvailable={fileBrowserAvailable}
         fileBrowserOpen={fileBrowserOpen}
+        vscodeAvailable={vscodeAvailable}
+        vscodeOpen={vscodeOpen}
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
         }
@@ -811,20 +603,36 @@ export default function App() {
           }
 
           setFileBrowserSessionStates((current) => {
-            const existing = current[focusedSession.id] ??
-              focusedFileBrowserState ?? {
-                open: false,
-                selectedHost: buildFileBrowserDefaultHost(
-                  focusedSession,
-                  sshHosts,
-                ),
-              };
+            const existing =
+              current[focusedSession.id] ??
+              focusedSidePanelState ??
+              buildDefaultSidePanelState(focusedSession, sshHosts);
 
             return {
               ...current,
               [focusedSession.id]: {
                 ...existing,
-                open: !existing.open,
+                activeTool: existing.activeTool === "files" ? null : "files",
+              },
+            };
+          });
+        }}
+        onToggleVsCode={() => {
+          if (!focusedSession || !vscodeAvailable) {
+            return;
+          }
+
+          setFileBrowserSessionStates((current) => {
+            const existing =
+              current[focusedSession.id] ??
+              focusedSidePanelState ??
+              buildDefaultSidePanelState(focusedSession, sshHosts);
+
+            return {
+              ...current,
+              [focusedSession.id]: {
+                ...existing,
+                activeTool: existing.activeTool === "vscode" ? null : "vscode",
               },
             };
           });
@@ -833,53 +641,52 @@ export default function App() {
         onScanTmux={handleScanTmux}
         onScanApps={handleScanApps}
         onOpenQuickTmuxConnect={() => setQuickTmuxOpen(true)}
-        onAddWindowCapture={handleAddWindowCapture}
-        windowCaptureSupported={windowCaptureAvailability.supported}
-        windowCaptureReason={windowCaptureAvailability.reason}
       />
 
-      {windowCaptureNotice && (
-        <div className="app-notice app-notice-warning" role="status">
-          {windowCaptureNotice}
-        </div>
-      )}
-
       <div className="main-layout" ref={mainLayoutRef}>
-        {fileBrowserOpen && focusedSession && focusedFileBrowserState && (
+        {sidePanelOpen && focusedSession && focusedSidePanelState && (
           <>
             <div
               className="file-browser-shell"
               style={{ width: `${fileBrowserUiState.width}px` }}
             >
-              <FileBrowserDrawer
-                key={focusedSession.id}
-                open={fileBrowserOpen}
-                scopeKey={focusedSession.id}
-                defaultPath={
-                  focusedSession.sshTarget
-                    ? undefined
-                    : focusedSession.workingDirectory
-                }
-                selectedHost={focusedFileBrowserState.selectedHost}
-                onSelectHost={(host) => {
-                  setFileBrowserSessionStates((current) => {
-                    const existing =
-                      current[focusedSession.id] ?? focusedFileBrowserState;
-                    if (!existing) {
-                      return current;
-                    }
+              {fileBrowserOpen ? (
+                <FileBrowserDrawer
+                  key={focusedSession.id}
+                  open={fileBrowserOpen}
+                  scopeKey={focusedSession.id}
+                  defaultPath={
+                    focusedSession.sshTarget
+                      ? undefined
+                      : focusedSession.workingDirectory
+                  }
+                  selectedHost={focusedSidePanelState.selectedHost}
+                  onSelectHost={(host) => {
+                    setFileBrowserSessionStates((current) => {
+                      const existing =
+                        current[focusedSession.id] ?? focusedSidePanelState;
+                      if (!existing) {
+                        return current;
+                      }
 
-                    return {
-                      ...current,
-                      [focusedSession.id]: {
-                        ...existing,
-                        selectedHost: host,
-                      },
-                    };
-                  });
-                }}
-                sshHosts={sshHosts}
-              />
+                      return {
+                        ...current,
+                        [focusedSession.id]: {
+                          ...existing,
+                          selectedHost: host,
+                        },
+                      };
+                    });
+                  }}
+                  sshHosts={sshHosts}
+                />
+              ) : (
+                <VSCodeDrawer
+                  agentSessionId={focusedSession.id}
+                  displayName={focusedSession.displayName}
+                  open={vscodeOpen}
+                />
+              )}
             </div>
             <div
               className="main-layout-splitter"
@@ -902,9 +709,6 @@ export default function App() {
               onExit={handleExitFocus}
               onReconnect={handleReconnectSession}
               onRename={handleRenameSession}
-              captureStream={getCaptureStreamForSession(focusedSession.id)}
-              onStopCapture={handleStopCapture}
-              getCaptureStream={getCaptureStreamForSession}
             />
           ) : (
             <AgentGrid
@@ -919,8 +723,6 @@ export default function App() {
               onHideSession={handleHideSession}
               onCopyConnectCommand={handleCopyConnectCommand}
               onKillTmux={handleKillTmux}
-              getCaptureStream={getCaptureStreamForSession}
-              onStopCapture={handleStopCapture}
               hiddenCount={hiddenSessions.length}
               onShowHidden={() => setShowHiddenDrawer(true)}
             />

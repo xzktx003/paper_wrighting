@@ -11,15 +11,16 @@ import { AgentSessionRegistry } from "./services/agent-session-registry.js";
 import { LocalFsService } from "./services/local-fs-service.js";
 import { LocalProcessRuntimeManager } from "./services/local-process-runtime-manager.js";
 import { LocalTmuxAdapter } from "./services/local-tmux-adapter.js";
-import { ObserveSessionManager } from "./services/observe-session-manager.js";
 import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
 import { SftpService } from "./services/sftp-service.js";
 import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
 import { stripTerminalResponsePayload } from "./services/terminal-control-filter.js";
+import { VsCodeWebManager } from "./services/vscode-web-manager.js";
 
 interface BuildServerOptions {
   localFsService?: LocalFsService;
   sftpService?: SftpService;
+  vsCodeWebManager?: VsCodeWebManager;
 }
 
 export function buildServer(): {
@@ -40,9 +41,9 @@ export function buildServer(options: BuildServerOptions = {}): {
   const tmuxAdapter = new LocalTmuxAdapter(registry);
   const sshRuntimeManager = new SshRuntimeManager(registry);
   const ptyRuntimeManager = new PtyRuntimeManager(registry);
-  const observeSessionManager = new ObserveSessionManager(registry);
   const localFsService = options.localFsService ?? new LocalFsService();
   const sftpService = options.sftpService ?? new SftpService();
+  const vsCodeWebManager = options.vsCodeWebManager ?? new VsCodeWebManager();
 
   app.register(cors, {
     origin: true,
@@ -57,7 +58,7 @@ export function buildServer(options: BuildServerOptions = {}): {
       tmuxAdapter,
       sshRuntimeManager,
       ptyRuntimeManager,
-      observeSessionManager,
+      vsCodeWebManager,
     });
 
     await registerSshHostsRoutes(instance);
@@ -191,13 +192,8 @@ export function buildServer(options: BuildServerOptions = {}): {
     );
   });
 
-  // Sweep expired window-capture sessions every 5 seconds
-  const sweepInterval = setInterval(() => {
-    observeSessionManager.sweepExpiredSessions();
-  }, 5_000);
-
   app.addHook("onClose", () => {
-    clearInterval(sweepInterval);
+    return vsCodeWebManager.dispose();
   });
 
   return { app, registry };

@@ -13,15 +13,15 @@ interface TopBarProps {
   sshHosts: SshHostPreset[];
   fileBrowserAvailable: boolean;
   fileBrowserOpen: boolean;
+  vscodeAvailable: boolean;
+  vscodeOpen: boolean;
   onToggleCollapsed: () => void;
   onToggleFileBrowser: () => void;
+  onToggleVsCode: () => void;
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
   onOpenQuickTmuxConnect: () => void;
-  onAddWindowCapture: () => void;
-  windowCaptureSupported: boolean;
-  windowCaptureReason?: string | null;
 }
 
 export function TopBar({
@@ -30,15 +30,15 @@ export function TopBar({
   sshHosts,
   fileBrowserAvailable,
   fileBrowserOpen,
+  vscodeAvailable,
+  vscodeOpen,
   onToggleCollapsed,
   onToggleFileBrowser,
+  onToggleVsCode,
   onOpenNewSession,
   onScanTmux,
   onScanApps,
   onOpenQuickTmuxConnect,
-  onAddWindowCapture,
-  windowCaptureSupported,
-  windowCaptureReason,
 }: TopBarProps) {
   const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
   const runningCount = sessions.filter(
@@ -81,6 +81,20 @@ export function TopBar({
         >
           📁 文件
         </button>
+        <button
+          className={`top-bar-action${vscodeOpen ? " top-bar-action--active" : ""}`}
+          data-testid="vscode-toggle"
+          disabled={!vscodeAvailable}
+          onClick={onToggleVsCode}
+          title={
+            vscodeAvailable
+              ? "打开当前终端的 VS Code Web"
+              : "仅在本地终端聚焦态可用"
+          }
+          type="button"
+        >
+          <span>VS Code</span>
+        </button>
       </div>
       <div className="top-bar-stats">
         <HostDropdown
@@ -100,21 +114,6 @@ export function TopBar({
           onSelectHost={onScanApps}
           triggerLabel="扫描会话"
         />
-        <button
-          className="top-bar-action"
-          onClick={onAddWindowCapture}
-          disabled={!windowCaptureSupported}
-          title={
-            windowCaptureSupported
-              ? "选择一个要观察的 VS Code 窗口"
-              : (windowCaptureReason ?? "当前浏览器环境不支持窗口共享")
-          }
-        >
-          添加 VS Code 窗口
-          {!windowCaptureSupported && (
-            <span className="top-bar-shortcut">当前不可用</span>
-          )}
-        </button>
         <button className="top-bar-action" onClick={onOpenQuickTmuxConnect}>
           快速连接 tmux
           <span className="top-bar-shortcut">{quickTmuxShortcutLabel}</span>

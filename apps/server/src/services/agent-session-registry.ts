@@ -148,7 +148,6 @@ export class AgentSessionRegistry {
       agentSessionId: input.agentSessionId,
       sshTarget: input.sshTarget,
       remoteCommand: input.remoteCommand,
-      windowCaptureMeta: input.windowCaptureMeta,
     };
 
     this.sessions.set(agentSession.id, agentSession);
@@ -329,9 +328,7 @@ export class AgentSessionRegistry {
     }
 
     const lastChangedAt = this.lastScreenChangedAt.get(agentSessionId) ?? nowMs;
-    const shouldInferFromStableScreen =
-      agentSession.sourceType === "local-window-capture" ||
-      agentSession.controlMode !== "observe";
+    const shouldInferFromStableScreen = agentSession.controlMode !== "observe";
     const hasBeenStableLongEnough =
       nowMs - lastChangedAt >= this.awaitingInputIdleMs;
 
@@ -464,8 +461,7 @@ export class AgentSessionRegistry {
   ): boolean {
     return (
       agentSession.connectionState === "online" &&
-      agentSession.sourceType !== "remote-tmux-discovered" &&
-      agentSession.sourceType !== "local-window-capture"
+      agentSession.sourceType !== "remote-tmux-discovered"
     );
   }
 

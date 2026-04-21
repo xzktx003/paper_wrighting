@@ -106,19 +106,19 @@ test("identical redraws do not reorder sessions in the board", async () => {
 test("heartbeat updates do not reorder sessions without new output", () => {
   const registry = new AgentSessionRegistry(60);
   const first = registry.register({
-    workspaceId: "capture",
+    workspaceId: "default",
     hostId: "local",
-    sourceType: "local-window-capture",
-    agentKind: "vscode",
-    displayName: "Window 1",
+    sourceType: "local",
+    agentKind: "shell",
+    displayName: "Session 1",
     interactionState: "running",
   });
   const second = registry.register({
-    workspaceId: "capture",
+    workspaceId: "default",
     hostId: "local",
-    sourceType: "local-window-capture",
-    agentKind: "vscode",
-    displayName: "Window 2",
+    sourceType: "local",
+    agentKind: "shell",
+    displayName: "Session 2",
     interactionState: "running",
   });
 
@@ -151,26 +151,4 @@ test("tmux observe-only sessions stay detached even when screen is unchanged", a
 
   assert.equal(updated.interactionState, "detached");
   assert.equal(updated.stateConfidence, "high");
-});
-
-test("local-window-capture sessions enter awaiting_input after the captured screen stays unchanged", async () => {
-  const registry = new AgentSessionRegistry(20);
-  const session = registry.register({
-    workspaceId: "local-vscode-window-observe",
-    hostId: "local",
-    sourceType: "local-window-capture",
-    agentKind: "vscode",
-    displayName: "VS Code 窗口 1",
-    controlMode: "observe",
-    interactionState: "running",
-  });
-
-  assert.equal(session.interactionState, "running");
-
-  registry.syncCapturedScreen(session.id, "stable frame");
-  await wait(60);
-
-  const updated = registry.syncCapturedScreen(session.id, "stable frame");
-  assert.equal(updated.interactionState, "awaiting_input");
-  assert.equal(updated.stateConfidence, "medium");
 });

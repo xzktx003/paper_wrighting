@@ -1,9 +1,7 @@
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
-import { getWindowCaptureDisplay } from "../lib/window-capture-label";
 import { CardMoreMenu } from "./CardMoreMenu";
 import { TerminalView } from "./TerminalView";
-import { WindowCapturePreview } from "./WindowCapturePreview";
 
 interface AgentGridCardProps {
   session: AgentSessionRecord;
@@ -14,8 +12,6 @@ interface AgentGridCardProps {
   onHide?: (id: string) => void;
   onCopyConnectCommand?: (id: string) => void;
   onKillTmux?: (id: string) => void;
-  captureStream?: MediaStream | null;
-  onStopCapture?: (id: string) => void;
   terminalSuspended?: boolean;
 }
 
@@ -62,8 +58,6 @@ export function AgentGridCard({
   onHide,
   onCopyConnectCommand,
   onKillTmux,
-  captureStream,
-  onStopCapture,
   terminalSuspended = false,
 }: AgentGridCardProps) {
   const stateClass = stateColors[session.interactionState] ?? "";
@@ -71,34 +65,19 @@ export function AgentGridCard({
     stateLabels[session.interactionState] ?? session.interactionState;
   const isTmux = session.sourceType === "remote-tmux-discovered";
   const isTmuxManaged = Boolean(session.transportRef?.tmuxSession);
-  const isWindowCapture = session.sourceType === "local-window-capture";
   const isExited = session.interactionState === "exited";
-  const isDetached = session.interactionState === "detached";
-  const canReconnect = isExited && !isTmux && !isWindowCapture;
-  const canStopCapture =
-    isWindowCapture && !isExited && !isDetached && Boolean(captureStream);
-
-  const captureDisplay = isWindowCapture
-    ? getWindowCaptureDisplay(
-        session.displayName,
-        session.windowCaptureMeta?.rawLabel,
-      )
-    : null;
+  const canReconnect = isExited && !isTmux;
 
   function getCloseTitle(): string {
     if (isTmux || isTmuxManaged) {
       return isExited ? "清除记录" : "脱离会话";
-    }
-    if (isWindowCapture) {
-      return isExited || isDetached ? "清除记录" : "停止观察";
     }
     return isExited ? "清除记录" : "关闭会话";
   }
 
   function handleClose(e: React.MouseEvent) {
     e.stopPropagation();
-    const needsConfirm =
-      !isTmux && !isTmuxManaged && !isWindowCapture && !isExited;
+    const needsConfirm = !isTmux && !isTmuxManaged && !isExited;
     if (needsConfirm && !window.confirm("会话仍在运行中，确定关闭？")) {
       return;
     }
@@ -117,12 +96,7 @@ export function AgentGridCard({
     >
       <div className="grid-card-header">
         <div className="grid-card-title-group">
-          <span className="grid-card-name">
-            {captureDisplay ? captureDisplay.title : session.displayName}
-          </span>
-          {captureDisplay?.appName && (
-            <span className="grid-card-app-name">{captureDisplay.appName}</span>
-          )}
+          <span className="grid-card-name">{session.displayName}</span>
         </div>
         <div className="grid-card-header-actions">
           <button
@@ -185,33 +159,14 @@ export function AgentGridCard({
         </div>
       </div>
       <div className="grid-card-terminal">
-        {isWindowCapture ? (
-          <WindowCapturePreview
-            stream={captureStream ?? null}
-            interactionState={session.interactionState}
-            connectionState={session.connectionState}
-          />
-        ) : (
-          <TerminalView
-            agentSessionId={session.id}
-            interactive={false}
-            suspended={terminalSuspended}
-          />
-        )}
+        <TerminalView
+          agentSessionId={session.id}
+          interactive={false}
+          suspended={terminalSuspended}
+        />
         {canReconnect && (
           <button className="grid-card-reconnect" onClick={handleReconnect}>
             🔄 重新连接
-          </button>
-        )}
-        {canStopCapture && (
-          <button
-            className="grid-card-reconnect"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStopCapture?.(session.id);
-            }}
-          >
-            ⏹ 停止观察
           </button>
         )}
       </div>

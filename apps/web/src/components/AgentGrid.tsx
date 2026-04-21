@@ -15,8 +15,6 @@ interface AgentGridProps {
   onHideSession?: (id: string) => void;
   onCopyConnectCommand?: (id: string) => void;
   onKillTmux?: (id: string) => void;
-  getCaptureStream?: (id: string) => MediaStream | null;
-  onStopCapture?: (id: string) => void;
   suspendedSessionId?: string | null;
   hiddenCount?: number;
   onShowHidden?: () => void;
@@ -34,8 +32,6 @@ export function AgentGrid({
   onHideSession,
   onCopyConnectCommand,
   onKillTmux,
-  getCaptureStream,
-  onStopCapture,
   suspendedSessionId,
   hiddenCount = 0,
   onShowHidden,
@@ -80,8 +76,6 @@ export function AgentGrid({
               onHide={onHideSession}
               onCopyConnectCommand={onCopyConnectCommand}
               onKillTmux={onKillTmux}
-              captureStream={getCaptureStream?.(session.id)}
-              onStopCapture={onStopCapture}
               terminalSuspended={session.id === suspendedSessionId}
             />
           ))}

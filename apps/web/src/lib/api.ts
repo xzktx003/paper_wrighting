@@ -4,8 +4,6 @@ import type {
   AgentSessionSnapshotEvent,
   AgentSessionRecord,
   ChmodInput,
-  CreateWindowCaptureSessionInput,
-  CreateWindowCaptureSessionResponse,
   DirectorySuggestionsInput,
   DirectorySuggestionsResponse,
   DiscoverTmuxInput,
@@ -21,7 +19,7 @@ import type {
   LaunchRemoteAgentInput,
   LaunchSshPtyInput,
   ListAgentSessionsResponse,
-  ObserveStateInput,
+  OpenVsCodeWebResponse,
   RegisterAgentSessionInput,
   ScanDirectoryInput,
   ScanDirectoryResponse,
@@ -74,6 +72,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+
+    try {
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as { error?: string };
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+      } else {
+        const text = (await response.text()).trim();
+        if (text) {
+          throw new Error(text);
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+    }
+
     throw new Error(`Request failed: ${response.status}`);
   }
 
@@ -401,36 +419,11 @@ export function reconnectAgentSession(
   );
 }
 
-export function createWindowCaptureSession(
-  input: CreateWindowCaptureSessionInput = {},
-): Promise<CreateWindowCaptureSessionResponse> {
-  return request<CreateWindowCaptureSessionResponse>(
-    "/api/agent-sessions/window-capture",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export function sendObserveState(
+export function openVsCodeWeb(
   agentSessionId: string,
-  input: ObserveStateInput,
-): Promise<AgentSessionRecord> {
-  return request<AgentSessionRecord>(
-    `/api/agent-sessions/${agentSessionId}/observe-state`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export function focusAgentWindow(
-  agentSessionId: string,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(
-    `/api/agent-sessions/${agentSessionId}/focus-window`,
+): Promise<OpenVsCodeWebResponse> {
+  return request<OpenVsCodeWebResponse>(
+    `/api/agent-sessions/${agentSessionId}/vscode-web`,
     { method: "POST" },
   );
 }

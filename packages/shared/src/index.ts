@@ -1,8 +1,7 @@
 export type AgentSourceType =
   | "local"
   | "remote-connect"
-  | "remote-tmux-discovered"
-  | "local-window-capture";
+  | "remote-tmux-discovered";
 
 export type ConnectionState = "online" | "degraded" | "offline";
 
@@ -68,7 +67,6 @@ export interface AgentSessionRecord {
   agentSessionId?: string;
   sshTarget?: SshTarget;
   remoteCommand?: string;
-  windowCaptureMeta?: WindowCaptureMeta;
   hidden?: boolean;
 }
 
@@ -106,7 +104,6 @@ export interface RegisterAgentSessionInput {
   agentSessionId?: string;
   sshTarget?: SshTarget;
   remoteCommand?: string;
-  windowCaptureMeta?: WindowCaptureMeta;
 }
 
 export interface FocusAgentSessionInput {
@@ -244,41 +241,14 @@ export interface KillTmuxSessionInput {
   sshTarget?: SshTarget;
 }
 
-// --- Window Capture DTOs ---
+export type VsCodeWebProvider = "code-server" | "openvscode-server";
 
-export interface WindowCaptureMeta {
-  rawLabel: string;
+export interface OpenVsCodeWebResponse {
+  provider: VsCodeWebProvider;
+  url: string;
+  reused: boolean;
+  workingDirectory: string;
 }
-
-export interface CreateWindowCaptureSessionInput {
-  suggestedDisplayName?: string;
-  windowCaptureMeta?: WindowCaptureMeta;
-}
-
-export interface CreateWindowCaptureSessionResponse {
-  agentSession: AgentSessionRecord;
-  observeToken: string;
-}
-
-export interface ObserveStateHeartbeatInput {
-  kind: "heartbeat";
-  observeToken: string;
-  outputPreview?: string;
-  screenSignature?: string;
-}
-
-export interface ObserveStateTransitionInput {
-  kind: "transition";
-  observeToken: string;
-  connectionState: ConnectionState;
-  interactionState: InteractionState;
-  stateConfidence: StateConfidence;
-  outputPreview?: string;
-}
-
-export type ObserveStateInput =
-  | ObserveStateHeartbeatInput
-  | ObserveStateTransitionInput;
 
 export type FileEntryType = "file" | "directory" | "symlink";
 

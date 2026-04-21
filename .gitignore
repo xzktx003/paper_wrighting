@@ -11,4 +11,7 @@ apps/web/.turbo
 vibe-kanban
 ./vibe-kanban
 .playwright
+.playwright-deps/
+.codex/
+apps/server/.codex/
 .omx/
