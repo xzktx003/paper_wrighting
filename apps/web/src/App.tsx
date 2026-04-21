@@ -15,7 +15,6 @@ import type {
 
 import { AgentFocusView } from "./components/AgentFocusView";
 import { AgentGrid } from "./components/AgentGrid";
-import { BottomBar } from "./components/BottomBar";
 import type { DiscoveryMode } from "./components/DiscoveryDialog";
 import { DiscoveryDialog } from "./components/DiscoveryDialog";
 import type { AddToGridItem } from "./components/DiscoveryDialog";
@@ -994,8 +993,6 @@ export default function App() {
           )}
         </div>
       </div>
-
-      <BottomBar />
 
       <NewSessionDialog
         open={Boolean(newSessionHost)}

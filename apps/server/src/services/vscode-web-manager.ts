@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, networkInterfaces } from "node:os";
@@ -64,6 +65,7 @@ interface EnsureVsCodeWebSessionOptions {
 }
 
 interface DataRootPaths {
+  configFile: string;
   extensionsDir: string;
   root: string;
   userDataDir: string;
@@ -93,6 +95,24 @@ function buildEditorUrl(
   url.searchParams.set("workspace", workspacePath);
   url.searchParams.set("folder", workingDirectory);
   return url.toString();
+}
+
+function buildStableWorkspaceFileName(workingDirectory: string): string {
+  const normalized = workingDirectory.trim() || homedir();
+  const digest = createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 16);
+  const basename =
+    normalized
+      .split("/")
+      .filter(Boolean)
+      .at(-1)
+      ?.replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "workspace";
+
+  return `${basename}-${digest}.code-workspace`;
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -303,6 +323,7 @@ function buildLaunchArgs(
   provider: VsCodeWebProvider,
   bindHost: string,
   port: number,
+  configFile: string,
   userDataDir: string,
   extensionsDir: string,
 ): string[] {
@@ -313,6 +334,8 @@ function buildLaunchArgs(
       "--bind-addr",
       `${bindHost}:${port}`,
       "--disable-update-check",
+      "--config",
+      configFile,
       "--user-data-dir",
       userDataDir,
       "--extensions-dir",
@@ -392,14 +415,27 @@ export class VsCodeWebManager {
       this.dataRootPathsPromise = this.createDataRoot().then(async (root) => {
         const paths = {
           root,
+          configFile: join(root, "config.yaml"),
           userDataDir: join(root, "user-data"),
           extensionsDir: join(root, "extensions"),
           workspacesDir: join(root, "workspaces"),
         };
 
+        await mkdir(root, { recursive: true });
         await mkdir(paths.userDataDir, { recursive: true });
         await mkdir(paths.extensionsDir, { recursive: true });
         await mkdir(paths.workspacesDir, { recursive: true });
+        if (!existsSync(paths.configFile)) {
+          await this.writeFile(
+            paths.configFile,
+            [
+              "auth: none",
+              `bind-addr: 0.0.0.0:0`,
+              "disable-update-check: true",
+              "",
+            ].join("\n"),
+          );
+        }
 
         return paths;
       });
@@ -479,6 +515,7 @@ export class VsCodeWebManager {
         providerCommand.provider,
         bindHost,
         port,
+        dataRootPaths.configFile,
         dataRootPaths.userDataDir,
         dataRootPaths.extensionsDir,
       ),
@@ -587,7 +624,7 @@ export class VsCodeWebManager {
     );
     const workspacePath = join(
       dataRootPaths.workspacesDir,
-      `${session.id}.code-workspace`,
+      buildStableWorkspaceFileName(workingDirectory),
     );
 
     await this.writeFile(

@@ -95,29 +95,35 @@ export function VSCodeDrawer({
       className="vscode-drawer"
       {...(active ? { "data-testid": "vscode-web-drawer" } : {})}
     >
-      <div className="vscode-drawer-header">
-        <div>
-          <div className="vscode-drawer-title">VS Code</div>
-          <div className="vscode-drawer-subtitle">{displayName}</div>
-        </div>
+      <div className="vscode-drawer-tools">
         <button
+          aria-label={`重新加载 ${displayName}`}
           className="vscode-drawer-reload"
           onClick={() => setReloadSeed((value) => value + 1)}
+          title={`重新加载 ${displayName}`}
           type="button"
         >
-          重新加载
+          ↻
         </button>
+        {editorState && (
+          <div className="vscode-drawer-badges" aria-label="VS Code Web 状态">
+            <span className="vscode-drawer-badge" title="当前嵌入 VS Code Web">
+              VS Code
+            </span>
+            <span
+              className="vscode-drawer-badge"
+              title="VS Code Web 服务提供方"
+            >
+              {editorState.provider}
+            </span>
+            {editorState.reused && (
+              <span className="vscode-drawer-badge" title="复用已启动的服务">
+                复用
+              </span>
+            )}
+          </div>
+        )}
       </div>
-
-      {editorState && (
-        <div className="vscode-drawer-meta">
-          <span>{editorState.provider}</span>
-          <span className="vscode-drawer-path">
-            {editorState.workingDirectory}
-          </span>
-          {editorState.reused && <span>复用实例</span>}
-        </div>
-      )}
 
       <div className="vscode-drawer-body">
         {loading && (

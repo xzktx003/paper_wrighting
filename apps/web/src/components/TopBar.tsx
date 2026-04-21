@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import type {
   AgentSessionRecord,
   SshHostPreset,
@@ -41,6 +43,9 @@ export function TopBar({
   onOpenQuickTmuxConnect,
 }: TopBarProps) {
   const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
+  const [showHints, setShowHints] = useState(false);
+  const hintsRef = useRef<HTMLDivElement | null>(null);
+  const hintsPopoverId = "operation-hints-popover";
   const runningCount = sessions.filter(
     (s) => s.interactionState === "running",
   ).length;
@@ -49,15 +54,40 @@ export function TopBar({
   ).length;
   const totalCount = sessions.length;
 
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (hintsRef.current && target && !hintsRef.current.contains(target)) {
+        setShowHints(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowHints(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   if (collapsed) {
     return (
       <header className="top-bar top-bar--collapsed">
+        <span className="top-bar-collapsed-title">Coding Kanban</span>
         <button
           className="top-bar-expand-btn"
+          data-testid="top-bar-expand"
           onClick={onToggleCollapsed}
-          title="展开顶栏"
+          title="展开菜单栏"
+          type="button"
         >
-          ▼ 展开
+          ▾ 展开菜单栏
         </button>
       </header>
     );
@@ -96,6 +126,43 @@ export function TopBar({
           <span>VS Code</span>
         </button>
       </div>
+      <div className="top-bar-hints" ref={hintsRef}>
+        <button
+          aria-controls={hintsPopoverId}
+          aria-expanded={showHints}
+          className={`top-bar-action top-bar-action--ghost${showHints ? " top-bar-action--active" : ""}`}
+          data-testid="help-hints-toggle"
+          onClick={() => setShowHints((current) => !current)}
+          type="button"
+        >
+          操作提示
+        </button>
+        {showHints && (
+          <div
+            aria-label="操作提示"
+            className="top-bar-hints-popover"
+            id={hintsPopoverId}
+            role="dialog"
+          >
+            <div className="top-bar-hint-item">
+              <kbd>双击</kbd>
+              <span>卡片放大</span>
+            </div>
+            <div className="top-bar-hint-item">
+              <kbd>Esc</kbd>
+              <span>返回宫格</span>
+            </div>
+            <div className="top-bar-hint-item">
+              <kbd>{quickTmuxShortcutLabel}</kbd>
+              <span>快连 tmux</span>
+            </div>
+            <div className="top-bar-hint-item">
+              <kbd>Tab</kbd>
+              <span>切换焦点</span>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="top-bar-stats">
         <HostDropdown
           sshHosts={sshHosts}
@@ -114,9 +181,12 @@ export function TopBar({
           onSelectHost={onScanApps}
           triggerLabel="扫描会话"
         />
-        <button className="top-bar-action" onClick={onOpenQuickTmuxConnect}>
+        <button
+          className="top-bar-action"
+          onClick={onOpenQuickTmuxConnect}
+          type="button"
+        >
           快速连接 tmux
-          <span className="top-bar-shortcut">{quickTmuxShortcutLabel}</span>
         </button>
         <span className="stat-item">
           共 <strong>{totalCount}</strong> 个会话
@@ -133,10 +203,12 @@ export function TopBar({
         )}
         <button
           className="top-bar-collapse-btn"
+          data-testid="top-bar-collapse"
           onClick={onToggleCollapsed}
-          title="折叠顶栏"
+          title="折叠菜单栏"
+          type="button"
         >
-          ─
+          ▴ 收起菜单栏
         </button>
       </div>
     </header>

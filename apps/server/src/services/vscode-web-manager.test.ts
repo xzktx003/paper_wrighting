@@ -101,11 +101,11 @@ test("ensureSession launches one global code-server and returns session-specific
   assert.match(first.url, /^http:\/\/10\.30\.0\.22:43111\//);
   assert.match(
     first.url,
-    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-a\.code-workspace/,
+    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-a-[a-f0-9]{16}\.code-workspace/,
   );
   assert.match(
     second.url,
-    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-b\.code-workspace/,
+    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fproject-b-[a-f0-9]{16}\.code-workspace/,
   );
   assert.notEqual(first.url, second.url);
   assert.equal(launches[0].command, "/usr/bin/code-server");
@@ -116,16 +116,30 @@ test("ensureSession launches one global code-server and returns session-specific
     "0.0.0.0:43111",
     "--disable-update-check",
   ]);
+  assert.deepEqual(launches[0].args.slice(5, 9), [
+    "--config",
+    "/tmp/coding-kanban-vscode-root/config.yaml",
+    "--user-data-dir",
+    "/tmp/coding-kanban-vscode-root/user-data",
+  ]);
   assert.match(
-    files.get(
-      "/tmp/coding-kanban-vscode-root/workspaces/session-a.code-workspace",
-    ) ?? "",
+    files.get("/tmp/coding-kanban-vscode-root/config.yaml") ?? "",
+    /auth: none/,
+  );
+  const sessionAWorkspacePath = [...files.keys()].find((pathValue) =>
+    pathValue.includes("/workspaces/session-a-"),
+  );
+  const sessionBWorkspacePath = [...files.keys()].find((pathValue) =>
+    pathValue.includes("/workspaces/project-b-"),
+  );
+  assert.ok(sessionAWorkspacePath);
+  assert.ok(sessionBWorkspacePath);
+  assert.match(
+    files.get(sessionAWorkspacePath) ?? "",
     /"path": "\/tmp\/session-a"/,
   );
   assert.match(
-    files.get(
-      "/tmp/coding-kanban-vscode-root/workspaces/session-b.code-workspace",
-    ) ?? "",
+    files.get(sessionBWorkspacePath) ?? "",
     /"path": "\/tmp\/project-b"/,
   );
 
