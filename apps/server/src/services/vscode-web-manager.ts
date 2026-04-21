@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
@@ -11,6 +11,12 @@ import type {
   OpenVsCodeWebResponse,
   VsCodeWebProvider,
 } from "@agent-orchestrator/shared";
+
+import {
+  quoteForPosixShell,
+  resolvePreferredShell,
+  resolveShellStartupEnv,
+} from "./runtime-compat.js";
 
 const DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -46,6 +52,7 @@ interface VsCodeWebManagerDeps {
   installCodeServer?: () => Promise<void>;
   now?: () => number;
   removePath?: (path: string) => Promise<void>;
+  resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>;
   resolveExtensionsDir?: (root: string) => string;
   spawnProcess?: (
     command: string,
@@ -70,6 +77,7 @@ interface DataRootPaths {
   extensionsDir: string;
   root: string;
   userDataDir: string;
+  userSettingsFile: string;
   workspacesDir: string;
 }
 
@@ -92,6 +100,127 @@ function resolveHomePath(input?: string): string | null {
 
 function resolveLocalWorkingDirectory(input?: string): string {
   return resolveHomePath(input) ?? homedir();
+}
+
+let defaultLaunchEnvPromise: Promise<NodeJS.ProcessEnv> | null = null;
+
+function stripNpmConfigEnv(
+  env: NodeJS.ProcessEnv,
+): Record<string, string | undefined> {
+  const nextEnv = { ...(env as Record<string, string | undefined>) };
+
+  for (const key of Object.keys(nextEnv)) {
+    if (/^npm_config_/i.test(key)) {
+      delete nextEnv[key];
+    }
+  }
+
+  return nextEnv;
+}
+
+async function defaultResolveLaunchEnv(): Promise<NodeJS.ProcessEnv> {
+  if (!defaultLaunchEnvPromise) {
+    const baseEnv = stripNpmConfigEnv(process.env);
+
+    defaultLaunchEnvPromise = resolveShellStartupEnv(baseEnv)
+      .then((shellEnv) => stripNpmConfigEnv({ ...baseEnv, ...shellEnv }))
+      .catch((error) => {
+        defaultLaunchEnvPromise = null;
+        throw error;
+      });
+  }
+
+  return defaultLaunchEnvPromise;
+}
+
+function buildVsCodeWebEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = {
+    ...stripNpmConfigEnv(baseEnv),
+    BROWSER: "none",
+  };
+  delete nextEnv.HOST;
+  delete nextEnv.PORT;
+  delete nextEnv.PASSWORD;
+  delete nextEnv.HASHED_PASSWORD;
+  delete nextEnv.VSCODE_IPC_HOOK_CLI;
+  return nextEnv;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildUserTerminalArgs(shellPath: string): string[] {
+  const shellName = shellPath.split("/").pop()?.toLowerCase() ?? "";
+  if (shellName === "fish") {
+    return ["-i"];
+  }
+
+  if (shellName === "nu" || shellName === "nushell") {
+    return [];
+  }
+
+  return ["-i"];
+}
+
+function buildUserSettingsContent(shellPath: string): string {
+  const profileName = "coding-kanban-user-shell";
+
+  return `${JSON.stringify(
+    {
+      "terminal.integrated.defaultProfile.linux": profileName,
+      "terminal.integrated.inheritEnv": true,
+      "terminal.integrated.profiles.linux": {
+        [profileName]: {
+          path: shellPath,
+          args: buildUserTerminalArgs(shellPath),
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function mergeUserSettingsContent(
+  existingContent: string | null,
+  shellPath: string,
+): string {
+  const profileName = "coding-kanban-user-shell";
+  let existingSettings: Record<string, unknown> = {};
+
+  if (existingContent) {
+    const parsed = JSON.parse(existingContent);
+    if (isRecord(parsed)) {
+      existingSettings = parsed;
+    }
+  }
+
+  const existingProfiles = isRecord(
+    existingSettings["terminal.integrated.profiles.linux"],
+  )
+    ? (existingSettings["terminal.integrated.profiles.linux"] as Record<
+        string,
+        unknown
+      >)
+    : {};
+
+  return `${JSON.stringify(
+    {
+      ...existingSettings,
+      "terminal.integrated.defaultProfile.linux": profileName,
+      "terminal.integrated.inheritEnv": true,
+      "terminal.integrated.profiles.linux": {
+        ...existingProfiles,
+        [profileName]: {
+          path: shellPath,
+          args: buildUserTerminalArgs(shellPath),
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 function defaultResolveExtensionsDir(root: string): string {
@@ -235,11 +364,14 @@ async function defaultFindCommand(candidate: string): Promise<string | null> {
     }
   }
 
+  const launchEnv = await defaultResolveLaunchEnv();
+  const shellPath = resolvePreferredShell(launchEnv);
+
   return new Promise((resolve) => {
     execFile(
-      "/bin/sh",
-      ["-lc", `command -v ${candidate}`],
-      { env: process.env },
+      shellPath,
+      ["-lc", `command -v ${quoteForPosixShell(candidate)}`],
+      { env: launchEnv },
       (error, stdout) => {
         if (error) {
           resolve(null);
@@ -259,14 +391,17 @@ async function defaultInstallCodeServer(): Promise<void> {
     return;
   }
 
+  const launchEnv = await defaultResolveLaunchEnv();
+  const shellPath = resolvePreferredShell(launchEnv);
+
   await new Promise<void>((resolve, reject) => {
     execFile(
-      "/bin/sh",
+      shellPath,
       [
         "-lc",
         "curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone",
       ],
-      { env: process.env, maxBuffer: 10 * 1024 * 1024 },
+      { env: launchEnv, maxBuffer: 10 * 1024 * 1024 },
       (error) => {
         if (error) {
           reject(error);
@@ -408,6 +543,7 @@ export class VsCodeWebManager {
   private readonly installCodeServer: () => Promise<void>;
   private readonly now: () => number;
   private readonly removePath: (path: string) => Promise<void>;
+  private readonly resolveLaunchEnv: () => Promise<NodeJS.ProcessEnv>;
   private readonly resolveExtensionsDir: (root: string) => string;
   private readonly spawnProcess: (
     command: string,
@@ -423,6 +559,7 @@ export class VsCodeWebManager {
   private dataRootPathsPromise: Promise<DataRootPaths> | null = null;
   private globalServer: RunningGlobalServer | null = null;
   private installPromise: Promise<void> | null = null;
+  private launchEnvPromise: Promise<NodeJS.ProcessEnv> | null = null;
   private readonly workspaceContents = new Map<string, string>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
@@ -435,6 +572,7 @@ export class VsCodeWebManager {
     this.installCodeServer = deps.installCodeServer ?? defaultInstallCodeServer;
     this.now = deps.now ?? (() => Date.now());
     this.removePath = deps.removePath ?? defaultRemovePath;
+    this.resolveLaunchEnv = deps.resolveLaunchEnv ?? defaultResolveLaunchEnv;
     this.resolveExtensionsDir =
       deps.resolveExtensionsDir ?? defaultResolveExtensionsDir;
     this.spawnProcess = deps.spawnProcess ?? defaultSpawnProcess;
@@ -450,12 +588,14 @@ export class VsCodeWebManager {
           root,
           configFile: join(root, "config.yaml"),
           userDataDir: join(root, "user-data"),
+          userSettingsFile: join(root, "user-data", "User", "settings.json"),
           extensionsDir,
           workspacesDir: join(root, "workspaces"),
         };
 
         await mkdir(root, { recursive: true });
         await mkdir(paths.userDataDir, { recursive: true });
+        await mkdir(join(paths.userDataDir, "User"), { recursive: true });
         await mkdir(paths.extensionsDir, { recursive: true });
         await mkdir(paths.workspacesDir, { recursive: true });
         if (!existsSync(paths.configFile)) {
@@ -470,11 +610,36 @@ export class VsCodeWebManager {
           );
         }
 
+        const launchEnv = await this.ensureLaunchEnv();
+        const shellPath = resolvePreferredShell(launchEnv);
+        const settingsContent = buildUserSettingsContent(shellPath);
+        const existingSettingsContent = existsSync(paths.userSettingsFile)
+          ? await readFile(paths.userSettingsFile, "utf8")
+          : null;
+        const nextSettingsContent =
+          existingSettingsContent === null
+            ? settingsContent
+            : mergeUserSettingsContent(existingSettingsContent, shellPath);
+        if (existingSettingsContent !== nextSettingsContent) {
+          await this.writeFile(paths.userSettingsFile, nextSettingsContent);
+        }
+
         return paths;
       });
     }
 
     return this.dataRootPathsPromise;
+  }
+
+  private async ensureLaunchEnv(): Promise<NodeJS.ProcessEnv> {
+    if (!this.launchEnvPromise) {
+      this.launchEnvPromise = this.resolveLaunchEnv().catch((error) => {
+        this.launchEnvPromise = null;
+        throw error;
+      });
+    }
+
+    return this.launchEnvPromise;
   }
 
   private async ensureProviderCommand(): Promise<{
@@ -540,6 +705,7 @@ export class VsCodeWebManager {
     }
 
     const dataRootPaths = await this.ensureDataRootPaths();
+    const launchEnv = await this.ensureLaunchEnv();
     const port = await this.allocatePort();
     const bindHost = process.env.VSCODE_WEB_BIND_HOST?.trim() || "0.0.0.0";
     const child = this.spawnProcess(
@@ -554,18 +720,7 @@ export class VsCodeWebManager {
       ),
       {
         cwd: homedir(),
-        env: (() => {
-          const nextEnv: NodeJS.ProcessEnv = {
-            ...process.env,
-            BROWSER: "none",
-          };
-          delete nextEnv.HOST;
-          delete nextEnv.PORT;
-          delete nextEnv.PASSWORD;
-          delete nextEnv.HASHED_PASSWORD;
-          delete nextEnv.VSCODE_IPC_HOOK_CLI;
-          return nextEnv;
-        })(),
+        env: buildVsCodeWebEnv(launchEnv),
         stdio: "ignore",
       },
     );

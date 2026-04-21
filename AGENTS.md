@@ -1,11 +1,6 @@
 # Repository Guidelines
 
-## Repository Scope
 
-- This repository root is for a new agent orchestrator project built in this workspace.
-- `vibe-kanban/` is not part of this project implementation scope.
-- `vibe-kanban/` may be used as a reference for product ideas, interaction patterns, or architecture inspiration only.
-- Do not add new project code inside `vibe-kanban/` unless the user explicitly asks to modify that external reference project.
 
 ## Project Structure & Module Organization
 
@@ -46,6 +41,15 @@ The root `dev` command prebuilds `packages/shared` once before starting the
 frontend and backend dev processes. Direct `web` and `server` `dev` and
 `build` scripts also prebuild `packages/shared` so workspace types stay in
 sync for package-scoped runs.
+
+- Start local dev commands from a login shell (for example
+  `zsh -l -c 'pnpm dev'`) so VS Code Web and its integrated terminals inherit
+  the current user's shell environment, including PATH and toolchain setup
+  from rc files.
+- If VS Code Web terminals still open with the wrong shell, update the
+  code-server user settings so `terminal.integrated.defaultProfile.linux`
+  points at the resolved user shell with interactive args while inheriting the
+  login-shell environment prepared for code-server.
 
 If workspace filters or script names change, update this file in the same change.
 

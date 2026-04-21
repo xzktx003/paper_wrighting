@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   buildInteractiveShellCommand,
   buildTmuxCommand,
+  resolveShellStartupEnv,
 } from "./runtime-compat.js";
 
 function createShellStub(
@@ -116,4 +117,66 @@ test("tmux command can keep the pane open in the selected shell", () => {
 
   assert.match(command, /exec "\$SHELL_BIN" -i/);
   assert.match(command, /printf "RUN"; exit 0/);
+});
+
+test("resolveShellStartupEnv prefers login and interactive startup for non-sh shells", async () => {
+  let invokedFile = "";
+  let invokedArgs: string[] = [];
+  let invokedCwd = "";
+  let invokedEnv: NodeJS.ProcessEnv | undefined;
+
+  const result = await resolveShellStartupEnv(
+    {
+      HOME: "/tmp/demo-home",
+      SHELL: "/bin/zsh",
+    },
+    {
+      marker: "__TEST_ENV__",
+      nodePath: "/tmp/node",
+      shellPath: "/bin/zsh",
+      execFileImpl: (file, args, options, callback) => {
+        invokedFile = file;
+        invokedArgs = args;
+        invokedCwd = options.cwd;
+        invokedEnv = options.env;
+        callback(
+          null,
+          'shell noise\n__TEST_ENV__\n{"PATH":"/demo/bin","SHELL":"/bin/zsh"}\n__TEST_ENV__\n',
+          "",
+        );
+      },
+    },
+  );
+
+  assert.equal(invokedFile, "/bin/zsh");
+  assert.deepEqual(invokedArgs.slice(0, 3), ["-l", "-i", "-c"]);
+  assert.match(invokedArgs[3] ?? "", /\/tmp\/node/);
+  assert.equal(invokedCwd, "/tmp/demo-home");
+  assert.equal(invokedEnv?.SHELL, "/bin/zsh");
+  assert.equal(result.PATH, "/demo/bin");
+});
+
+test("resolveShellStartupEnv falls back to interactive startup for plain sh", async () => {
+  let invokedArgs: string[] = [];
+
+  await resolveShellStartupEnv(
+    {
+      HOME: "/tmp/demo-home",
+      SHELL: "/bin/sh",
+    },
+    {
+      marker: "__TEST_ENV__",
+      shellPath: "/bin/sh",
+      execFileImpl: (_file, args, _options, callback) => {
+        invokedArgs = args;
+        callback(
+          null,
+          '__TEST_ENV__\n{"PATH":"/demo/bin"}\n__TEST_ENV__\n',
+          "",
+        );
+      },
+    },
+  );
+
+  assert.deepEqual(invokedArgs.slice(0, 2), ["-i", "-c"]);
 });

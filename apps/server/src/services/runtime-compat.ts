@@ -1,6 +1,7 @@
+import { execFile } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import os from "node:os";
-import { delimiter, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 
 function isExecutablePath(
   commandPath: string | undefined,
@@ -54,6 +55,72 @@ export function quoteForPosixShell(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+type ExecFileLike = (
+  file: string,
+  args: string[],
+  options: {
+    cwd: string;
+    encoding: "utf8";
+    env: NodeJS.ProcessEnv;
+    maxBuffer: number;
+  },
+  callback: (error: Error | null, stdout: string, stderr: string) => void,
+) => void;
+
+interface ResolveShellStartupEnvOptions {
+  cwd?: string;
+  execFileImpl?: ExecFileLike;
+  marker?: string;
+  nodePath?: string;
+  shellPath?: string;
+}
+
+function buildShellStartupEnvArgs(
+  shellPath: string,
+  command: string,
+): string[] {
+  const shellName = basename(shellPath).toLowerCase();
+  if (shellName === "sh" || shellName === "dash") {
+    return ["-i", "-c", command];
+  }
+
+  return ["-l", "-i", "-c", command];
+}
+
+function buildShellStartupEnvCommand(marker: string, nodePath: string): string {
+  return [
+    `printf '%s\\n' ${quoteForPosixShell(marker)}`,
+    `${quoteForPosixShell(nodePath)} -e ${quoteForPosixShell(
+      "process.stdout.write(JSON.stringify(process.env))",
+    )}`,
+    `printf '\\n%s\\n' ${quoteForPosixShell(marker)}`,
+  ].join("; ");
+}
+
+function parseShellStartupEnv(
+  output: string,
+  marker: string,
+): Record<string, string> {
+  const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = output.match(
+    new RegExp(`${escapedMarker}\\r?\\n([\\s\\S]*?)\\r?\\n${escapedMarker}`),
+  );
+  if (!match?.[1]) {
+    throw new Error("Could not parse shell startup environment output");
+  }
+
+  const parsed = JSON.parse(match[1]);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Shell startup environment did not return an object");
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
 function buildInteractiveShellBootstrap(finalCommand: string): string {
   return [
     'if [ -n "${SHELL:-}" ] && [ -x "$SHELL" ]; then',
@@ -97,6 +164,53 @@ export function resolvePreferredShell(
     candidates.find((candidate) => isResolvableCommand(candidate, env)) ??
     "/bin/sh"
   );
+}
+
+export async function resolveShellStartupEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  options: ResolveShellStartupEnvOptions = {},
+): Promise<Record<string, string>> {
+  const shellPath = options.shellPath ?? resolvePreferredShell(env);
+  const shellEnv: NodeJS.ProcessEnv = {
+    ...env,
+    SHELL: env.SHELL ?? shellPath,
+  };
+  const marker =
+    options.marker ??
+    `__CODING_KANBAN_SHELL_ENV_${process.pid}_${Date.now()}__`;
+
+  return new Promise((resolve, reject) => {
+    const cwd = options.cwd ?? shellEnv.HOME?.trim() ?? os.homedir();
+
+    (options.execFileImpl ?? execFile)(
+      shellPath,
+      buildShellStartupEnvArgs(
+        shellPath,
+        buildShellStartupEnvCommand(
+          marker,
+          options.nodePath ?? process.execPath,
+        ),
+      ),
+      {
+        cwd,
+        encoding: "utf8",
+        env: shellEnv,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        try {
+          resolve(parseShellStartupEnv(stdout, marker));
+        } catch (parseError) {
+          reject(parseError);
+        }
+      },
+    );
+  });
 }
 
 export function buildInteractiveShellCommand(command: string): string {

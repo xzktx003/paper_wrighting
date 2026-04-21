@@ -77,6 +77,11 @@ test("ensureSession launches one global code-server and returns session-specific
     createDataRoot: async () => TEST_DATA_ROOT,
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveLaunchEnv: async () => ({
+      HOME: "/tmp/demo-home",
+      PATH: "/tmp/demo-bin",
+      SHELL: "/bin/bash",
+    }),
     resolveExtensionsDir: resolveTestExtensionsDir,
     spawnProcess: (command, args) => {
       launches.push({ command, args });
@@ -134,6 +139,25 @@ test("ensureSession launches one global code-server and returns session-specific
     `${TEST_DATA_ROOT}/extensions`,
   ]);
   assert.match(files.get(`${TEST_DATA_ROOT}/config.yaml`) ?? "", /auth: none/);
+  const userSettingsPath = `${TEST_DATA_ROOT}/user-data/User/settings.json`;
+  const userSettings = JSON.parse(files.get(userSettingsPath) ?? "{}");
+  assert.equal(
+    userSettings["terminal.integrated.defaultProfile.linux"],
+    "coding-kanban-user-shell",
+  );
+  assert.equal(userSettings["terminal.integrated.inheritEnv"], true);
+  assert.equal(
+    userSettings["terminal.integrated.profiles.linux"][
+      "coding-kanban-user-shell"
+    ].path,
+    "/bin/bash",
+  );
+  assert.deepEqual(
+    userSettings["terminal.integrated.profiles.linux"][
+      "coding-kanban-user-shell"
+    ].args,
+    ["-i"],
+  );
   const sessionAWorkspacePath = [...files.keys()].find((pathValue) =>
     pathValue.includes("/workspaces/session-a-"),
   );
@@ -303,37 +327,44 @@ test("ensureSession uses an explicit shared extensions directory override", asyn
   }
 });
 
-test("ensureSession strips inherited VS Code IPC hooks before spawning", async () => {
+test("ensureSession uses the resolved shell env and strips inherited VS Code IPC hooks before spawning", async () => {
   const child = new FakeChildProcess();
   let spawnedEnv: NodeJS.ProcessEnv | undefined;
-  const previousIpcHook = process.env.VSCODE_IPC_HOOK_CLI;
-  process.env.VSCODE_IPC_HOOK_CLI = "/tmp/vscode-ipc-hook.sock";
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43119,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    resolveLaunchEnv: async () => ({
+      HOME: "/tmp/demo-home",
+      PATH: "/tmp/demo-bin",
+      SHELL: "/bin/zsh",
+      HOST: "3000",
+      PASSWORD: "secret",
+      HASHED_PASSWORD: "hashed-secret",
+      VSCODE_IPC_HOOK_CLI: "/tmp/vscode-ipc-hook.sock",
+      npm_config_prefix: "/tmp/npm-prefix",
+    }),
+    spawnProcess: (_command, _args, options) => {
+      spawnedEnv = options.env;
+      return child as never;
+    },
+    waitForUrlReady: async () => {},
+    writeFile: async () => {},
+  });
 
-  try {
-    const manager = new VsCodeWebManager({
-      allocatePort: async () => 43119,
-      createDataRoot: async () => TEST_DATA_ROOT,
-      findCommand: async (candidate) =>
-        candidate === "code-server" ? "/usr/bin/code-server" : null,
-      resolveExtensionsDir: resolveTestExtensionsDir,
-      spawnProcess: (_command, _args, options) => {
-        spawnedEnv = options.env;
-        return child as never;
-      },
-      waitForUrlReady: async () => {},
-      writeFile: async () => {},
-    });
+  await manager.ensureSession(buildSession("session-1"));
 
-    await manager.ensureSession(buildSession("session-1"));
+  assert.equal(spawnedEnv?.HOME, "/tmp/demo-home");
+  assert.equal(spawnedEnv?.PATH, "/tmp/demo-bin");
+  assert.equal(spawnedEnv?.SHELL, "/bin/zsh");
+  assert.equal(spawnedEnv?.BROWSER, "none");
+  assert.equal(spawnedEnv?.HOST, undefined);
+  assert.equal(spawnedEnv?.PASSWORD, undefined);
+  assert.equal(spawnedEnv?.HASHED_PASSWORD, undefined);
+  assert.equal(spawnedEnv?.VSCODE_IPC_HOOK_CLI, undefined);
+  assert.equal(spawnedEnv?.npm_config_prefix, undefined);
 
-    assert.equal(spawnedEnv?.VSCODE_IPC_HOOK_CLI, undefined);
-
-    await manager.dispose();
-  } finally {
-    if (previousIpcHook === undefined) {
-      delete process.env.VSCODE_IPC_HOOK_CLI;
-    } else {
-      process.env.VSCODE_IPC_HOOK_CLI = previousIpcHook;
-    }
-  }
+  await manager.dispose();
 });

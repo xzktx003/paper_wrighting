@@ -23,7 +23,6 @@ export function VSCodeDrawer({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reloadSeed, setReloadSeed] = useState(0);
 
   useEffect(() => {
     if (!open) {
@@ -89,25 +88,13 @@ export function VSCodeDrawer({
         window.clearInterval(heartbeatId);
       }
     };
-  }, [agentSessionId, open, reloadSeed]);
+  }, [agentSessionId, open]);
 
   return (
     <aside
       className="vscode-drawer"
       {...(active ? { "data-testid": "vscode-web-drawer" } : {})}
     >
-      <div className="vscode-drawer-tools">
-        <button
-          aria-label={`重新加载 ${displayName}`}
-          className="vscode-drawer-reload"
-          onClick={() => setReloadSeed((value) => value + 1)}
-          title={`重新加载 ${displayName}`}
-          type="button"
-        >
-          ↻
-        </button>
-      </div>
-
       <div className="vscode-drawer-body">
         {loading && (
           <div className="vscode-drawer-state" role="status">
@@ -127,7 +114,7 @@ export function VSCodeDrawer({
           <iframe
             className="vscode-drawer-frame"
             {...(active ? { "data-testid": "vscode-web-frame" } : {})}
-            key={`${reloadSeed}:${editorState.url}`}
+            key={editorState.url}
             src={editorState.url}
             title={`VS Code - ${displayName}`}
           />
