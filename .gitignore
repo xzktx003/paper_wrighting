@@ -12,6 +12,8 @@ vibe-kanban
 ./vibe-kanban
 .playwright
 .playwright-deps/
+.codex
 .codex/
+apps/server/.codex
 apps/server/.codex/
 .omx/
