@@ -441,6 +441,27 @@ test("file browser is scoped per focused session, keeps splitter behavior, and s
     const drawerAfter = await drawer.boundingBox();
     expect((drawerAfter?.width ?? 0) > (drawerBefore?.width ?? 0)).toBeTruthy();
 
+    const sideCollapseToggle = page.getByTestId("side-panel-collapse-toggle");
+    const mainCollapseToggle = page.getByTestId("main-panel-collapse-toggle");
+    const sideShell = page.locator(".file-browser-shell");
+    const mainContent = page.locator(".main-content");
+
+    await sideCollapseToggle.click();
+    const collapsedSideShell = await sideShell.boundingBox();
+    expect((collapsedSideShell?.width ?? 0) < 10).toBeTruthy();
+
+    await sideCollapseToggle.click();
+    const expandedSideShell = await sideShell.boundingBox();
+    expect((expandedSideShell?.width ?? 0) > 200).toBeTruthy();
+
+    await mainCollapseToggle.click();
+    const collapsedMainContent = await mainContent.boundingBox();
+    expect((collapsedMainContent?.width ?? 0) < 10).toBeTruthy();
+
+    await mainCollapseToggle.click();
+    const expandedMainContent = await mainContent.boundingBox();
+    expect((expandedMainContent?.width ?? 0) > 200).toBeTruthy();
+
     const treePane = drawer.locator(".file-browser-tree");
     const treeBefore = await treePane.boundingBox();
     const treeSplitter = drawer.getByTestId("file-browser-tree-splitter");

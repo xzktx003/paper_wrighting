@@ -124,6 +124,19 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
       /editor-a/,
     );
 
+    const frameBodyA = page
+      .frameLocator(`iframe[title="VS Code - ${sessionAName}"]`)
+      .locator("body");
+    await expect(frameBodyA).toContainText("editor-a");
+    await frameBodyA.evaluate((body) => {
+      body.textContent = "sticky-a";
+    });
+
+    await page.getByTestId("file-browser-toggle").click();
+    await expect(page.getByTestId("file-browser-drawer")).toBeVisible();
+    await page.getByTestId("vscode-toggle").click();
+    await expect(frameBodyA).toContainText("sticky-a");
+
     await switchFocusedSession(page, sessionBName);
     await expect(page.getByTestId("vscode-web-drawer")).toHaveCount(0);
 
@@ -137,6 +150,14 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
     );
 
     await switchFocusedSession(page, sessionAName);
+    await expect(page.getByTestId("vscode-web-drawer")).toBeVisible();
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-a/,
+    );
+
+    await page.reload();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
     await expect(page.getByTestId("vscode-web-drawer")).toBeVisible();
     await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
       "src",

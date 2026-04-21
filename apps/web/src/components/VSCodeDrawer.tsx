@@ -5,12 +5,14 @@ import type { OpenVsCodeWebResponse } from "@agent-orchestrator/shared";
 import { openVsCodeWeb } from "../lib/api";
 
 interface VSCodeDrawerProps {
+  active: boolean;
   agentSessionId: string;
   displayName: string;
   open: boolean;
 }
 
 export function VSCodeDrawer({
+  active,
   agentSessionId,
   displayName,
   open,
@@ -28,17 +30,36 @@ export function VSCodeDrawer({
     }
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    let heartbeatId: number | null = null;
 
-    openVsCodeWeb(agentSessionId)
-      .then((response) => {
+    async function ensureEditor(showLoading: boolean) {
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      setError(null);
+
+      try {
+        const response = await openVsCodeWeb(agentSessionId);
         if (cancelled) {
           return;
         }
-        setEditorState(response);
-      })
-      .catch((requestError) => {
+
+        setEditorState((current) => {
+          if (
+            current &&
+            current.url === response.url &&
+            current.provider === response.provider &&
+            current.workingDirectory === response.workingDirectory &&
+            current.reused === response.reused
+          ) {
+            return current;
+          }
+
+          return response;
+        });
+        setError(null);
+      } catch (requestError) {
         if (cancelled) {
           return;
         }
@@ -49,20 +70,31 @@ export function VSCodeDrawer({
             ? requestError.message
             : "VS Code Web 打开失败",
         );
-      })
-      .finally(() => {
-        if (!cancelled) {
+      } finally {
+        if (!cancelled && showLoading) {
           setLoading(false);
         }
-      });
+      }
+    }
+
+    void ensureEditor(true);
+    heartbeatId = window.setInterval(() => {
+      void ensureEditor(false);
+    }, 60_000);
 
     return () => {
       cancelled = true;
+      if (heartbeatId !== null) {
+        window.clearInterval(heartbeatId);
+      }
     };
   }, [agentSessionId, open, reloadSeed]);
 
   return (
-    <aside className="vscode-drawer" data-testid="vscode-web-drawer">
+    <aside
+      className="vscode-drawer"
+      {...(active ? { "data-testid": "vscode-web-drawer" } : {})}
+    >
       <div className="vscode-drawer-header">
         <div>
           <div className="vscode-drawer-title">VS Code</div>
@@ -105,7 +137,7 @@ export function VSCodeDrawer({
         {!loading && !error && editorState && (
           <iframe
             className="vscode-drawer-frame"
-            data-testid="vscode-web-frame"
+            {...(active ? { "data-testid": "vscode-web-frame" } : {})}
             key={`${reloadSeed}:${editorState.url}`}
             src={editorState.url}
             title={`VS Code - ${displayName}`}

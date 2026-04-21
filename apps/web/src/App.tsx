@@ -59,14 +59,24 @@ type ViewMode = "grid" | "focus";
 type SidePanelTool = "files" | "vscode";
 
 const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
+const SIDE_PANEL_SESSION_STORAGE_KEY = "side-panel-session-state";
+const FOCUS_VIEW_STORAGE_KEY = "focus-view-state";
+const MAX_CACHED_VSCODE_IFRAMES = 8;
 
 interface FileBrowserUiState {
   width: number;
+  mainCollapsed: boolean;
+  sideCollapsed: boolean;
 }
 
 interface FileBrowserSessionState {
   activeTool: SidePanelTool | null;
   selectedHost: SelectedHost;
+}
+
+interface FocusViewState {
+  focusedId: string | null;
+  viewMode: ViewMode;
 }
 
 function buildFileBrowserDefaultHost(
@@ -124,12 +134,16 @@ function loadFileBrowserUiState(): FileBrowserUiState {
     const raw = localStorage.getItem(FILE_BROWSER_UI_STORAGE_KEY);
     if (!raw) {
       return {
+        mainCollapsed: false,
+        sideCollapsed: false,
         width: 540,
       };
     }
 
     const parsed = JSON.parse(raw) as Partial<FileBrowserUiState>;
     return {
+      mainCollapsed: Boolean(parsed.mainCollapsed),
+      sideCollapsed: Boolean(parsed.sideCollapsed),
       width:
         typeof parsed.width === "number" && Number.isFinite(parsed.width)
           ? parsed.width
@@ -137,6 +151,8 @@ function loadFileBrowserUiState(): FileBrowserUiState {
     };
   } catch {
     return {
+      mainCollapsed: false,
+      sideCollapsed: false,
       width: 540,
     };
   }
@@ -145,6 +161,89 @@ function loadFileBrowserUiState(): FileBrowserUiState {
 function saveFileBrowserUiState(state: FileBrowserUiState) {
   try {
     localStorage.setItem(FILE_BROWSER_UI_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadSidePanelSessionStates(): Record<string, FileBrowserSessionState> {
+  try {
+    const raw = localStorage.getItem(SIDE_PANEL_SESSION_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as Record<
+      string,
+      Partial<FileBrowserSessionState>
+    >;
+
+    return Object.fromEntries(
+      Object.entries(parsed).map(([sessionId, value]) => {
+        const selectedHost =
+          value.selectedHost?.type === "ssh" && value.selectedHost.preset
+            ? {
+                type: "ssh" as const,
+                preset: value.selectedHost.preset,
+              }
+            : { type: "local" as const };
+
+        return [
+          sessionId,
+          {
+            activeTool:
+              value.activeTool === "files" || value.activeTool === "vscode"
+                ? value.activeTool
+                : null,
+            selectedHost,
+          },
+        ];
+      }),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveSidePanelSessionStates(
+  state: Record<string, FileBrowserSessionState>,
+) {
+  try {
+    localStorage.setItem(SIDE_PANEL_SESSION_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadFocusViewState(): FocusViewState {
+  try {
+    const raw = localStorage.getItem(FOCUS_VIEW_STORAGE_KEY);
+    if (!raw) {
+      return {
+        focusedId: null,
+        viewMode: "grid",
+      };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<FocusViewState>;
+    return {
+      focusedId:
+        typeof parsed.focusedId === "string" && parsed.focusedId.trim()
+          ? parsed.focusedId
+          : null,
+      viewMode: parsed.viewMode === "focus" ? "focus" : "grid",
+    };
+  } catch {
+    return {
+      focusedId: null,
+      viewMode: "grid",
+    };
+  }
+}
+
+function saveFocusViewState(state: FocusViewState) {
+  try {
+    localStorage.setItem(FOCUS_VIEW_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // ignore storage failures
   }
@@ -168,11 +267,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export default function App() {
+  const initialFocusViewState = useMemo(() => loadFocusViewState(), []);
   const [snapshot, setSnapshot] = useState<ListAgentSessionsResponse | null>(
     null,
   );
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    initialFocusViewState.viewMode,
+  );
+  const [focusedId, setFocusedId] = useState<string | null>(
+    initialFocusViewState.focusedId,
+  );
   const [newSessionHost, setNewSessionHost] = useState<SelectedHost | null>(
     null,
   );
@@ -181,7 +285,10 @@ export default function App() {
     useState<FileBrowserUiState>(loadFileBrowserUiState);
   const [fileBrowserSessionStates, setFileBrowserSessionStates] = useState<
     Record<string, FileBrowserSessionState>
-  >({});
+  >(loadSidePanelSessionStates);
+  const [vscodeCacheSessionIds, setVscodeCacheSessionIds] = useState<string[]>(
+    [],
+  );
   const [layoutState, setLayoutState] = useState<LayoutState>(loadLayoutState);
   const [sshHosts, setSshHosts] = useState<SshHostPreset[]>([]);
   const [discoveryState, setDiscoveryState] = useState<{
@@ -227,6 +334,14 @@ export default function App() {
   }, [fileBrowserUiState]);
 
   useEffect(() => {
+    saveSidePanelSessionStates(fileBrowserSessionStates);
+  }, [fileBrowserSessionStates]);
+
+  useEffect(() => {
+    saveFocusViewState({ viewMode, focusedId });
+  }, [focusedId, viewMode]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey)) {
         return;
@@ -264,6 +379,10 @@ export default function App() {
   const [showHiddenDrawer, setShowHiddenDrawer] = useState(false);
 
   useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
     const knownIds = new Set(sessions.map((session) => session.id));
     setFileBrowserSessionStates((current) => {
       const nextEntries = Object.entries(current).filter(([id]) =>
@@ -275,7 +394,16 @@ export default function App() {
 
       return Object.fromEntries(nextEntries);
     });
-  }, [sessions]);
+
+    setVscodeCacheSessionIds((current) =>
+      current.filter((sessionId) => knownIds.has(sessionId)),
+    );
+
+    if (!isLoading && focusedId && !knownIds.has(focusedId)) {
+      setFocusedId(null);
+      setViewMode("grid");
+    }
+  }, [focusedId, isLoading, sessions]);
 
   const filteredSessions = visibleSessions.filter((s) => {
     if (filters.host && (s.hostId ?? "local") !== filters.host) return false;
@@ -438,6 +566,50 @@ export default function App() {
   const vscodeOpen =
     panelAvailable && focusedSidePanelState?.activeTool === "vscode";
   const sidePanelOpen = fileBrowserOpen || vscodeOpen;
+  const renderedVsCodeSessionIds = useMemo(() => {
+    const next = [...vscodeCacheSessionIds];
+    if (vscodeOpen && focusedSession && !next.includes(focusedSession.id)) {
+      next.push(focusedSession.id);
+    }
+
+    return next.slice(-MAX_CACHED_VSCODE_IFRAMES);
+  }, [focusedSession, vscodeCacheSessionIds, vscodeOpen]);
+  const sidePanelRendered =
+    sidePanelOpen || renderedVsCodeSessionIds.length > 0;
+  const sidePanelCollapsed = sidePanelOpen && fileBrowserUiState.sideCollapsed;
+  const mainPanelCollapsed = sidePanelOpen && fileBrowserUiState.mainCollapsed;
+
+  useEffect(() => {
+    if (!vscodeOpen || !focusedSession) {
+      return;
+    }
+
+    setVscodeCacheSessionIds((current) => {
+      const next = [
+        ...current.filter((sessionId) => sessionId !== focusedSession.id),
+        focusedSession.id,
+      ];
+      return next.slice(-MAX_CACHED_VSCODE_IFRAMES);
+    });
+  }, [focusedSession, vscodeOpen]);
+
+  useEffect(() => {
+    if (sidePanelOpen) {
+      return;
+    }
+
+    setFileBrowserUiState((current) => {
+      if (!current.sideCollapsed && !current.mainCollapsed) {
+        return current;
+      }
+
+      return {
+        ...current,
+        sideCollapsed: false,
+        mainCollapsed: false,
+      };
+    });
+  }, [sidePanelOpen]);
 
   const layoutMode = deriveLayoutMode({
     ...layoutState,
@@ -466,13 +638,24 @@ export default function App() {
 
   const beginFileBrowserResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (
+        fileBrowserUiState.sideCollapsed ||
+        fileBrowserUiState.mainCollapsed
+      ) {
+        return;
+      }
+
       fileBrowserResizeRef.current = {
         startX: event.clientX,
         startWidth: fileBrowserUiState.width,
       };
       event.preventDefault();
     },
-    [fileBrowserUiState.width],
+    [
+      fileBrowserUiState.mainCollapsed,
+      fileBrowserUiState.sideCollapsed,
+      fileBrowserUiState.width,
+    ],
   );
 
   const updateFileBrowserWidth = useCallback((clientX: number) => {
@@ -498,6 +681,36 @@ export default function App() {
   const endFileBrowserResize = useCallback(() => {
     fileBrowserResizeRef.current = null;
   }, []);
+
+  const toggleSidePanelCollapsed = useCallback(() => {
+    if (!sidePanelOpen) {
+      return;
+    }
+
+    setFileBrowserUiState((current) => {
+      const nextSideCollapsed = !current.sideCollapsed;
+      return {
+        ...current,
+        sideCollapsed: nextSideCollapsed,
+        mainCollapsed: nextSideCollapsed ? false : current.mainCollapsed,
+      };
+    });
+  }, [sidePanelOpen]);
+
+  const toggleMainPanelCollapsed = useCallback(() => {
+    if (!sidePanelOpen) {
+      return;
+    }
+
+    setFileBrowserUiState((current) => {
+      const nextMainCollapsed = !current.mainCollapsed;
+      return {
+        ...current,
+        mainCollapsed: nextMainCollapsed,
+        sideCollapsed: nextMainCollapsed ? false : current.sideCollapsed,
+      };
+    });
+  }, [sidePanelOpen]);
 
   useEffect(() => {
     function handlePointerMove(event: MouseEvent) {
@@ -644,13 +857,21 @@ export default function App() {
       />
 
       <div className="main-layout" ref={mainLayoutRef}>
-        {sidePanelOpen && focusedSession && focusedSidePanelState && (
+        {sidePanelRendered && focusedSession && focusedSidePanelState && (
           <>
             <div
-              className="file-browser-shell"
-              style={{ width: `${fileBrowserUiState.width}px` }}
+              className={`file-browser-shell${!sidePanelOpen || sidePanelCollapsed ? " file-browser-shell--collapsed" : ""}${mainPanelCollapsed ? " file-browser-shell--fill" : ""}`}
+              style={
+                !sidePanelOpen || sidePanelCollapsed
+                  ? undefined
+                  : mainPanelCollapsed
+                    ? undefined
+                    : { width: `${fileBrowserUiState.width}px` }
+              }
             >
-              {fileBrowserOpen ? (
+              <div
+                className={`side-panel-view${fileBrowserOpen ? " side-panel-view--active" : ""}`}
+              >
                 <FileBrowserDrawer
                   key={focusedSession.id}
                   open={fileBrowserOpen}
@@ -680,23 +901,67 @@ export default function App() {
                   }}
                   sshHosts={sshHosts}
                 />
-              ) : (
-                <VSCodeDrawer
-                  agentSessionId={focusedSession.id}
-                  displayName={focusedSession.displayName}
-                  open={vscodeOpen}
-                />
-              )}
+              </div>
+              {renderedVsCodeSessionIds.map((sessionId) => {
+                const session = sessions.find((item) => item.id === sessionId);
+                if (!session) {
+                  return null;
+                }
+
+                const active = vscodeOpen && focusedSession?.id === sessionId;
+                return (
+                  <div
+                    key={sessionId}
+                    className={`side-panel-view${active ? " side-panel-view--active" : ""}`}
+                  >
+                    <VSCodeDrawer
+                      active={active}
+                      agentSessionId={session.id}
+                      displayName={session.displayName}
+                      open={active}
+                    />
+                  </div>
+                );
+              })}
             </div>
-            <div
-              className="main-layout-splitter"
-              data-testid="file-browser-main-splitter"
-              onMouseDown={beginFileBrowserResize}
-              role="separator"
-            />
+            {sidePanelOpen && (
+              <div
+                className="main-layout-splitter"
+                data-testid="file-browser-main-splitter"
+                onMouseDown={beginFileBrowserResize}
+                role="separator"
+              >
+                <button
+                  className="main-layout-collapse-btn"
+                  data-testid="side-panel-collapse-toggle"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSidePanelCollapsed();
+                  }}
+                  title={sidePanelCollapsed ? "展开左侧分区" : "折叠左侧分区"}
+                  type="button"
+                >
+                  {sidePanelCollapsed ? "⟩" : "⟨"}
+                </button>
+                <button
+                  className="main-layout-collapse-btn"
+                  data-testid="main-panel-collapse-toggle"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleMainPanelCollapsed();
+                  }}
+                  title={mainPanelCollapsed ? "展开右侧分区" : "折叠右侧分区"}
+                  type="button"
+                >
+                  {mainPanelCollapsed ? "⟨" : "⟩"}
+                </button>
+              </div>
+            )}
           </>
         )}
-        <div className="main-content">
+        <div
+          className={`main-content${mainPanelCollapsed ? " main-content--collapsed" : ""}`}
+        >
           {isLoading ? (
             <div className="grid-empty">
               <p>正在加载...</p>

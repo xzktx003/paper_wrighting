@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { homedir, networkInterfaces, tmpdir } from "node:os";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 
@@ -10,6 +10,8 @@ import type {
   OpenVsCodeWebResponse,
   VsCodeWebProvider,
 } from "@agent-orchestrator/shared";
+
+const DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export class UnsupportedVsCodeWebSessionError extends Error {
   constructor(message: string) {
@@ -25,10 +27,11 @@ export class VsCodeWebUnavailableError extends Error {
   }
 }
 
-interface RunningEditorInstance {
+interface RunningGlobalServer {
   child: ChildProcess;
-  dataDir: string;
   exited: boolean;
+  idleTimer: NodeJS.Timeout | null;
+  lastUsedAt: number;
   port: number;
   provider: VsCodeWebProvider;
   readyPromise: Promise<void>;
@@ -36,10 +39,12 @@ interface RunningEditorInstance {
 
 interface VsCodeWebManagerDeps {
   allocatePort?: () => Promise<number>;
-  createRuntimeDir?: (sessionId: string) => Promise<string>;
+  createDataRoot?: () => Promise<string>;
   findCommand?: (candidate: string) => Promise<string | null>;
+  idleTimeoutMs?: number;
   installCodeServer?: () => Promise<void>;
-  removeRuntimeDir?: (path: string) => Promise<void>;
+  now?: () => number;
+  removePath?: (path: string) => Promise<void>;
   spawnProcess?: (
     command: string,
     args: string[],
@@ -50,11 +55,19 @@ interface VsCodeWebManagerDeps {
     },
   ) => ChildProcess;
   waitForUrlReady?: (url: string) => Promise<void>;
+  writeFile?: (path: string, content: string) => Promise<void>;
 }
 
 interface EnsureVsCodeWebSessionOptions {
   requestHost?: string;
   requestProtocol?: "http" | "https";
+}
+
+interface DataRootPaths {
+  extensionsDir: string;
+  root: string;
+  userDataDir: string;
+  workspacesDir: string;
 }
 
 function resolveLocalWorkingDirectory(input?: string): string {
@@ -70,9 +83,14 @@ function resolveLocalWorkingDirectory(input?: string): string {
   return trimmed;
 }
 
-function buildEditorUrl(origin: string, workingDirectory: string): string {
+function buildEditorUrl(
+  origin: string,
+  workspacePath: string,
+  workingDirectory: string,
+): string {
   const url = new URL(origin);
   url.pathname = "/";
+  url.searchParams.set("workspace", workspacePath);
   url.searchParams.set("folder", workingDirectory);
   return url.toString();
 }
@@ -140,8 +158,8 @@ async function defaultAllocatePort(): Promise<number> {
   });
 }
 
-async function defaultCreateRuntimeDir(sessionId: string): Promise<string> {
-  return mkdtemp(join(tmpdir(), `coding-kanban-vscode-${sessionId}-`));
+async function defaultCreateDataRoot(): Promise<string> {
+  return join(homedir(), ".local", "share", "coding-kanban", "vscode-web");
 }
 
 async function defaultFindCommand(candidate: string): Promise<string | null> {
@@ -213,7 +231,7 @@ async function defaultInstallCodeServer(): Promise<void> {
   });
 }
 
-async function defaultRemoveRuntimeDir(pathValue: string): Promise<void> {
+async function defaultRemovePath(pathValue: string): Promise<void> {
   await rm(pathValue, { recursive: true, force: true });
 }
 
@@ -253,6 +271,10 @@ async function defaultWaitForUrlReady(url: string): Promise<void> {
   throw new Error(`Timed out waiting for VS Code Web at ${url}`);
 }
 
+async function defaultWriteFile(pathValue: string, content: string) {
+  await writeFile(pathValue, content, "utf8");
+}
+
 async function resolveProviderCommand(
   findCommand: (candidate: string) => Promise<string | null>,
 ): Promise<{ command: string; provider: VsCodeWebProvider } | null> {
@@ -281,17 +303,16 @@ function buildLaunchArgs(
   provider: VsCodeWebProvider,
   bindHost: string,
   port: number,
-  dataDir: string,
+  userDataDir: string,
+  extensionsDir: string,
 ): string[] {
-  const userDataDir = join(dataDir, "user-data");
-  const extensionsDir = join(dataDir, "extensions");
-
   if (provider === "code-server") {
     return [
       "--auth",
       "none",
       "--bind-addr",
       `${bindHost}:${port}`,
+      "--disable-update-check",
       "--user-data-dir",
       userDataDir,
       "--extensions-dir",
@@ -312,12 +333,30 @@ function buildLaunchArgs(
   ];
 }
 
+function buildWorkspaceContent(
+  session: AgentSessionRecord,
+  workingDirectory: string,
+): string {
+  return JSON.stringify(
+    {
+      folders: [{ path: workingDirectory }],
+      settings: {
+        "window.title": session.displayName,
+      },
+    },
+    null,
+    2,
+  );
+}
+
 export class VsCodeWebManager {
   private readonly allocatePort: () => Promise<number>;
-  private readonly createRuntimeDir: (sessionId: string) => Promise<string>;
+  private readonly createDataRoot: () => Promise<string>;
   private readonly findCommand: (candidate: string) => Promise<string | null>;
+  private readonly idleTimeoutMs: number;
   private readonly installCodeServer: () => Promise<void>;
-  private readonly removeRuntimeDir: (path: string) => Promise<void>;
+  private readonly now: () => number;
+  private readonly removePath: (path: string) => Promise<void>;
   private readonly spawnProcess: (
     command: string,
     args: string[],
@@ -328,17 +367,45 @@ export class VsCodeWebManager {
     },
   ) => ChildProcess;
   private readonly waitForUrlReady: (url: string) => Promise<void>;
-  private readonly instances = new Map<string, RunningEditorInstance>();
+  private readonly writeFile: (path: string, content: string) => Promise<void>;
+  private dataRootPathsPromise: Promise<DataRootPaths> | null = null;
+  private globalServer: RunningGlobalServer | null = null;
   private installPromise: Promise<void> | null = null;
+  private readonly sessionWorkspacePaths = new Map<string, string>();
 
   constructor(deps: VsCodeWebManagerDeps = {}) {
     this.allocatePort = deps.allocatePort ?? defaultAllocatePort;
-    this.createRuntimeDir = deps.createRuntimeDir ?? defaultCreateRuntimeDir;
+    this.createDataRoot = deps.createDataRoot ?? defaultCreateDataRoot;
     this.findCommand = deps.findCommand ?? defaultFindCommand;
+    this.idleTimeoutMs =
+      deps.idleTimeoutMs ?? DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS;
     this.installCodeServer = deps.installCodeServer ?? defaultInstallCodeServer;
-    this.removeRuntimeDir = deps.removeRuntimeDir ?? defaultRemoveRuntimeDir;
+    this.now = deps.now ?? (() => Date.now());
+    this.removePath = deps.removePath ?? defaultRemovePath;
     this.spawnProcess = deps.spawnProcess ?? defaultSpawnProcess;
     this.waitForUrlReady = deps.waitForUrlReady ?? defaultWaitForUrlReady;
+    this.writeFile = deps.writeFile ?? defaultWriteFile;
+  }
+
+  private async ensureDataRootPaths(): Promise<DataRootPaths> {
+    if (!this.dataRootPathsPromise) {
+      this.dataRootPathsPromise = this.createDataRoot().then(async (root) => {
+        const paths = {
+          root,
+          userDataDir: join(root, "user-data"),
+          extensionsDir: join(root, "extensions"),
+          workspacesDir: join(root, "workspaces"),
+        };
+
+        await mkdir(paths.userDataDir, { recursive: true });
+        await mkdir(paths.extensionsDir, { recursive: true });
+        await mkdir(paths.workspacesDir, { recursive: true });
+
+        return paths;
+      });
+    }
+
+    return this.dataRootPathsPromise;
   }
 
   private async ensureProviderCommand(): Promise<{
@@ -365,53 +432,58 @@ export class VsCodeWebManager {
     return resolveProviderCommand(this.findCommand);
   }
 
-  async ensureSession(
-    session: AgentSessionRecord,
-    options: EnsureVsCodeWebSessionOptions = {},
-  ): Promise<OpenVsCodeWebResponse> {
-    if (session.sshTarget) {
-      throw new UnsupportedVsCodeWebSessionError(
-        "VS Code Web 第一版仅支持本地终端会话",
-      );
+  private touchGlobalServer(): void {
+    if (!this.globalServer) {
+      return;
     }
 
-    const workingDirectory = resolveLocalWorkingDirectory(
-      session.workingDirectory,
-    );
-    const publicProtocol = options.requestProtocol ?? "http";
-    const publicHost = resolvePublicHost(options.requestHost);
-    const existing = this.instances.get(session.id);
+    this.globalServer.lastUsedAt = this.now();
+    if (this.globalServer.idleTimer) {
+      clearTimeout(this.globalServer.idleTimer);
+    }
+
+    this.globalServer.idleTimer = setTimeout(() => {
+      if (!this.globalServer) {
+        return;
+      }
+
+      if (this.now() - this.globalServer.lastUsedAt < this.idleTimeoutMs) {
+        this.touchGlobalServer();
+        return;
+      }
+
+      void this.stopGlobalServer();
+    }, this.idleTimeoutMs);
+  }
+
+  private async ensureGlobalServer(providerCommand: {
+    command: string;
+    provider: VsCodeWebProvider;
+  }): Promise<{ reused: boolean; server: RunningGlobalServer }> {
+    const existing = this.globalServer;
     if (existing && !existing.child.killed && !existing.exited) {
       await existing.readyPromise;
+      this.touchGlobalServer();
       return {
-        provider: existing.provider,
-        url: buildEditorUrl(
-          `${publicProtocol}://${publicHost}:${existing.port}`,
-          workingDirectory,
-        ),
         reused: true,
-        workingDirectory,
+        server: existing,
       };
     }
 
-    const providerCommand = await this.ensureProviderCommand();
-    if (!providerCommand) {
-      throw new VsCodeWebUnavailableError(
-        "未检测到可用的 VS Code Web 运行时，且自动安装 code-server 失败。",
-      );
-    }
-
+    const dataRootPaths = await this.ensureDataRootPaths();
     const port = await this.allocatePort();
-    const dataDir = await this.createRuntimeDir(session.id);
     const bindHost = process.env.VSCODE_WEB_BIND_HOST?.trim() || "0.0.0.0";
-    await mkdir(join(dataDir, "user-data"), { recursive: true });
-    await mkdir(join(dataDir, "extensions"), { recursive: true });
-
     const child = this.spawnProcess(
       providerCommand.command,
-      buildLaunchArgs(providerCommand.provider, bindHost, port, dataDir),
+      buildLaunchArgs(
+        providerCommand.provider,
+        bindHost,
+        port,
+        dataRootPaths.userDataDir,
+        dataRootPaths.extensionsDir,
+      ),
       {
-        cwd: workingDirectory,
+        cwd: homedir(),
         env: (() => {
           const nextEnv: NodeJS.ProcessEnv = {
             ...process.env,
@@ -428,22 +500,26 @@ export class VsCodeWebManager {
     );
 
     const localOrigin = `http://127.0.0.1:${port}`;
-    const publicOrigin = `${publicProtocol}://${publicHost}:${port}`;
-    const instance: RunningEditorInstance = {
+    const server: RunningGlobalServer = {
       child,
-      dataDir,
       exited: false,
+      idleTimer: null,
+      lastUsedAt: this.now(),
       port,
       provider: providerCommand.provider,
       readyPromise: Promise.resolve(),
     };
+
     child.on("exit", () => {
-      instance.exited = true;
-      if (this.instances.get(session.id) === instance) {
-        this.instances.delete(session.id);
-        void this.removeRuntimeDir(instance.dataDir);
+      server.exited = true;
+      if (server.idleTimer) {
+        clearTimeout(server.idleTimer);
+      }
+      if (this.globalServer === server) {
+        this.globalServer = null;
       }
     });
+
     const readyPromise = new Promise<void>((resolve, reject) => {
       let settled = false;
 
@@ -485,41 +561,109 @@ export class VsCodeWebManager {
           );
         });
     });
-    instance.readyPromise = readyPromise;
 
-    this.instances.set(session.id, instance);
+    server.readyPromise = readyPromise;
+    this.globalServer = server;
 
     try {
       await readyPromise;
+      this.touchGlobalServer();
       return {
-        provider: providerCommand.provider,
-        url: buildEditorUrl(publicOrigin, workingDirectory),
         reused: false,
-        workingDirectory,
+        server,
       };
     } catch (error) {
-      await this.stopSession(session.id);
+      await this.stopGlobalServer();
       throw error;
     }
   }
 
+  private async ensureWorkspaceFile(
+    session: AgentSessionRecord,
+  ): Promise<{ path: string; workingDirectory: string }> {
+    const dataRootPaths = await this.ensureDataRootPaths();
+    const workingDirectory = resolveLocalWorkingDirectory(
+      session.workingDirectory,
+    );
+    const workspacePath = join(
+      dataRootPaths.workspacesDir,
+      `${session.id}.code-workspace`,
+    );
+
+    await this.writeFile(
+      workspacePath,
+      buildWorkspaceContent(session, workingDirectory),
+    );
+    this.sessionWorkspacePaths.set(session.id, workspacePath);
+
+    return {
+      path: workspacePath,
+      workingDirectory,
+    };
+  }
+
+  async ensureSession(
+    session: AgentSessionRecord,
+    options: EnsureVsCodeWebSessionOptions = {},
+  ): Promise<OpenVsCodeWebResponse> {
+    if (session.sshTarget) {
+      throw new UnsupportedVsCodeWebSessionError(
+        "VS Code Web 第一版仅支持本地终端会话",
+      );
+    }
+
+    const publicProtocol = options.requestProtocol ?? "http";
+    const publicHost = resolvePublicHost(options.requestHost);
+    const workspace = await this.ensureWorkspaceFile(session);
+    const providerCommand = await this.ensureProviderCommand();
+
+    if (!providerCommand) {
+      throw new VsCodeWebUnavailableError(
+        "未检测到可用的 VS Code Web 运行时，且自动安装 code-server 失败。",
+      );
+    }
+
+    const { reused, server } = await this.ensureGlobalServer(providerCommand);
+    return {
+      provider: server.provider,
+      url: buildEditorUrl(
+        `${publicProtocol}://${publicHost}:${server.port}`,
+        workspace.path,
+        workspace.workingDirectory,
+      ),
+      reused,
+      workingDirectory: workspace.workingDirectory,
+    };
+  }
+
   async stopSession(sessionId: string): Promise<void> {
-    const instance = this.instances.get(sessionId);
-    if (!instance) {
+    const workspacePath = this.sessionWorkspacePaths.get(sessionId);
+    this.sessionWorkspacePaths.delete(sessionId);
+    if (workspacePath) {
+      await this.removePath(workspacePath).catch(() => {});
+    }
+
+    if (this.sessionWorkspacePaths.size === 0 && this.globalServer) {
+      await this.stopGlobalServer();
+    }
+  }
+
+  private async stopGlobalServer(): Promise<void> {
+    const server = this.globalServer;
+    if (!server) {
       return;
     }
 
-    this.instances.delete(sessionId);
-    if (!instance.child.killed) {
-      instance.child.kill("SIGTERM");
+    this.globalServer = null;
+    if (server.idleTimer) {
+      clearTimeout(server.idleTimer);
     }
-    await this.removeRuntimeDir(instance.dataDir);
+    if (!server.child.killed) {
+      server.child.kill("SIGTERM");
+    }
   }
 
   async dispose(): Promise<void> {
-    const sessionIds = [...this.instances.keys()];
-    for (const sessionId of sessionIds) {
-      await this.stopSession(sessionId);
-    }
+    await this.stopGlobalServer();
   }
 }

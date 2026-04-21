@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
@@ -23,15 +20,16 @@ class FakeChildProcess extends EventEmitter {
 }
 
 function buildSession(
+  id: string,
   overrides: Partial<AgentSessionRecord> = {},
 ): AgentSessionRecord {
   return {
-    id: "session-1",
+    id,
     workspaceId: "default",
     sourceType: "local",
     agentKind: "shell",
-    displayName: "Local Shell",
-    workingDirectory: "/tmp/project-a",
+    displayName: `Local Shell ${id}`,
+    workingDirectory: `/tmp/${id}`,
     connectionState: "online",
     interactionState: "running",
     ...overrides,
@@ -44,7 +42,7 @@ test("ensureSession rejects remote sessions", async () => {
   await assert.rejects(
     () =>
       manager.ensureSession(
-        buildSession({
+        buildSession("session-1", {
           sshTarget: { host: "10.0.0.2" },
         }),
       ),
@@ -59,18 +57,18 @@ test("ensureSession rejects when no supported provider is installed", async () =
   });
 
   await assert.rejects(
-    () => manager.ensureSession(buildSession()),
+    () => manager.ensureSession(buildSession("session-1")),
     VsCodeWebUnavailableError,
   );
 });
 
-test("ensureSession launches code-server and returns a folder-bound url", async () => {
+test("ensureSession launches one global code-server and returns session-specific workspace urls", async () => {
   const launches: Array<{ command: string; args: string[] }> = [];
   const child = new FakeChildProcess();
+  const files = new Map<string, string>();
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43111,
-    createRuntimeDir: async () =>
-      mkdtemp(join(tmpdir(), "coding-kanban-vscode-test-")),
+    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
     spawnProcess: (command, args) => {
@@ -78,22 +76,58 @@ test("ensureSession launches code-server and returns a folder-bound url", async 
       return child as never;
     },
     waitForUrlReady: async () => {},
+    writeFile: async (pathValue, content) => {
+      files.set(pathValue, content);
+    },
   });
 
-  const result = await manager.ensureSession(buildSession());
+  const first = await manager.ensureSession(buildSession("session-a"), {
+    requestHost: "10.30.0.22",
+    requestProtocol: "http",
+  });
+  const second = await manager.ensureSession(
+    buildSession("session-b", {
+      workingDirectory: "/tmp/project-b",
+    }),
+    {
+      requestHost: "10.30.0.22",
+      requestProtocol: "http",
+    },
+  );
 
-  assert.equal(result.provider, "code-server");
-  assert.equal(result.reused, false);
-  assert.match(result.url, /10\.30\.0\.22:43111|http:\/\/[^/]+:43111/);
-  assert.match(result.url, /folder=%2Ftmp%2Fproject-a/);
   assert.equal(launches.length, 1);
+  assert.equal(first.reused, false);
+  assert.equal(second.reused, true);
+  assert.match(first.url, /^http:\/\/10\.30\.0\.22:43111\//);
+  assert.match(
+    first.url,
+    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-a\.code-workspace/,
+  );
+  assert.match(
+    second.url,
+    /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-b\.code-workspace/,
+  );
+  assert.notEqual(first.url, second.url);
   assert.equal(launches[0].command, "/usr/bin/code-server");
-  assert.deepEqual(launches[0].args.slice(0, 4), [
+  assert.deepEqual(launches[0].args.slice(0, 5), [
     "--auth",
     "none",
     "--bind-addr",
     "0.0.0.0:43111",
+    "--disable-update-check",
   ]);
+  assert.match(
+    files.get(
+      "/tmp/coding-kanban-vscode-root/workspaces/session-a.code-workspace",
+    ) ?? "",
+    /"path": "\/tmp\/session-a"/,
+  );
+  assert.match(
+    files.get(
+      "/tmp/coding-kanban-vscode-root/workspaces/session-b.code-workspace",
+    ) ?? "",
+    /"path": "\/tmp\/project-b"/,
+  );
 
   await manager.dispose();
 });
@@ -104,8 +138,7 @@ test("ensureSession auto-installs code-server when no provider is initially avai
   const child = new FakeChildProcess();
   const manager = new VsCodeWebManager({
     allocatePort: async () => 43114,
-    createRuntimeDir: async () =>
-      mkdtemp(join(tmpdir(), "coding-kanban-vscode-test-")),
+    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
     findCommand: async (candidate) => {
       if (candidate !== "code-server") {
         return null;
@@ -119,9 +152,10 @@ test("ensureSession auto-installs code-server when no provider is initially avai
     },
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
+    writeFile: async () => {},
   });
 
-  const result = await manager.ensureSession(buildSession());
+  const result = await manager.ensureSession(buildSession("session-1"));
 
   assert.equal(installCount, 1);
   assert.equal(result.provider, "code-server");
@@ -129,73 +163,52 @@ test("ensureSession auto-installs code-server when no provider is initially avai
   await manager.dispose();
 });
 
-test("ensureSession reuses an existing instance for the same session", async () => {
-  let spawnCount = 0;
+test("stopSession removes only the deleted session workspace and keeps the global server for other sessions", async () => {
   const child = new FakeChildProcess();
+  const removedPaths: string[] = [];
   const manager = new VsCodeWebManager({
-    allocatePort: async () => 43112,
-    createRuntimeDir: async () =>
-      mkdtemp(join(tmpdir(), "coding-kanban-vscode-test-")),
+    allocatePort: async () => 43115,
+    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
-    spawnProcess: () => {
-      spawnCount += 1;
-      return child as never;
-    },
-    waitForUrlReady: async () => {},
-  });
-
-  const first = await manager.ensureSession(buildSession());
-  const second = await manager.ensureSession(
-    buildSession({
-      workingDirectory: "/tmp/project-b",
-    }),
-  );
-
-  assert.equal(spawnCount, 1);
-  assert.equal(first.reused, false);
-  assert.equal(second.reused, true);
-  assert.match(second.url, /folder=%2Ftmp%2Fproject-b/);
-
-  await manager.dispose();
-});
-
-test("stopSession terminates the editor process", async () => {
-  const child = new FakeChildProcess();
-  const manager = new VsCodeWebManager({
-    allocatePort: async () => 43113,
-    createRuntimeDir: async () =>
-      mkdtemp(join(tmpdir(), "coding-kanban-vscode-test-")),
-    findCommand: async (candidate) =>
-      candidate === "openvscode-server" ? "/usr/bin/openvscode-server" : null,
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
+    writeFile: async () => {},
+    removePath: async (pathValue) => {
+      removedPaths.push(pathValue);
+    },
   });
 
-  await manager.ensureSession(buildSession());
-  await manager.stopSession("session-1");
+  await manager.ensureSession(buildSession("session-a"));
+  await manager.ensureSession(buildSession("session-b"));
+  await manager.stopSession("session-a");
 
+  assert.equal(child.killed, false);
+
+  await manager.stopSession("session-b");
   assert.equal(child.killed, true);
+
+  await manager.dispose();
 });
 
 test("ensureSession prefers the request host for the returned public url", async () => {
   const child = new FakeChildProcess();
   const manager = new VsCodeWebManager({
-    allocatePort: async () => 43115,
-    createRuntimeDir: async () =>
-      mkdtemp(join(tmpdir(), "coding-kanban-vscode-test-")),
+    allocatePort: async () => 43116,
+    createDataRoot: async () => "/tmp/coding-kanban-vscode-root",
     findCommand: async (candidate) =>
       candidate === "code-server" ? "/usr/bin/code-server" : null,
     spawnProcess: () => child as never,
     waitForUrlReady: async () => {},
+    writeFile: async () => {},
   });
 
-  const result = await manager.ensureSession(buildSession(), {
+  const result = await manager.ensureSession(buildSession("session-1"), {
     requestHost: "10.30.0.22",
     requestProtocol: "http",
   });
 
-  assert.match(result.url, /^http:\/\/10\.30\.0\.22:43115\//);
+  assert.match(result.url, /^http:\/\/10\.30\.0\.22:43116\//);
 
   await manager.dispose();
 });
