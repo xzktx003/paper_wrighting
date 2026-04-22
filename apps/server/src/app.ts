@@ -7,6 +7,7 @@ import type { AgentSessionSnapshotEvent } from "@agent-orchestrator/shared";
 import { registerAgentSessionRoutes } from "./routes/agent-sessions.js";
 import { registerFilesystemRoutes } from "./routes/filesystem.js";
 import { registerSshHostsRoutes } from "./routes/ssh-hosts.js";
+import { registerVsCodeWebProxyRoutes } from "./routes/vscode-web-proxy.js";
 import { AgentSessionRegistry } from "./services/agent-session-registry.js";
 import { LocalFsService } from "./services/local-fs-service.js";
 import { LocalProcessRuntimeManager } from "./services/local-process-runtime-manager.js";
@@ -65,6 +66,9 @@ export function buildServer(options: BuildServerOptions = {}): {
     await registerFilesystemRoutes(instance, {
       localFsService,
       sftpService,
+    });
+    await registerVsCodeWebProxyRoutes(instance, {
+      vsCodeWebManager,
     });
 
     instance.get("/ws/agent-sessions", { websocket: true }, (socket) => {

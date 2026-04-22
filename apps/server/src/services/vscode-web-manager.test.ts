@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
@@ -110,7 +113,7 @@ test("ensureSession launches one global code-server and returns session-specific
   assert.equal(launches.length, 1);
   assert.equal(first.reused, false);
   assert.equal(second.reused, true);
-  assert.match(first.url, /^http:\/\/10\.30\.0\.22:43111\//);
+  assert.match(first.url, /^http:\/\/10\.30\.0\.22\/vscode\/\?/);
   assert.match(
     first.url,
     /workspace=%2Ftmp%2Fcoding-kanban-vscode-root%2Fworkspaces%2Fsession-a-[a-f0-9]{16}\.code-workspace/,
@@ -257,7 +260,147 @@ test("ensureSession prefers the request host for the returned public url", async
     requestProtocol: "http",
   });
 
-  assert.match(result.url, /^http:\/\/10\.30\.0\.22:43116\//);
+  assert.match(result.url, /^http:\/\/10\.30\.0\.22\/vscode\/\?/);
+
+  await manager.dispose();
+});
+
+test("ensureSession returns a fixed /vscode/ url on the public host", async () => {
+  const child = new FakeChildProcess();
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43120,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: () => child as never,
+    waitForUrlReady: async () => {},
+    writeFile: async () => {},
+  });
+
+  const result = await manager.ensureSession(
+    buildSession("session-fixed-url"),
+    {
+      requestHost: "10.30.0.22:3000",
+      requestProtocol: "http",
+    },
+  );
+
+  assert.match(result.url, /^http:\/\/10\.30\.0\.22:3000\/vscode\/\?/);
+  assert.doesNotMatch(result.url, /:43120\//);
+
+  await manager.dispose();
+});
+
+test("ensureSession reuses a compatible code-server already running for the current user", async () => {
+  const launches: Array<{ command: string; args: string[] }> = [];
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43121,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    findRunningServer: async () => ({
+      pid: 321654,
+      port: 43121,
+      provider: "code-server",
+    }),
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: (command, args) => {
+      launches.push({ command, args });
+      return new FakeChildProcess() as never;
+    },
+    waitForUrlReady: async (url) => {
+      assert.equal(url, "http://127.0.0.1:43121");
+    },
+    writeFile: async () => {},
+  });
+
+  const result = await manager.ensureSession(buildSession("session-reuse"), {
+    requestHost: "10.30.0.22:3000",
+    requestProtocol: "http",
+  });
+
+  assert.equal(launches.length, 0);
+  assert.equal(result.reused, true);
+  assert.equal(result.provider, "code-server");
+  assert.equal(manager.getProxyTargetUrl(), "http://127.0.0.1:43121");
+
+  await manager.dispose();
+});
+
+test("stopSession does not kill an adopted code-server that was already running", async () => {
+  let killCount = 0;
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43122,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    findRunningServer: async () => ({
+      pid: 321655,
+      port: 43122,
+      provider: "code-server",
+      kill: () => {
+        killCount += 1;
+        return true;
+      },
+    }),
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    waitForUrlReady: async () => {},
+    writeFile: async () => {},
+  });
+
+  await manager.ensureSession(buildSession("session-adopted"));
+  await manager.stopSession("session-adopted");
+
+  assert.equal(killCount, 0);
+
+  await manager.dispose();
+});
+
+test("ensureSession reuses a matching current-user code-server from the process list", async () => {
+  const launches: Array<{ command: string; args: string[] }> = [];
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43123,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    listUserProcesses: async () => [
+      {
+        pid: 321656,
+        args: [
+          "/usr/bin/code-server",
+          "--auth",
+          "none",
+          "--bind-addr",
+          "0.0.0.0:43123",
+          "--disable-update-check",
+          "--config",
+          `${TEST_DATA_ROOT}/config.yaml`,
+          "--user-data-dir",
+          `${TEST_DATA_ROOT}/user-data`,
+          "--extensions-dir",
+          `${TEST_DATA_ROOT}/extensions`,
+        ].join(" "),
+      },
+    ],
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: (command, args) => {
+      launches.push({ command, args });
+      return new FakeChildProcess() as never;
+    },
+    waitForUrlReady: async (url) => {
+      assert.equal(url, "http://127.0.0.1:43123");
+    },
+    writeFile: async () => {},
+  });
+
+  const result = await manager.ensureSession(
+    buildSession("session-process-list"),
+  );
+
+  assert.equal(launches.length, 0);
+  assert.equal(result.reused, true);
+  assert.equal(manager.getProxyTargetUrl(), "http://127.0.0.1:43123");
 
   await manager.dispose();
 });
@@ -325,6 +468,119 @@ test("ensureSession uses an explicit shared extensions directory override", asyn
       process.env.VSCODE_WEB_EXTENSIONS_DIR = previousExtensionsDir;
     }
   }
+});
+
+test("ensureSession uses the current user's vscode-server extensions directory by default when available", async () => {
+  const child = new FakeChildProcess();
+  const launches: Array<{ args: string[] }> = [];
+  const previousHome = process.env.HOME;
+  const tempHome = await mkdtemp(join(tmpdir(), "coding-kanban-vscode-home-"));
+  const sharedExtensionsDir = join(tempHome, ".vscode-server", "extensions");
+
+  await mkdir(sharedExtensionsDir, { recursive: true });
+
+  try {
+    process.env.HOME = tempHome;
+
+    const manager = new VsCodeWebManager({
+      allocatePort: async () => 43124,
+      createDataRoot: async () =>
+        join(tempHome, ".local", "share", "coding-kanban", "vscode-web"),
+      findCommand: async (candidate) =>
+        candidate === "code-server" ? "/usr/bin/code-server" : null,
+      spawnProcess: (_command, args) => {
+        launches.push({ args });
+        return child as never;
+      },
+      waitForUrlReady: async () => {},
+    });
+
+    await manager.ensureSession(buildSession("session-shared-extensions"));
+
+    assert.deepEqual(launches[0]?.args.slice(9, 11), [
+      "--extensions-dir",
+      sharedExtensionsDir,
+    ]);
+
+    await manager.dispose();
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+
+    await rm(tempHome, { recursive: true, force: true });
+  }
+});
+
+test("ensureSession reuses a persisted port across global server restarts so the browser origin is stable", async () => {
+  const ports: number[] = [];
+  const launches: Array<{ args: string[] }> = [];
+  const savedPortContents = new Map<string, string>();
+
+  let childInstance: FakeChildProcess | null = null;
+  const manager = new VsCodeWebManager({
+    allocatePort: async (preferredPort) => {
+      if (typeof preferredPort === "number") {
+        ports.push(preferredPort);
+        return preferredPort;
+      }
+      const allocated = 43200 + ports.length;
+      ports.push(allocated);
+      return allocated;
+    },
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    resolvePreferredPort: async (dataRoot) => {
+      const saved = savedPortContents.get(`${dataRoot}/port.json`);
+      if (!saved) {
+        return null;
+      }
+      const parsed = JSON.parse(saved);
+      return typeof parsed.port === "number" ? parsed.port : null;
+    },
+    spawnProcess: (_command, args) => {
+      launches.push({ args });
+      childInstance = new FakeChildProcess();
+      return childInstance as never;
+    },
+    waitForUrlReady: async () => {},
+    writeFile: async (pathValue, content) => {
+      if (pathValue.endsWith("/port.json")) {
+        savedPortContents.set(pathValue, content);
+      }
+    },
+  });
+
+  const first = await manager.ensureSession(buildSession("session-1"), {
+    requestHost: "10.30.0.22:3000",
+    requestProtocol: "http",
+  });
+  assert.match(first.url, /10\.30\.0\.22:3000\/vscode\//);
+
+  // Simulate idle timeout / dispose that kills the global server.
+  const launchedChild = childInstance as FakeChildProcess | null;
+  if (launchedChild) {
+    launchedChild.emit("exit", 0, null);
+  }
+  await manager.dispose();
+
+  const second = await manager.ensureSession(buildSession("session-2"), {
+    requestHost: "10.30.0.22:3000",
+    requestProtocol: "http",
+  });
+
+  assert.equal(launches.length, 2);
+  assert.match(
+    second.url,
+    /10\.30\.0\.22:3000\/vscode\//,
+    `expected persisted port to be reused but got url ${second.url}`,
+  );
+
+  await manager.dispose();
 });
 
 test("ensureSession uses the resolved shell env and strips inherited VS Code IPC hooks before spawning", async () => {

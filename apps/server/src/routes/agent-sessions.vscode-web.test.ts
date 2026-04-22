@@ -18,6 +18,7 @@ async function buildApp(vsCodeWebManager?: object) {
 test("POST /api/agent-sessions/:id/vscode-web opens a local session in VS Code Web", async () => {
   let receivedSessionId = "";
   let receivedHost = "";
+  let receivedProtocol = "";
   let stoppedSessionId = "";
   const app = await buildApp({
     ensureSession: async (
@@ -25,10 +26,11 @@ test("POST /api/agent-sessions/:id/vscode-web opens a local session in VS Code W
         id: string;
         workingDirectory?: string;
       },
-      options: { requestHost?: string },
+      options: { requestHost?: string; requestProtocol?: string },
     ) => {
       receivedSessionId = session.id;
       receivedHost = options.requestHost ?? "";
+      receivedProtocol = options.requestProtocol ?? "";
       return {
         provider: "code-server",
         url: "http://10.30.0.22:43111/?folder=%2Ftmp%2Fproject-a",
@@ -62,12 +64,16 @@ test("POST /api/agent-sessions/:id/vscode-web opens a local session in VS Code W
     const openRes = await app.inject({
       method: "POST",
       url: `/api/agent-sessions/${created.id}/vscode-web`,
+      headers: {
+        host: "10.30.0.22:3000",
+      },
     });
     assert.equal(openRes.statusCode, 200);
     const body = JSON.parse(openRes.payload);
     assert.equal(body.provider, "code-server");
     assert.equal(receivedSessionId, created.id);
-    assert.equal(receivedHost, "localhost");
+    assert.equal(receivedHost, "10.30.0.22:3000");
+    assert.equal(receivedProtocol, "http");
 
     const deleteRes = await app.inject({
       method: "DELETE",
@@ -75,6 +81,64 @@ test("POST /api/agent-sessions/:id/vscode-web opens a local session in VS Code W
     });
     assert.equal(deleteRes.statusCode, 204);
     assert.equal(stoppedSessionId, created.id);
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /api/agent-sessions/:id/vscode-web prefers Origin when the proxy host is local backend", async () => {
+  let receivedHost = "";
+  let receivedProtocol = "";
+  const app = await buildApp({
+    ensureSession: async (
+      _session: {
+        id: string;
+        workingDirectory?: string;
+      },
+      options: { requestHost?: string; requestProtocol?: string },
+    ) => {
+      receivedHost = options.requestHost ?? "";
+      receivedProtocol = options.requestProtocol ?? "";
+      return {
+        provider: "code-server",
+        url: "https://127.0.0.1:3000/vscode/?folder=%2Ftmp%2Fproject-origin",
+        reused: false,
+        workingDirectory: "/tmp/project-origin",
+      };
+    },
+    stopSession: async () => {},
+    dispose: async () => {},
+  });
+
+  try {
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/agent-sessions/register",
+      payload: {
+        workspaceId: "default",
+        sourceType: "local",
+        displayName: "shell-origin",
+        agentKind: "shell",
+        connectionState: "online",
+        interactionState: "running",
+        workingDirectory: "/tmp/project-origin",
+      },
+    });
+    assert.equal(createRes.statusCode, 201);
+    const created = JSON.parse(createRes.payload);
+
+    const openRes = await app.inject({
+      method: "POST",
+      url: `/api/agent-sessions/${created.id}/vscode-web`,
+      headers: {
+        host: "localhost:4000",
+        origin: "https://127.0.0.1:3000",
+      },
+    });
+
+    assert.equal(openRes.statusCode, 200);
+    assert.equal(receivedHost, "127.0.0.1:3000");
+    assert.equal(receivedProtocol, "https");
   } finally {
     await app.close();
   }

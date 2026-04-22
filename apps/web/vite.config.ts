@@ -31,6 +31,10 @@ export default defineConfig({
     https: readHttpsConfig(),
     proxy: {
       '/api': 'http://localhost:4000',
+      '/vscode': {
+        target: 'http://localhost:4000',
+        ws: true,
+      },
       '/ws': {
         target: 'ws://localhost:4000',
         ws: true,

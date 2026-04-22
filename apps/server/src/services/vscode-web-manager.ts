@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir, networkInterfaces } from "node:os";
+import { homedir, networkInterfaces, userInfo } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 
@@ -19,6 +19,7 @@ import {
 } from "./runtime-compat.js";
 
 const DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_VSCODE_WEB_PROXY_PATH = "/vscode/";
 
 export class UnsupportedVsCodeWebSessionError extends Error {
   constructor(message: string) {
@@ -35,7 +36,12 @@ export class VsCodeWebUnavailableError extends Error {
 }
 
 interface RunningGlobalServer {
-  child: ChildProcess;
+  ownedByManager: boolean;
+  processHandle: {
+    killed: boolean;
+    kill: (signal?: NodeJS.Signals) => boolean;
+    pid?: number;
+  };
   exited: boolean;
   idleTimer: NodeJS.Timeout | null;
   lastUsedAt: number;
@@ -44,16 +50,42 @@ interface RunningGlobalServer {
   readyPromise: Promise<void>;
 }
 
+interface DetectedRunningServer {
+  kill?: (signal?: NodeJS.Signals) => boolean;
+  pid?: number;
+  port: number;
+  provider: VsCodeWebProvider;
+}
+
+interface FindRunningServerOptions {
+  dataRootPaths: DataRootPaths;
+  preferredPort: number | null;
+  providerCommand: {
+    command: string;
+    provider: VsCodeWebProvider;
+  };
+}
+
+interface UserProcessEntry {
+  pid: number;
+  args: string;
+}
+
 interface VsCodeWebManagerDeps {
-  allocatePort?: () => Promise<number>;
+  allocatePort?: (preferredPort?: number) => Promise<number>;
   createDataRoot?: () => Promise<string>;
   findCommand?: (candidate: string) => Promise<string | null>;
+  findRunningServer?: (
+    options: FindRunningServerOptions,
+  ) => Promise<DetectedRunningServer | null>;
   idleTimeoutMs?: number;
   installCodeServer?: () => Promise<void>;
+  listUserProcesses?: () => Promise<UserProcessEntry[]>;
   now?: () => number;
   removePath?: (path: string) => Promise<void>;
   resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>;
   resolveExtensionsDir?: (root: string) => string;
+  resolvePreferredPort?: (dataRoot: string) => Promise<number | null>;
   spawnProcess?: (
     command: string,
     args: string[],
@@ -75,6 +107,7 @@ interface EnsureVsCodeWebSessionOptions {
 interface DataRootPaths {
   configFile: string;
   extensionsDir: string;
+  portFile: string;
   root: string;
   userDataDir: string;
   userSettingsFile: string;
@@ -240,12 +273,12 @@ function defaultResolveExtensionsDir(root: string): string {
 }
 
 function buildEditorUrl(
-  origin: string,
+  baseUrl: string,
   workspacePath: string,
   workingDirectory: string,
 ): string {
-  const url = new URL(origin);
-  url.pathname = "/";
+  const url = new URL(baseUrl);
+  url.pathname = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
   url.searchParams.set("workspace", workspacePath);
   url.searchParams.set("folder", workingDirectory);
   return url.toString();
@@ -311,28 +344,66 @@ function resolvePublicHost(requestHost?: string): string {
   return resolveNonLoopbackIpv4() ?? "127.0.0.1";
 }
 
-async function defaultAllocatePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+function tryListenOnPort(port: number): Promise<number | null> {
+  return new Promise((resolve) => {
     const server = net.createServer();
     server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.once("error", () => {
+      resolve(null);
+    });
+    server.listen(port, "127.0.0.1", () => {
       const address = server.address();
       if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Failed to allocate editor port")));
+        server.close(() => resolve(null));
         return;
       }
 
+      const allocated = address.port;
       server.close((error) => {
         if (error) {
-          reject(error);
+          resolve(null);
           return;
         }
 
-        resolve(address.port);
+        resolve(allocated);
       });
     });
   });
+}
+
+async function defaultAllocatePort(preferredPort?: number): Promise<number> {
+  if (typeof preferredPort === "number" && preferredPort > 0) {
+    const reused = await tryListenOnPort(preferredPort);
+    if (reused !== null) {
+      return reused;
+    }
+  }
+
+  const allocated = await tryListenOnPort(0);
+  if (allocated === null) {
+    throw new Error("Failed to allocate editor port");
+  }
+  return allocated;
+}
+
+async function defaultResolvePreferredPort(
+  dataRoot: string,
+): Promise<number | null> {
+  const portFile = join(dataRoot, "port.json");
+  if (!existsSync(portFile)) {
+    return null;
+  }
+  try {
+    const content = await readFile(portFile, "utf8");
+    const parsed = JSON.parse(content);
+    const port = (parsed as { port?: unknown }).port;
+    if (typeof port === "number" && Number.isInteger(port) && port > 0) {
+      return port;
+    }
+  } catch {
+    // ignore corrupted port files; we will reallocate.
+  }
+  return null;
 }
 
 async function defaultCreateDataRoot(): Promise<string> {
@@ -428,6 +499,153 @@ function defaultSpawnProcess(
   },
 ): ChildProcess {
   return spawn(command, args, options);
+}
+
+async function defaultListUserProcesses(): Promise<UserProcessEntry[]> {
+  const username = userInfo().username;
+
+  const stdout = await new Promise<string>((resolve) => {
+    execFile(
+      "ps",
+      ["-u", username, "-o", "pid=,args="],
+      (error, nextStdout) => {
+        if (error) {
+          resolve("");
+          return;
+        }
+
+        resolve(nextStdout);
+      },
+    );
+  });
+
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s+(.+)$/);
+      if (!match) {
+        return null;
+      }
+
+      return {
+        pid: Number.parseInt(match[1] ?? "", 10),
+        args: match[2] ?? "",
+      } satisfies UserProcessEntry;
+    })
+    .filter((entry): entry is UserProcessEntry => entry !== null);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function includesCommandPath(args: string, command: string): boolean {
+  const basename = command.split("/").filter(Boolean).at(-1) ?? command;
+  return (
+    args.includes(command) ||
+    new RegExp(`(^|\\s|/)${escapeRegExp(basename)}(?=\\s|$)`).test(args)
+  );
+}
+
+function hasFlagValue(args: string, flag: string, value: string): boolean {
+  return new RegExp(
+    `(?:^|\\s)${escapeRegExp(flag)}(?:\\s+|=)${escapeRegExp(value)}(?=\\s|$)`,
+  ).test(args);
+}
+
+function extractRunningServerPort(
+  provider: VsCodeWebProvider,
+  args: string,
+): number | null {
+  const match =
+    provider === "code-server"
+      ? args.match(
+          /(?:^|\s)--bind-addr(?:\s+|=)(?:\[[^\]]+\]|[^:\s]+):(\d+)(?=\s|$)/,
+        )
+      : args.match(/(?:^|\s)--port(?:\s+|=)(\d+)(?=\s|$)/);
+
+  if (!match) {
+    return null;
+  }
+
+  const port = Number.parseInt(match[1] ?? "", 10);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
+async function defaultFindRunningServer(
+  options: FindRunningServerOptions,
+  listUserProcesses: () => Promise<UserProcessEntry[]>,
+): Promise<DetectedRunningServer | null> {
+  const { dataRootPaths, preferredPort, providerCommand } = options;
+  const candidates: DetectedRunningServer[] = [];
+
+  for (const processEntry of await listUserProcesses()) {
+    const args = processEntry.args;
+    if (!includesCommandPath(args, providerCommand.command)) {
+      continue;
+    }
+
+    if (!hasFlagValue(args, "--user-data-dir", dataRootPaths.userDataDir)) {
+      continue;
+    }
+
+    const port = extractRunningServerPort(providerCommand.provider, args);
+    if (port === null) {
+      continue;
+    }
+
+    candidates.push({
+      pid: processEntry.pid,
+      port,
+      provider: providerCommand.provider,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return (
+    candidates.find((entry) => entry.port === preferredPort) ?? candidates[0]
+  );
+}
+
+function buildLocalOrigin(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+function createDetectedProcessHandle(server: DetectedRunningServer): {
+  killed: boolean;
+  kill: (signal?: NodeJS.Signals) => boolean;
+  pid?: number;
+} {
+  const killProcess =
+    server.kill ??
+    ((signal: NodeJS.Signals = "SIGTERM") => {
+      if (typeof server.pid !== "number") {
+        return false;
+      }
+
+      try {
+        process.kill(server.pid, signal);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+  const handle = {
+    killed: false,
+    pid: server.pid,
+    kill(signal?: NodeJS.Signals) {
+      handle.killed = true;
+      return killProcess(signal);
+    },
+  };
+
+  return handle;
 }
 
 async function defaultWaitForUrlReady(url: string): Promise<void> {
@@ -536,15 +754,22 @@ function buildWorkspaceContent(
 }
 
 export class VsCodeWebManager {
-  private readonly allocatePort: () => Promise<number>;
+  private readonly allocatePort: (preferredPort?: number) => Promise<number>;
   private readonly createDataRoot: () => Promise<string>;
   private readonly findCommand: (candidate: string) => Promise<string | null>;
+  private readonly findRunningServer: (
+    options: FindRunningServerOptions,
+  ) => Promise<DetectedRunningServer | null>;
   private readonly idleTimeoutMs: number;
   private readonly installCodeServer: () => Promise<void>;
+  private readonly listUserProcesses: () => Promise<UserProcessEntry[]>;
   private readonly now: () => number;
   private readonly removePath: (path: string) => Promise<void>;
   private readonly resolveLaunchEnv: () => Promise<NodeJS.ProcessEnv>;
   private readonly resolveExtensionsDir: (root: string) => string;
+  private readonly resolvePreferredPort: (
+    dataRoot: string,
+  ) => Promise<number | null>;
   private readonly spawnProcess: (
     command: string,
     args: string[],
@@ -567,6 +792,10 @@ export class VsCodeWebManager {
     this.allocatePort = deps.allocatePort ?? defaultAllocatePort;
     this.createDataRoot = deps.createDataRoot ?? defaultCreateDataRoot;
     this.findCommand = deps.findCommand ?? defaultFindCommand;
+    this.listUserProcesses = deps.listUserProcesses ?? defaultListUserProcesses;
+    this.findRunningServer =
+      deps.findRunningServer ??
+      ((options) => defaultFindRunningServer(options, this.listUserProcesses));
     this.idleTimeoutMs =
       deps.idleTimeoutMs ?? DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS;
     this.installCodeServer = deps.installCodeServer ?? defaultInstallCodeServer;
@@ -575,6 +804,8 @@ export class VsCodeWebManager {
     this.resolveLaunchEnv = deps.resolveLaunchEnv ?? defaultResolveLaunchEnv;
     this.resolveExtensionsDir =
       deps.resolveExtensionsDir ?? defaultResolveExtensionsDir;
+    this.resolvePreferredPort =
+      deps.resolvePreferredPort ?? defaultResolvePreferredPort;
     this.spawnProcess = deps.spawnProcess ?? defaultSpawnProcess;
     this.waitForUrlReady = deps.waitForUrlReady ?? defaultWaitForUrlReady;
     this.writeFile = deps.writeFile ?? defaultWriteFile;
@@ -587,6 +818,7 @@ export class VsCodeWebManager {
         const paths = {
           root,
           configFile: join(root, "config.yaml"),
+          portFile: join(root, "port.json"),
           userDataDir: join(root, "user-data"),
           userSettingsFile: join(root, "user-data", "User", "settings.json"),
           extensionsDir,
@@ -695,18 +927,67 @@ export class VsCodeWebManager {
     provider: VsCodeWebProvider;
   }): Promise<{ reused: boolean; server: RunningGlobalServer }> {
     const existing = this.globalServer;
-    if (existing && !existing.child.killed && !existing.exited) {
-      await existing.readyPromise;
-      this.touchGlobalServer();
-      return {
-        reused: true,
-        server: existing,
-      };
+    if (existing && !existing.processHandle.killed && !existing.exited) {
+      try {
+        await existing.readyPromise;
+        await this.waitForUrlReady(buildLocalOrigin(existing.port));
+        this.touchGlobalServer();
+        return {
+          reused: true,
+          server: existing,
+        };
+      } catch {
+        existing.exited = true;
+        if (this.globalServer === existing) {
+          this.globalServer = null;
+        }
+      }
     }
 
     const dataRootPaths = await this.ensureDataRootPaths();
     const launchEnv = await this.ensureLaunchEnv();
-    const port = await this.allocatePort();
+    const preferredPort = await this.resolvePreferredPort(
+      dataRootPaths.root,
+    ).catch(() => null);
+    const runningServer = await this.findRunningServer({
+      dataRootPaths,
+      preferredPort,
+      providerCommand,
+    });
+    if (runningServer) {
+      const localOrigin = buildLocalOrigin(runningServer.port);
+
+      try {
+        await this.waitForUrlReady(localOrigin);
+        const server: RunningGlobalServer = {
+          ownedByManager: false,
+          processHandle: createDetectedProcessHandle(runningServer),
+          exited: false,
+          idleTimer: null,
+          lastUsedAt: this.now(),
+          port: runningServer.port,
+          provider: runningServer.provider,
+          readyPromise: Promise.resolve(),
+        };
+
+        this.globalServer = server;
+        this.touchGlobalServer();
+        return {
+          reused: true,
+          server,
+        };
+      } catch {
+        // Fall back to spawning a fresh compatible instance.
+      }
+    }
+
+    const port = await this.allocatePort(preferredPort ?? undefined);
+    if (preferredPort !== port) {
+      await this.writeFile(
+        dataRootPaths.portFile,
+        `${JSON.stringify({ port }, null, 2)}\n`,
+      ).catch(() => {});
+    }
     const bindHost = process.env.VSCODE_WEB_BIND_HOST?.trim() || "0.0.0.0";
     const child = this.spawnProcess(
       providerCommand.command,
@@ -725,9 +1006,10 @@ export class VsCodeWebManager {
       },
     );
 
-    const localOrigin = `http://127.0.0.1:${port}`;
+    const localOrigin = buildLocalOrigin(port);
     const server: RunningGlobalServer = {
-      child,
+      ownedByManager: true,
+      processHandle: child,
       exited: false,
       idleTimer: null,
       lastUsedAt: this.now(),
@@ -854,7 +1136,7 @@ export class VsCodeWebManager {
     return {
       provider: server.provider,
       url: buildEditorUrl(
-        `${publicProtocol}://${publicHost}:${server.port}`,
+        `${publicProtocol}://${publicHost}${DEFAULT_VSCODE_WEB_PROXY_PATH}`,
         workspace.path,
         workspace.workingDirectory,
       ),
@@ -886,12 +1168,24 @@ export class VsCodeWebManager {
     if (server.idleTimer) {
       clearTimeout(server.idleTimer);
     }
-    if (!server.child.killed) {
-      server.child.kill("SIGTERM");
+    if (server.ownedByManager && !server.processHandle.killed) {
+      server.processHandle.kill("SIGTERM");
     }
   }
 
   async dispose(): Promise<void> {
     await this.stopGlobalServer();
+  }
+
+  getProxyTargetUrl(): string | null {
+    if (
+      !this.globalServer ||
+      this.globalServer.exited ||
+      this.globalServer.processHandle.killed
+    ) {
+      return null;
+    }
+
+    return buildLocalOrigin(this.globalServer.port);
   }
 }
