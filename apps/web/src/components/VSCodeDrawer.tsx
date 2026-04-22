@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { OpenVsCodeWebResponse } from "@agent-orchestrator/shared";
 
 import { openVsCodeWeb } from "../lib/api";
 import { openVsCodeWebOnce } from "../lib/vscode-web-open";
+import {
+  loadCachedVsCodeWebState,
+  saveCachedVsCodeWebState,
+} from "../lib/vscode-web-state";
 
 interface VSCodeDrawerProps {
   active: boolean;
@@ -19,10 +23,23 @@ export function VSCodeDrawer({
   open,
 }: VSCodeDrawerProps) {
   const [editorState, setEditorState] = useState<OpenVsCodeWebResponse | null>(
-    null,
+    () => loadCachedVsCodeWebState(agentSessionId),
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const editorStateRef = useRef(editorState);
+
+  useEffect(() => {
+    editorStateRef.current = editorState;
+  }, [editorState]);
+
+  useEffect(() => {
+    if (open) {
+      setEditorState(
+        (current) => current ?? loadCachedVsCodeWebState(agentSessionId),
+      );
+    }
+  }, [agentSessionId, open]);
 
   useEffect(() => {
     if (!open) {
@@ -58,18 +75,21 @@ export function VSCodeDrawer({
 
           return response;
         });
+        saveCachedVsCodeWebState(agentSessionId, response);
         setError(null);
       } catch (requestError) {
         if (cancelled) {
           return;
         }
 
-        setEditorState(null);
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "VS Code Web 打开失败",
-        );
+        if (!editorStateRef.current) {
+          setEditorState(null);
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "VS Code Web 打开失败",
+          );
+        }
       } finally {
         if (!cancelled && showLoading) {
           setLoading(false);
@@ -77,7 +97,7 @@ export function VSCodeDrawer({
       }
     }
 
-    void ensureEditor(true);
+    void ensureEditor(editorStateRef.current === null);
     heartbeatId = window.setInterval(() => {
       void ensureEditor(false);
     }, 60_000);
