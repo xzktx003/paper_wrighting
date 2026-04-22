@@ -155,6 +155,7 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
       "src",
       /editor-a/,
     );
+    await expect(frameBodyA).toContainText("sticky-a");
 
     await page.reload();
     await expect(page.locator(".focus-main-name")).toContainText(sessionAName);

@@ -1,105 +1,134 @@
-# Repository Guidelines
+# 仓库指南
+
+## 项目结构与模块职责
+
+- `apps/web/`：React + TypeScript 前端应用。页面壳层、编排界面、会话看板、活跃 agent 详情等代码放在 `src/` 下。
+- `apps/server/`：Node.js + TypeScript 后端应用。HTTP 路由、WebSocket 处理、编排服务、发现流程、运行时适配器等代码放在 `src/` 下。
+- `packages/shared/`：共享类型、DTO、枚举、校验 schema 和跨端常量。这里应只放与传输层无关的公共契约。
+- `packages/agent-protocol/`：agent 运行时事件 schema，以及面向适配器的注册、遥测、控制、发现协议定义。
+- `packages/ui/`：当前端需要超出单应用范围的复用组件时，将通用 UI 原语沉淀到这里。
+- `scripts/`：本地开发辅助脚本，例如主机初始化、tmux 检查、种子数据、发布辅助等。
+- `docs/`：产品说明、设计文档、架构决策记录和协议说明。
+
+### 服务边界
+
+- 编排状态和焦点管理放在后端服务层，不要塞进传输适配器。
+- 传输相关逻辑必须隔离在各自适配器内，例如 `local-process`、`remote-launch`、`remote-tmux`。
+- 以 `agentSession` 作为主要领域对象，不要把 terminal ID 或 tmux pane ID 暴露为应用层主模型。
+
+## 核心领域模型
+
+- `workspace`：一组相关 agent 会话的逻辑容器。
+- `host`：本地或远端执行目标。
+- `agentSession`：编排器跟踪和控制的主要对象。
+- `transportRef`：指向 PTY、进程、SSH 命令或 tmux pane 的实现细节引用。
+- `telemetryEvent`：适配器发出的输出活动、心跳、提示检测、附着状态或退出信号事件。
+
+## 构建、测试与开发命令
+
+- 安装依赖：`pnpm install`
+- 启动全部开发服务：`pnpm dev`
+- 仅启动前端：`pnpm --filter web dev`
+- 仅启动后端：`pnpm --filter server dev`
+- 类型检查：`pnpm check`
+- 代码检查：`pnpm lint`
+- 测试：`pnpm test`
+- 格式化：`pnpm format`
+
+根目录的 `dev` 命令会在启动前后端之前先预构建一次 `packages/shared`。`web` 和 `server` 各自的 `dev`、`build` 脚本也会先预构建 `packages/shared`，以保证按 package 单独运行时共享类型仍保持同步。
+
+- 本地开发命令应从 login shell 启动，例如 `zsh -l -c 'pnpm dev'`，这样 VS Code Web 及其集成终端才能继承当前用户的 shell 环境，包括 rc 文件中的 PATH 和工具链配置。
+- 如果 VS Code Web 里的终端仍然打开成错误的 shell，请修改 code-server 的用户设置，让 `terminal.integrated.defaultProfile.linux` 指向解析后的用户 shell，并配好交互参数，同时继承为 code-server 准备好的 login-shell 环境。
+- 如果 workspace filter 或脚本名称发生变化，请在同一次变更中同步更新本文件。
+
+## 任务完成前的最低要求
+
+- 运行 `pnpm format`。
+- 先跑与改动最贴近的验证，再补跑受影响的更大范围检查。
+- 如果改动涉及后端协议或共享类型，必须同时验证前后端类型检查。
+
+## 编码风格与命名约定
+
+- 默认全仓库使用 TypeScript，除非有非常充分的理由不用。
+- 使用 2 空格缩进、单引号，行宽尽量控制在 80 列左右，除非可读性明显因换行受损。
+- React 组件使用 PascalCase，变量和函数使用 camelCase，非组件文件名使用 kebab-case。
+- 模块职责要聚焦。适配器、注册逻辑、遥测推断、路由等应拆分清楚，避免把代码堆成超大文件。
+- 优先使用明确的领域名，例如 `agentSession`、`interactionState`、`activeAgentId`，避免使用 `item`、`data` 这类泛化名字。
+- 不要把底层传输输出解析逻辑泄漏到 UI 组件里。
+
+## 前端约定
+
+- UI 组织围绕三层：编排状态层、容器视图层、展示组件层。
+- 页面主模型是 `workspace -> agent sessions`，不是 `terminal -> pane`。
+- 使用单活跃 agent 焦点模型。键盘输入在默认情况下必须只落到一个活跃会话，除非后续明确引入广播模式。
+- `xterm.js` 或终端组件应保留给活跃会话详情区域，不要把它当成整个产品的顶层抽象。
+- 状态展示必须诚实，启发式推断出的状态要和显式状态区分展示。
+
+## 后端约定
+
+- 明确分离 registry、telemetry、control、discovery/launch 等后端能力面。
+- 适配器事件在进入路由处理或 WebSocket 广播前，必须先归一化为共享协议。
+- tmux 集成必须收口在专用适配器里，不要把 tmux 命令拼接散落到无关服务中。
+- 会话状态与输出更新使用 WebSocket，生命周期和配置操作使用 HTTP。
+- `awaiting_input` 默认视为派生状态，除非某个适配器显式发出输入请求信号。
+
+## 测试约定
+
+- 为遥测推断、焦点路由、适配器归一化逻辑补充单元测试。
+- 为会话注册、活跃 agent 切换、stdin 路由、发现流程补充集成测试。
+- 前端行为至少覆盖看板排序、活跃 agent 指示和状态徽标，可用组件测试或集成测试实现。
+- 优先测试会话编排层，不要过度依赖脆弱的底层传输实现细节。
+
+## 安全与配置要求
+
+- 严禁提交主机凭证、SSH 密钥或任何机器相关敏感信息。
+- 本地覆盖配置放在被 git 忽略的 `.env` 文件中。
+- 后端执行命令前，必须校验主机、路径、启动参数等所有输入。
+- tmux 和 shell 命令参数必须做清洗或严格约束，防止命令注入。
+- 中断、重启、接管附着等破坏性操作，必须在 UI 上显式呈现，不得隐式触发。
+
+## 文档维护要求
+
+- 引入新的适配器、协议事件或编排状态规则时，要在 `docs/` 中记录架构决策。
+- 如果项目结构、命令名称或核心工作流发生变化，必须同步更新本文件。
 
 
+# .AGENTS.md
 
-## Project Structure & Module Organization
+以下内容是当前仓库的执行级补充规则，与上面的仓库指南同时生效。
 
-- `apps/web/`: React + TypeScript frontend app. Place page shells, orchestrator UI, session board views, and active-agent detail views under `src/`.
-- `apps/server/`: Node.js + TypeScript backend. Place HTTP routes, WebSocket handlers, orchestration services, discovery flows, and runtime adapters under `src/`.
-- `packages/shared/`: Shared types, DTOs, enums, validation schemas, and cross-app constants. Keep transport-neutral contracts here.
-- `packages/agent-protocol/`: Agent runtime event schemas and adapter-facing protocol definitions for registration, telemetry, control, and discovery.
-- `packages/ui/`: Reusable frontend UI primitives if the web app grows beyond a single app-local component set.
-- `scripts/`: Local development helpers such as host setup, tmux inspection, seed data, or release scripts.
-- `docs/`: Product notes, design docs, architecture decisions, and protocol documentation.
+## 必须遵守
 
-### Service Boundaries
+1. 前端地址必须局域网可见
+- 前端开发服务必须绑定 `0.0.0.0`，禁止只绑定 `127.0.0.1` 或 `localhost`。
+- 对外说明、联调、截图、测试记录中，优先使用局域网可访问地址，例如 `https://10.30.0.22:3000`。
+- 如果同网段设备无法访问该地址，则视为联调准备未完成。
 
-- Keep orchestration state and focus management in backend services, not in transport adapters.
-- Keep transport-specific logic isolated inside adapters for `local-process`, `remote-launch`, and `remote-tmux`.
-- Treat agent sessions as the primary domain object. Do not make terminal IDs or tmux pane IDs the public application model.
+2. 前端默认使用 HTTPS
+- 开发环境优先使用 HTTPS 地址，例如 `https://10.30.0.22:3000`。
+- 任何涉及回调、跨域、Cookie、WebSocket 的验证，都不能只在 `http://localhost` 场景下验收。
 
-## Core Domain Model
+3. 变更范围必须受控
+- 新功能代码必须写入本项目约定目录，例如 `apps/web`、`apps/server`、`packages/*`。
 
-- `workspace`: logical container for related agent sessions.
-- `host`: local or remote execution target.
-- `agentSession`: primary control object tracked by the orchestrator.
-- `transportRef`: implementation detail pointing to a PTY, process, SSH command, or tmux pane.
-- `telemetryEvent`: output activity, heartbeat, prompt detection, attach state, or exit signal emitted by an adapter.
+4. 安全与配置必须合规
+- 严禁提交任何密钥、凭证、Token、SSH 私钥或机器相关敏感信息。
+- 本地差异配置写入 `.env*`，并保持 git 忽略。
+- 后端执行命令、路径和主机参数时，必须做输入校验与注入防护。
 
-## Build, Test, and Development Commands
+5. 提交前必须完成最小验证
+- 至少运行与改动直接相关的检查；涉及跨端或共享类型时，必须同时验证前后端类型检查。
+- 常用命令包括：`pnpm check`、`pnpm test`、`pnpm lint`、`pnpm format`。
 
-- Install dependencies: `pnpm install`
-- Start all dev services: `pnpm dev`
-- Start frontend only: `pnpm --filter web dev`
-- Start backend only: `pnpm --filter server dev`
-- Run type checks: `pnpm check`
-- Run lint: `pnpm lint`
-- Run tests: `pnpm test`
-- Format code: `pnpm format`
+6. 不得破坏现有工作区状态
+- 不得回滚或覆盖与当前任务无关的改动。
+- 未经明确指令，不得使用破坏性 git 命令，例如 `git reset --hard`。
 
-The root `dev` command prebuilds `packages/shared` once before starting the
-frontend and backend dev processes. Direct `web` and `server` `dev` and
-`build` scripts also prebuild `packages/shared` so workspace types stay in
-sync for package-scoped runs.
+7. 新功能必须同步文档与红绿灯测试
+- 每次新增功能，必须同步更新 `docs/project-overview.md` 中的“功能列表”，确保功能清单与当前实现一致。
+- 每次新增功能，必须新增对应的红绿灯测试，遵循先红后绿，并将其纳入该功能的最小验收范围。
 
-- Start local dev commands from a login shell (for example
-  `zsh -l -c 'pnpm dev'`) so VS Code Web and its integrated terminals inherit
-  the current user's shell environment, including PATH and toolchain setup
-  from rc files.
-- If VS Code Web terminals still open with the wrong shell, update the
-  code-server user settings so `terminal.integrated.defaultProfile.linux`
-  points at the resolved user shell with interactive args while inheriting the
-  login-shell environment prepared for code-server.
+## 推荐执行习惯
 
-If workspace filters or script names change, update this file in the same change.
-
-## Before Completing a Task
-
-- Run `pnpm format`.
-- Run the narrowest relevant verification first, then run any broader checks affected by the change.
-- For backend protocol or shared type changes, run both frontend and backend type checks.
-
-## Coding Style & Naming Conventions
-
-- TypeScript everywhere by default unless there is a strong reason not to.
-- Use 2-space indentation, single quotes, and keep lines near 80 columns unless readability clearly improves.
-- Use PascalCase for React components, camelCase for variables and functions, and kebab-case for non-component file names.
-- Keep modules focused. Split adapters, registry logic, telemetry inference, and routing concerns instead of building large service files.
-- Prefer explicit domain names like `agentSession`, `interactionState`, and `activeAgentId` over generic names like `item` or `data`.
-- Avoid leaking raw transport output parsing into UI components.
-
-## Frontend Guidelines
-
-- Build the UI around three layers: orchestration store, container views, and presentational components.
-- The page model is `workspace -> agent sessions`, not `terminal -> pane`.
-- Use a single active-agent focus model. Keyboard input should target exactly one active session unless a later feature explicitly introduces broadcast mode.
-- Reserve `xterm.js` or terminal widgets for the active-session detail area, not as the top-level abstraction for the whole product.
-- Keep status UI honest: show explicit versus inferred states when heuristics are involved.
-
-## Backend Guidelines
-
-- Expose separate surfaces for registry, telemetry, control, and discovery/launch.
-- Normalize adapter events into a shared protocol before they reach route handlers or WebSocket broadcasters.
-- Keep tmux integration behind a dedicated adapter. Do not spread tmux command construction across unrelated services.
-- Use WebSocket for live session state and output updates; use HTTP for lifecycle and configuration actions.
-- Treat `awaiting_input` as a derived state unless an adapter emits an explicit input-request signal.
-
-## Testing Guidelines
-
-- Add unit tests for telemetry inference, focus routing, and adapter normalization logic.
-- Add integration tests for session registration, active-agent switching, stdin routing, and discovery flows.
-- For frontend behavior, cover board ordering, active-agent indicators, and state badges with component or integration tests.
-- Prefer testing the session orchestration layer rather than brittle transport implementation details.
-
-## Security & Config Tips
-
-- Never commit host credentials, SSH keys, or machine-specific secrets.
-- Keep local overrides in `.env` files that are ignored by git.
-- Validate all host, path, and launch inputs on the backend before executing commands.
-- Sanitize or strictly control tmux and shell command arguments to avoid command injection.
-- Make destructive control actions like interrupt, restart, or attach takeover explicit in the UI.
-
-## Documentation Expectations
-
-- Record architecture decisions in `docs/` when introducing a new adapter, protocol event, or orchestration state rule.
-- Update this file when project structure, command names, or core workflow expectations change.
+- 在文档、注释和 PR 描述中明确写出“局域网访问地址 + 端口 + 协议（HTTPS）”。
+- 任何需要协作联调的前端改动，默认附上可复现的访问方式，包括示例地址、启动命令和验证步骤。

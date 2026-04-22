@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import type { OpenVsCodeWebResponse } from "@agent-orchestrator/shared";
 
 import { openVsCodeWeb } from "../lib/api";
-import { openVsCodeWebOnce } from "../lib/vscode-web-open";
+import {
+  openVsCodeWebOnce,
+  primeVsCodeWebOpenResponse,
+} from "../lib/vscode-web-open";
 import {
   loadCachedVsCodeWebState,
   saveCachedVsCodeWebState,
@@ -31,6 +34,9 @@ export function VSCodeDrawer({
 
   useEffect(() => {
     editorStateRef.current = editorState;
+    if (editorState) {
+      primeVsCodeWebOpenResponse(agentSessionId, editorState);
+    }
   }, [editorState]);
 
   useEffect(() => {
@@ -57,7 +63,13 @@ export function VSCodeDrawer({
       setError(null);
 
       try {
-        const response = await openVsCodeWebOnce(agentSessionId, openVsCodeWeb);
+        const response = await openVsCodeWebOnce(
+          agentSessionId,
+          openVsCodeWeb,
+          {
+            allowCachedResponse: true,
+          },
+        );
         if (cancelled) {
           return;
         }
@@ -97,9 +109,45 @@ export function VSCodeDrawer({
       }
     }
 
-    void ensureEditor(editorStateRef.current === null);
+    if (editorStateRef.current === null) {
+      void ensureEditor(true);
+    }
+
     heartbeatId = window.setInterval(() => {
-      void ensureEditor(false);
+      void openVsCodeWebOnce(agentSessionId, openVsCodeWeb)
+        .then((response) => {
+          if (cancelled) {
+            return;
+          }
+
+          setEditorState((current) => {
+            if (
+              current &&
+              current.url === response.url &&
+              current.provider === response.provider &&
+              current.workingDirectory === response.workingDirectory &&
+              current.reused === response.reused
+            ) {
+              return current;
+            }
+
+            return response;
+          });
+          saveCachedVsCodeWebState(agentSessionId, response);
+          setError(null);
+        })
+        .catch((requestError) => {
+          if (cancelled || editorStateRef.current) {
+            return;
+          }
+
+          setEditorState(null);
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "VS Code Web 打开失败",
+          );
+        });
     }, 60_000);
 
     return () => {

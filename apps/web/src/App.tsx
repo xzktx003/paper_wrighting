@@ -24,6 +24,7 @@ import { HiddenSessionsDrawer } from "./components/HiddenSessionsDrawer";
 import type { SelectedHost } from "./components/HostDropdown";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { QuickTmuxConnect } from "./components/QuickTmuxConnect";
+import { SidePanelView } from "./components/SidePanelView";
 import { TopBar } from "./components/TopBar";
 import { VSCodeDrawer } from "./components/VSCodeDrawer";
 import {
@@ -52,6 +53,7 @@ import {
   buildRemoteDirectLaunchCommand,
   wrapRemoteInteractiveCommand,
 } from "./lib/session-matching";
+import { touchVsCodeCacheSessionIds } from "./lib/vscode-cache";
 import "./app.css";
 
 type ViewMode = "grid" | "focus";
@@ -584,11 +586,11 @@ export default function App() {
     }
 
     setVscodeCacheSessionIds((current) => {
-      const next = [
-        ...current.filter((sessionId) => sessionId !== focusedSession.id),
+      return touchVsCodeCacheSessionIds(
+        current,
         focusedSession.id,
-      ];
-      return next.slice(-MAX_CACHED_VSCODE_IFRAMES);
+        MAX_CACHED_VSCODE_IFRAMES,
+      );
     });
   }, [focusedSession, vscodeOpen]);
 
@@ -868,9 +870,7 @@ export default function App() {
                     : { width: `${fileBrowserUiState.width}px` }
               }
             >
-              <div
-                className={`side-panel-view${fileBrowserOpen ? " side-panel-view--active" : ""}`}
-              >
+              <SidePanelView active={fileBrowserOpen}>
                 <FileBrowserDrawer
                   key={focusedSession.id}
                   open={fileBrowserOpen}
@@ -900,7 +900,7 @@ export default function App() {
                   }}
                   sshHosts={sshHosts}
                 />
-              </div>
+              </SidePanelView>
               {renderedVsCodeSessionIds.map((sessionId) => {
                 const session = sessions.find((item) => item.id === sessionId);
                 if (!session) {
@@ -909,9 +909,10 @@ export default function App() {
 
                 const active = vscodeOpen && focusedSession?.id === sessionId;
                 return (
-                  <div
+                  <SidePanelView
                     key={sessionId}
-                    className={`side-panel-view${active ? " side-panel-view--active" : ""}`}
+                    active={active}
+                    preserveMountedWhenInactive
                   >
                     <VSCodeDrawer
                       active={active}
@@ -919,7 +920,7 @@ export default function App() {
                       displayName={session.displayName}
                       open={active}
                     />
-                  </div>
+                  </SidePanelView>
                 );
               })}
             </div>

@@ -243,6 +243,7 @@ input {
   min-height: 0;
   max-width: calc(100vw - 320px);
   display: flex;
+  position: relative;
   overflow: hidden;
 }
 
@@ -254,8 +255,25 @@ input {
   display: none;
 }
 
+.side-panel-view--preserved {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .side-panel-view--active {
   display: flex;
+}
+
+.side-panel-view--preserved.side-panel-view--active {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .file-browser-shell--fill {
