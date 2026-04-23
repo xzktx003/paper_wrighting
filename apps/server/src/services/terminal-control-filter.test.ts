@@ -6,10 +6,13 @@ import {
   stripTerminalResponsePayload,
 } from "./terminal-control-filter.js";
 
-test("strip terminal device-attribute responses from stdin payloads", () => {
-  const sanitized = stripTerminalResponsePayload("\u001b[0;276;0c");
+test("forward device-attribute responses to the PTY for capability handshakes", () => {
+  // Copilot CLI probes the terminal with Primary DA (CSI c); xterm.js
+  // auto-answers via term.onData. The reply MUST reach the PTY or the TUI
+  // stays blocked waiting for capabilities and never accepts keystrokes.
+  const sanitized = stripTerminalResponsePayload("\u001b[?1;2c");
 
-  assert.equal(sanitized, "");
+  assert.equal(sanitized, "\u001b[?1;2c");
 });
 
 test("keep normal keyboard escape sequences intact", () => {
@@ -22,6 +25,12 @@ test("keep CPR replies intact for interactive prompts", () => {
   const sanitized = stripTerminalResponsePayload("\u001b[12;42R");
 
   assert.equal(sanitized, "\u001b[12;42R");
+});
+
+test("keep DSR replies intact so TUIs receive their status answers", () => {
+  const sanitized = stripTerminalResponsePayload("\u001b[0n");
+
+  assert.equal(sanitized, "\u001b[0n");
 });
 
 test("sanitize replay removes window and cursor report sequences", () => {

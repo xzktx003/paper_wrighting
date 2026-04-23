@@ -75,6 +75,9 @@ export function TerminalView({
     const ownerPriority = interactive ? 2 : 1;
     let handleMouseDownCapture: (() => void) | null = null;
     let handlePointerDownCapture: (() => void) | null = null;
+    let handleTerminalFocusOut: ((event: FocusEvent) => void) | null = null;
+    let handleTerminalInputFocus: (() => void) | null = null;
+    let handleTerminalInputBlur: (() => void) | null = null;
     let handleWindowFocus: (() => void) | null = null;
     let disposed = false;
     let closeAfterOpen = false;
@@ -158,6 +161,9 @@ export function TerminalView({
     applyPreviewLayout();
     term.open(stage);
     container.__xterm = term;
+    const helperTextarea = container.querySelector(
+      ".xterm-helper-textarea",
+    ) as HTMLTextAreaElement | null;
 
     termRef.current = term;
     fitRef.current = fitAddon;
@@ -230,6 +236,55 @@ export function TerminalView({
     const wsUrl = buildTerminalWebSocketUrl(agentSessionId);
     let ws: WebSocket | null = null;
     let replayComplete = false;
+    let lastReportedTerminalFocus: "in" | "out" | null = null;
+
+    const terminalWantsFocusReports = () => {
+      return (
+        (
+          term as Terminal & {
+            modes?: { sendFocusMode?: boolean };
+          }
+        ).modes?.sendFocusMode ?? false
+      );
+    };
+
+    const syncTerminalFocusReport = () => {
+      if (!interactive) {
+        return;
+      }
+
+      if (!terminalWantsFocusReports()) {
+        lastReportedTerminalFocus = null;
+        return;
+      }
+
+      if (ws?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      const nextFocusState =
+        document.activeElement === helperTextarea ? "in" : "out";
+      if (lastReportedTerminalFocus === nextFocusState) {
+        return;
+      }
+
+      if (!ensureInputOwner()) {
+        return;
+      }
+
+      ws.send(nextFocusState === "in" ? "\u001b[I" : "\u001b[O");
+      lastReportedTerminalFocus = nextFocusState;
+    };
+
+    const scheduleTerminalFocusReport = () => {
+      timeoutIds.push(
+        window.setTimeout(() => {
+          if (!disposed) {
+            syncTerminalFocusReport();
+          }
+        }, 0),
+      );
+    };
 
     // Safety net: if the WebSocket never sends replay-complete (e.g. connection
     // refused, server error, or long replay transfer), unblock stdin after 8
@@ -267,6 +322,7 @@ export function TerminalView({
         flushResize();
         scheduleFit();
         scheduleFocusInteractiveTerminal();
+        scheduleTerminalFocusReport();
       };
 
       ws.onclose = () => {
@@ -337,6 +393,7 @@ export function TerminalView({
       replayComplete = true;
       term.options.disableStdin = false;
       scheduleFocusInteractiveTerminal();
+      scheduleTerminalFocusReport();
     };
 
     const handleTerminalFrame = (payload: string) => {
@@ -345,11 +402,13 @@ export function TerminalView({
         if (parsed.__agentOrchestrator !== "terminal-control") {
           enableTerminalInput();
           term.write(payload);
+          scheduleTerminalFocusReport();
           return;
         }
 
         if (parsed.event === "replay" && typeof parsed.data === "string") {
           term.write(parsed.data);
+          scheduleTerminalFocusReport();
           return;
         }
 
@@ -360,6 +419,7 @@ export function TerminalView({
       } catch {
         enableTerminalInput();
         term.write(payload);
+        scheduleTerminalFocusReport();
       }
     };
 
@@ -391,6 +451,14 @@ export function TerminalView({
     });
 
     if (interactive) {
+      handleTerminalInputFocus = () => {
+        scheduleTerminalFocusReport();
+      };
+
+      handleTerminalInputBlur = () => {
+        scheduleTerminalFocusReport();
+      };
+
       term.attachCustomWheelEventHandler((event) => {
         focusInteractiveTerminal(true);
         event.stopPropagation();
@@ -405,13 +473,34 @@ export function TerminalView({
         focusInteractiveTerminal(true);
       };
 
+      handleTerminalFocusOut = (event) => {
+        const target = event.target as HTMLElement | null;
+        if (!target?.classList.contains("xterm-helper-textarea")) {
+          return;
+        }
+
+        timeoutIds.push(
+          window.setTimeout(() => {
+            if (disposed || isIntentionalExternalFocus()) {
+              return;
+            }
+
+            scheduleFocusInteractiveTerminal();
+          }, 0),
+        );
+      };
+
       handleWindowFocus = () => {
         scheduleFocusInteractiveTerminal();
+        scheduleTerminalFocusReport();
       };
 
       container.addEventListener("pointerdown", handlePointerDownCapture, true);
       container.addEventListener("mousedown", handleMouseDownCapture, true);
+      container.addEventListener("focusout", handleTerminalFocusOut, true);
       window.addEventListener("focus", handleWindowFocus);
+      helperTextarea?.addEventListener("focus", handleTerminalInputFocus);
+      helperTextarea?.addEventListener("blur", handleTerminalInputBlur);
       scheduleFocusInteractiveTerminal();
     }
 
@@ -458,6 +547,15 @@ export function TerminalView({
           handleMouseDownCapture,
           true,
         );
+      }
+      if (handleTerminalFocusOut) {
+        container.removeEventListener("focusout", handleTerminalFocusOut, true);
+      }
+      if (handleTerminalInputFocus) {
+        helperTextarea?.removeEventListener("focus", handleTerminalInputFocus);
+      }
+      if (handleTerminalInputBlur) {
+        helperTextarea?.removeEventListener("blur", handleTerminalInputBlur);
       }
       if (handleWindowFocus) {
         window.removeEventListener("focus", handleWindowFocus);

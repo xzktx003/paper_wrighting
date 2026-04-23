@@ -1,6 +1,6 @@
-import readline from 'node:readline';
+import readline from "node:readline";
 
-const mode = process.argv[2] ?? 'scroll';
+const mode = process.argv[2] ?? "scroll";
 
 function emit(line) {
   process.stdout.write(`${line}\n`);
@@ -15,7 +15,7 @@ function currentTtySize() {
 }
 
 function encodeHex(value) {
-  return Buffer.from(value, 'latin1').toString('hex');
+  return Buffer.from(value, "latin1").toString("hex");
 }
 
 function isCprPrefix(value) {
@@ -35,7 +35,7 @@ function runCprBurst() {
   let completedQueries = 0;
   let awaitingReply = false;
   let pendingTimer = null;
-  let buffer = '';
+  let buffer = "";
 
   const finish = (line, exitCode = 0) => {
     if (pendingTimer) {
@@ -55,7 +55,7 @@ function runCprBurst() {
 
     setTimeout(() => {
       awaitingReply = true;
-      process.stdout.write('\u001b[6n');
+      process.stdout.write("\u001b[6n");
       pendingTimer = setTimeout(() => {
         finish(`cpr-timeout:${completedQueries + 1}`, 1);
       }, pendingTimeoutMs);
@@ -102,25 +102,33 @@ function runCprBurst() {
     }
   };
 
-  emit('cpr-burst-start');
+  emit("cpr-burst-start");
 
-  process.stdin.on('data', (chunk) => {
-    buffer += Buffer.from(chunk).toString('latin1');
+  process.stdin.on("data", (chunk) => {
+    buffer += Buffer.from(chunk).toString("latin1");
     processBuffer();
   });
 
   scheduleNextQuery();
 }
 
-if (mode === 'scroll') {
+if (mode === "scroll") {
   for (let index = 1; index <= 240; index += 1) {
-    emit(`scroll-line-${String(index).padStart(3, '0')}`);
+    emit(`scroll-line-${String(index).padStart(3, "0")}`);
   }
-  emit('scroll-ready');
-} else if (mode === 'mouse') {
-  process.stdout.write('\u001b[?1000h\u001b[?1006h');
-  emit('mouse-ready');
-} else if (mode === 'cpr') {
+  emit("scroll-ready");
+} else if (mode === "mouse") {
+  process.stdout.write("\u001b[?1000h\u001b[?1006h");
+  emit("mouse-ready");
+} else if (mode === "focus") {
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+
+  process.stdin.resume();
+  process.stdout.write("\u001b[?1004h");
+  emit("focus-ready");
+} else if (mode === "cpr") {
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
   }
@@ -128,20 +136,20 @@ if (mode === 'scroll') {
   process.stdin.resume();
 
   const timeout = setTimeout(() => {
-    emit('cpr-timeout');
+    emit("cpr-timeout");
     process.exit(0);
   }, 5000);
 
-  process.stdin.on('data', (chunk) => {
+  process.stdin.on("data", (chunk) => {
     clearTimeout(timeout);
-    emit(`cpr-response:${Buffer.from(chunk).toString('hex')}`);
+    emit(`cpr-response:${Buffer.from(chunk).toString("hex")}`);
     process.exit(0);
   });
 
-  process.stdout.write('\u001b[6n');
-} else if (mode === 'cpr-burst') {
+  process.stdout.write("\u001b[6n");
+} else if (mode === "cpr-burst") {
   runCprBurst();
-} else if (mode === 'size') {
+} else if (mode === "size") {
   let lastSize = currentTtySize();
   emitTtySize();
   const emitIfChanged = () => {
@@ -155,7 +163,7 @@ if (mode === 'scroll') {
   };
 
   if (process.stdout.isTTY) {
-    process.stdout.on('resize', emitIfChanged);
+    process.stdout.on("resize", emitIfChanged);
   }
 
   setInterval(emitIfChanged, 100);
@@ -167,26 +175,40 @@ const rl = readline.createInterface({
   terminal: false,
 });
 
-rl.on('line', (line) => {
-  if (line.trim() === 'exit') {
-    process.stdout.write('\u001b[?1000l\u001b[?1006l');
+rl.on("line", (line) => {
+  if (line.trim() === "exit") {
+    process.stdout.write("\u001b[?1000l\u001b[?1006l");
     process.exit(0);
   }
 
   emit(`stdin:${line}`);
 });
 
-process.stdin.on('data', (chunk) => {
-  if (mode !== 'mouse') {
+process.stdin.on("data", (chunk) => {
+  if (mode === "focus") {
+    const text = Buffer.from(chunk).toString("latin1");
+    if (text.includes("\u001b[I")) {
+      emit("focus-in");
+    }
+    if (text.includes("\u001b[O")) {
+      emit("focus-out");
+    }
+
+    const hex = Buffer.from(chunk).toString("hex");
+    emit(`focus-bytes:${hex}`);
     return;
   }
 
-  const hex = Buffer.from(chunk).toString('hex');
+  if (mode !== "mouse") {
+    return;
+  }
+
+  const hex = Buffer.from(chunk).toString("hex");
   emit(`mouse-bytes:${hex}`);
 });
 
 setInterval(() => {
-  if (mode === 'scroll') {
-    emit('tick-scroll');
+  if (mode === "scroll") {
+    emit("tick-scroll");
   }
 }, 5000);

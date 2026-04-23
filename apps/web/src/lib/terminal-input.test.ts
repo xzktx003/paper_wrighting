@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { stripTerminalResponsePayload } from "./terminal-input.js";
 
 describe("stripTerminalResponsePayload", () => {
-  it("drops device-attribute responses before they are sent back to the PTY", () => {
-    assert.equal(stripTerminalResponsePayload("\u001b[0;276;0c"), "");
+  it("forwards device-attribute responses so TUIs (e.g. Copilot CLI) finish their capability handshake", () => {
+    assert.equal(stripTerminalResponsePayload("\u001b[?1;2c"), "\u001b[?1;2c");
   });
 
   it("keeps normal arrow-key input intact", () => {
@@ -17,5 +17,9 @@ describe("stripTerminalResponsePayload", () => {
       stripTerminalResponsePayload("\u001b[12;42R"),
       "\u001b[12;42R",
     );
+  });
+
+  it("keeps DSR status replies intact so interactive prompts get their answers", () => {
+    assert.equal(stripTerminalResponsePayload("\u001b[0n"), "\u001b[0n");
   });
 });

@@ -1,14 +1,9 @@
-const TERMINAL_RESPONSE_PATTERNS = [
-  /\u001b\[(?:[?>])?[\d;]*c/g,
-  /\u001b\[\??[\d;]*n/g,
-  /\u001b\[[\d;]*t/g,
-  /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g,
-  /\u001bP[\s\S]*?\u001b\\/g,
-];
-
+// Live stdin is forwarded as-is. xterm.js auto-answers capability queries
+// (DA/DSR/OSC/DCS) from TUIs like Copilot CLI via term.onData, and those
+// replies MUST reach the PTY — otherwise the TUI blocks on its capability
+// handshake and silently ignores keystrokes. Replay content is sanitized on
+// the server side (sanitizeReplayForTerminal) before it ever reaches xterm.js,
+// so no stale-query auto-reply storm can happen here.
 export function stripTerminalResponsePayload(payload: string): string {
-  return TERMINAL_RESPONSE_PATTERNS.reduce(
-    (sanitized, pattern) => sanitized.replace(pattern, ""),
-    payload,
-  );
+  return payload;
 }

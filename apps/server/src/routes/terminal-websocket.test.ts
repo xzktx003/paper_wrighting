@@ -83,7 +83,7 @@ async function openTerminal(
   };
 }
 
-test("terminal websocket ignores terminal auto-response payloads before writing to the PTY", async () => {
+test("terminal websocket forwards terminal auto-response payloads so TUIs can finish their capability handshake", async () => {
   const { app } = buildServer();
   let agentSessionId: string | undefined;
   let terminal: WaitForTerminalTextResult | undefined;
@@ -126,7 +126,10 @@ test("terminal websocket ignores terminal auto-response payloads before writing 
 
     const output = terminal.getBuffer();
     assert.match(output, /__FILTER_OK__/);
-    assert.doesNotMatch(output, /0;276;0c/);
+    // Device-attribute replies (xterm.js answering a TUI's Primary DA probe)
+    // MUST reach the PTY; otherwise interactive CLIs like Copilot never
+    // finish their capability handshake and silently drop keystrokes.
+    assert.match(output, /0;276;0c/);
   } finally {
     terminal?.close();
 
