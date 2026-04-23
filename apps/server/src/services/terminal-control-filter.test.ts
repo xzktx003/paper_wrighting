@@ -15,6 +15,12 @@ test("forward device-attribute responses to the PTY for capability handshakes", 
   assert.equal(sanitized, "\u001b[?1;2c");
 });
 
+test("strip secondary device-attribute replies so shell prompts do not echo terminal version noise", () => {
+  const sanitized = stripTerminalResponsePayload("\u001b[>0;276;0c");
+
+  assert.equal(sanitized, "");
+});
+
 test("keep normal keyboard escape sequences intact", () => {
   const sanitized = stripTerminalResponsePayload("\u001b[A");
 
