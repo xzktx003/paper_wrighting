@@ -1013,7 +1013,11 @@ input {
 .focus-view {
   display: flex;
   height: 100%;
-  gap: 16px;
+  gap: 8px;
+}
+
+.focus-view--sidebar-collapsed {
+  gap: 4px;
 }
 
 .focus-main {
@@ -1083,6 +1087,31 @@ input {
   border-top: none;
   border-radius: 0 0 12px 12px;
   overflow: hidden;
+}
+
+.focus-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.focus-sidebar-toggle-btn {
+  width: 18px;
+  height: 88px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(14, 18, 23, 0.9);
+  color: rgba(244, 241, 234, 0.82);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.focus-sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 152, 0, 0.4);
 }
 
 /* ===== Focus Sidebar ===== */

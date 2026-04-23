@@ -81,6 +81,86 @@ test("v2: 双击放大终端并可交互", async ({ page, request }) => {
   }
 });
 
+test("v2: 聚焦视图可以一键折叠右侧其他会话小窗", async ({
+  page,
+  request,
+}) => {
+  const focusedName = `主终端-${Date.now()}`;
+  const siblingName = `侧栏终端-${Date.now()}`;
+  let focusedId: string | undefined;
+  let siblingId: string | undefined;
+
+  try {
+    focusedId = await launchMockSession(request, focusedName);
+    siblingId = await launchMockSession(request, siblingName);
+
+    await page.goto("/");
+
+    const targetCard = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: focusedName }),
+    });
+    await expect(targetCard).toBeVisible({ timeout: 15000 });
+    await targetCard.dblclick();
+
+    await expect(page.locator(".focus-main-name")).toContainText(focusedName);
+    await expect(page.locator(".focus-sidebar")).toBeVisible();
+    await expect(
+      page.locator(".focus-sidebar-card", {
+        has: page.locator("span", { hasText: siblingName }),
+      }),
+    ).toBeVisible();
+
+    const toggle = page.getByTestId("focus-sidebar-collapse-toggle");
+    await expect(toggle).toBeVisible();
+
+    const expandedLayout = await page.evaluate(() => {
+      const main = document.querySelector(".focus-main")?.getBoundingClientRect();
+      const toggleBtn = document
+        .querySelector('[data-testid="focus-sidebar-collapse-toggle"]')
+        ?.getBoundingClientRect();
+
+      return {
+        toggleWidth: toggleBtn?.width ?? 0,
+        rightGap:
+          main && toggleBtn ? toggleBtn.right - main.right : Number.POSITIVE_INFINITY,
+      };
+    });
+
+    expect(expandedLayout.toggleWidth).toBeLessThanOrEqual(20);
+    expect(expandedLayout.rightGap).toBeLessThanOrEqual(28);
+
+    await toggle.click();
+
+    await expect(page.locator(".focus-sidebar")).toHaveCount(0);
+
+    const collapsedLayout = await page.evaluate(() => {
+      const container = document.querySelector(".focus-view")?.getBoundingClientRect();
+      const main = document.querySelector(".focus-main")?.getBoundingClientRect();
+
+      return {
+        rightGap:
+          container && main
+            ? container.right - main.right
+            : Number.POSITIVE_INFINITY,
+      };
+    });
+
+    expect(collapsedLayout.rightGap).toBeLessThanOrEqual(24);
+
+    await toggle.click();
+
+    await expect(page.locator(".focus-sidebar")).toBeVisible();
+    await expect(
+      page.locator(".focus-sidebar-card", {
+        has: page.locator("span", { hasText: siblingName }),
+      }),
+    ).toBeVisible();
+  } finally {
+    await deleteSessionIfPresent(request, focusedId);
+    await deleteSessionIfPresent(request, siblingId);
+  }
+});
+
 test("v2: 通过 Discovery Dialog 扫描 tmux", async ({ page }) => {
   await page.goto("/");
   await page.waitForTimeout(1000);

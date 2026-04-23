@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
@@ -103,9 +103,12 @@ export function AgentFocusView({
   }, [onExit]);
 
   const otherSessions = sessions.filter((s) => s.id !== focusedSession.id);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
-    <div className="focus-view">
+    <div
+      className={`focus-view${sidebarCollapsed ? " focus-view--sidebar-collapsed" : ""}`}
+    >
       <div className="focus-main">
         <div className="focus-main-header">
           <span className="focus-main-name">{focusedSession.displayName}</span>
@@ -141,42 +144,60 @@ export function AgentFocusView({
       </div>
 
       {otherSessions.length > 0 && (
-        <div className="focus-sidebar">
-          <h3 className="focus-sidebar-title">其他会话</h3>
-          {otherSessions.map((session) => (
-            <div
-              key={session.id}
-              className={`focus-sidebar-card card-${session.interactionState}`}
-              onDoubleClick={() => onSwitchFocus(session.id)}
+        <>
+          <div className="focus-sidebar-toggle">
+            <button
+              className="focus-sidebar-toggle-btn"
+              data-testid="focus-sidebar-collapse-toggle"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              title={sidebarCollapsed ? "展开右侧其他会话" : "折叠右侧其他会话"}
+              type="button"
             >
-              <div className="focus-sidebar-card-header">
-                <span>{session.displayName}</span>
-                <div className="focus-sidebar-card-actions">
-                  <button
-                    className="grid-card-rename"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onRename?.(session.id);
-                    }}
-                    title="修改名称"
-                    type="button"
-                  >
-                    ✎
-                  </button>
-                  <span
-                    className={`grid-card-badge badge-${session.interactionState}`}
-                  >
-                    {stateLabels[session.interactionState] ??
-                      session.interactionState}
-                  </span>
+              {sidebarCollapsed ? "⟨" : "⟩"}
+            </button>
+          </div>
+          {!sidebarCollapsed && (
+            <div className="focus-sidebar">
+              <h3 className="focus-sidebar-title">其他会话</h3>
+              {otherSessions.map((session) => (
+                <div
+                  key={session.id}
+                  className={`focus-sidebar-card card-${session.interactionState}`}
+                  onDoubleClick={() => onSwitchFocus(session.id)}
+                >
+                  <div className="focus-sidebar-card-header">
+                    <span>{session.displayName}</span>
+                    <div className="focus-sidebar-card-actions">
+                      <button
+                        className="grid-card-rename"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRename?.(session.id);
+                        }}
+                        title="修改名称"
+                        type="button"
+                      >
+                        ✎
+                      </button>
+                      <span
+                        className={`grid-card-badge badge-${session.interactionState}`}
+                      >
+                        {stateLabels[session.interactionState] ??
+                          session.interactionState}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="focus-sidebar-terminal">
+                    <TerminalView
+                      agentSessionId={session.id}
+                      interactive={false}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="focus-sidebar-terminal">
-                <TerminalView agentSessionId={session.id} interactive={false} />
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
