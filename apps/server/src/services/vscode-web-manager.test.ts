@@ -213,6 +213,44 @@ test("ensureSession auto-installs code-server when no provider is initially avai
   await manager.dispose();
 });
 
+test("ensureSession respawns the global server when the cached process is no longer reachable", async () => {
+  const launches: Array<{ args: string[] }> = [];
+  const children = [new FakeChildProcess(), new FakeChildProcess()];
+  const readyAttempts = new Map<string, number>();
+  let childIndex = 0;
+
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => (childIndex === 0 ? 43119 : 43120),
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    findRunningServer: async () => null,
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: (_command, args) => {
+      launches.push({ args });
+      return children[childIndex++] as never;
+    },
+    waitForUrlReady: async (url) => {
+      const count = (readyAttempts.get(url) ?? 0) + 1;
+      readyAttempts.set(url, count);
+
+      if (url === "http://127.0.0.1:43119" && count === 2) {
+        throw new Error("connection refused");
+      }
+    },
+    writeFile: async () => {},
+  });
+
+  await manager.ensureSession(buildSession("session-1"));
+  const reopened = await manager.ensureSession(buildSession("session-1"));
+
+  assert.equal(launches.length, 2);
+  assert.equal(reopened.reused, false);
+  assert.match(reopened.url, /workspace=.*session-1/);
+
+  await manager.dispose();
+});
+
 test("stopSession removes only the deleted session workspace and keeps the global server for other sessions", async () => {
   const child = new FakeChildProcess();
   const removedPaths: string[] = [];

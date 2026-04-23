@@ -8,6 +8,12 @@ import {
   primeVsCodeWebOpenResponse,
 } from "../lib/vscode-web-open";
 import {
+  applyVsCodeWebOpenResponse,
+  createCachedVsCodeWebEntry,
+  shouldEnsureVsCodeWebOnOpen,
+  type VsCodeWebEntry,
+} from "../lib/vscode-drawer-state";
+import {
   loadCachedVsCodeWebState,
   saveCachedVsCodeWebState,
 } from "../lib/vscode-web-state";
@@ -25,25 +31,32 @@ export function VSCodeDrawer({
   displayName,
   open,
 }: VSCodeDrawerProps) {
-  const [editorState, setEditorState] = useState<OpenVsCodeWebResponse | null>(
-    () => loadCachedVsCodeWebState(agentSessionId),
-  );
+  const [editorEntry, setEditorEntry] = useState<VsCodeWebEntry | null>(() => {
+    const cachedState = loadCachedVsCodeWebState(agentSessionId);
+    return cachedState ? createCachedVsCodeWebEntry(cachedState) : null;
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const editorStateRef = useRef(editorState);
+  const editorEntryRef = useRef(editorEntry);
+  const editorState = editorEntry?.response ?? null;
 
   useEffect(() => {
-    editorStateRef.current = editorState;
-    if (editorState) {
-      primeVsCodeWebOpenResponse(agentSessionId, editorState);
+    editorEntryRef.current = editorEntry;
+    if (editorEntry && !editorEntry.needsServerCheck) {
+      primeVsCodeWebOpenResponse(agentSessionId, editorEntry.response);
     }
-  }, [editorState]);
+  }, [agentSessionId, editorEntry]);
 
   useEffect(() => {
     if (open) {
-      setEditorState(
-        (current) => current ?? loadCachedVsCodeWebState(agentSessionId),
-      );
+      setEditorEntry((current) => {
+        if (current) {
+          return current;
+        }
+
+        const cachedState = loadCachedVsCodeWebState(agentSessionId);
+        return cachedState ? createCachedVsCodeWebEntry(cachedState) : null;
+      });
     }
   }, [agentSessionId, open]);
 
@@ -63,30 +76,14 @@ export function VSCodeDrawer({
       setError(null);
 
       try {
-        const response = await openVsCodeWebOnce(
-          agentSessionId,
-          openVsCodeWeb,
-          {
-            allowCachedResponse: true,
-          },
-        );
+        const response = await openVsCodeWebOnce(agentSessionId, openVsCodeWeb);
         if (cancelled) {
           return;
         }
 
-        setEditorState((current) => {
-          if (
-            current &&
-            current.url === response.url &&
-            current.provider === response.provider &&
-            current.workingDirectory === response.workingDirectory &&
-            current.reused === response.reused
-          ) {
-            return current;
-          }
-
-          return response;
-        });
+        setEditorEntry((current) =>
+          applyVsCodeWebOpenResponse(current, response),
+        );
         saveCachedVsCodeWebState(agentSessionId, response);
         setError(null);
       } catch (requestError) {
@@ -94,8 +91,8 @@ export function VSCodeDrawer({
           return;
         }
 
-        if (!editorStateRef.current) {
-          setEditorState(null);
+        if (!editorEntryRef.current) {
+          setEditorEntry(null);
           setError(
             requestError instanceof Error
               ? requestError.message
@@ -109,8 +106,8 @@ export function VSCodeDrawer({
       }
     }
 
-    if (editorStateRef.current === null) {
-      void ensureEditor(true);
+    if (shouldEnsureVsCodeWebOnOpen(editorEntryRef.current)) {
+      void ensureEditor(editorEntryRef.current === null);
     }
 
     heartbeatId = window.setInterval(() => {
@@ -120,28 +117,18 @@ export function VSCodeDrawer({
             return;
           }
 
-          setEditorState((current) => {
-            if (
-              current &&
-              current.url === response.url &&
-              current.provider === response.provider &&
-              current.workingDirectory === response.workingDirectory &&
-              current.reused === response.reused
-            ) {
-              return current;
-            }
-
-            return response;
-          });
+          setEditorEntry((current) =>
+            applyVsCodeWebOpenResponse(current, response),
+          );
           saveCachedVsCodeWebState(agentSessionId, response);
           setError(null);
         })
         .catch((requestError) => {
-          if (cancelled || editorStateRef.current) {
+          if (cancelled || editorEntryRef.current) {
             return;
           }
 
-          setEditorState(null);
+          setEditorEntry(null);
           setError(
             requestError instanceof Error
               ? requestError.message
@@ -182,7 +169,7 @@ export function VSCodeDrawer({
           <iframe
             className="vscode-drawer-frame"
             {...(active ? { "data-testid": "vscode-web-frame" } : {})}
-            key={editorState.url}
+            key={`${editorState.url}::${editorEntry?.reloadKey ?? 0}`}
             src={editorState.url}
             title={`VS Code - ${displayName}`}
           />
