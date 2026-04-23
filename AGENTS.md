@@ -79,6 +79,29 @@
 - 前端行为至少覆盖看板排序、活跃 agent 指示和状态徽标，可用组件测试或集成测试实现。
 - 优先测试会话编排层，不要过度依赖脆弱的底层传输实现细节。
 
+### 终端能力握手（TUI Capability Handshake）红绿灯测试
+
+**背景**：Copilot CLI 等 TUI 在启动时会向终端发送 Primary DA（`CSI c`）、DSR（`CSI n`）、OSC、DCS 等能力查询序列。xterm.js 会自动应答，并通过 `term.onData` 把应答发回。这些应答必须原样转发到 PTY，否则 TUI 会永远阻塞在等待应答的状态，导致键盘输入被静默丢弃（Codex CLI 不依赖此握手，因此表现正常）。
+
+**必须保护的测试**（位于 `apps/server/src/services/terminal-control-filter.test.ts`、`apps/web/src/lib/terminal-input.test.ts`、`apps/server/src/routes/terminal-websocket.test.ts`）：
+
+1. **forward device-attribute responses to the PTY for capability handshakes**  
+   - 输入：`\u001b[?1;2c`（Primary DA 应答）  
+   - 断言：必须原样转发到 PTY，不得被过滤为空字符串。
+
+2. **keep DSR replies intact so TUIs receive their status answers**  
+   - 输入：`\u001b[0n`（DSR 就绪状态应答）  
+   - 断言：必须原样转发到 PTY。
+
+3. **terminal websocket forwards terminal auto-response payloads so TUIs can finish their capability handshake**  
+   - 在真实 WebSocket 终端会话中，发送模拟的 DA 应答 `\u001b[0;276;0c`。  
+   - 断言：终端输出中必须包含该序列（即 PTY 收到了应答）。
+
+**开发约束**：
+- 任何修改 `stripTerminalResponsePayload` 或 `sanitizeReplayForTerminal` 的 PR，必须先跑上述测试并确认通过。
+- 只有 *replay* 内容（历史回显）允许在服务端被 `sanitizeReplayForTerminal` 清洗；*live stdin* 必须透传，禁止过滤 DA/DSR/OSC/DCS 应答。
+- 如需新增过滤器，必须同步新增对应的“应答被转发”测试用例，遵循先红后绿。
+
 ## 安全与配置要求
 
 - 严禁提交主机凭证、SSH 密钥或任何机器相关敏感信息。
