@@ -10,3 +10,4 @@
 - In React StrictMode, closing a WebSocket during CONNECTING in effect cleanup can produce false "closed before the connection is established" warnings and fake disconnect banners; defer close until onopen when cleaning up dev-only mounts.
 - Shell handling must not assume zsh exists; prefer `SHELL`, then fall back across `bash -> zsh -> sh` for Linux/macOS compatibility.
 - tmux path handling must auto-detect Apple Silicon Homebrew, Intel Homebrew, and PATH-based installs; avoid hardcoding only `/opt/homebrew/bin/tmux` in app code, scripts, or E2E tests.
+- File-browser create dialogs must not use the draft name string itself as the open/closed flag. Root cause: clearing the input to an empty string unmounted the dialog before the user could finish typing. Fix: keep explicit create-dialog state, disable submit while the trimmed name is empty, and reuse the existing `saveTextFile` upload path to create empty files.

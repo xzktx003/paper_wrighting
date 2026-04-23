@@ -6,6 +6,7 @@ import {
 } from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import {
+  existsSync,
   copyFileSync,
   mkdtempSync,
   mkdirSync,
@@ -364,6 +365,71 @@ test("file browser supports real local browsing, edit, upload, download, and del
     await expect(
       drawer.getByTestId(`file-entry-${path.basename(fixture.uploadFilePath)}`),
     ).toHaveCount(0);
+  } finally {
+    await deleteSessionIfPresent(request, sessionId);
+    rmSync(fixture.rootDir, { recursive: true, force: true });
+    rmSync(fixture.uploadFilePath, { force: true });
+  }
+});
+
+test("file browser create dialog supports creating an empty file", async ({
+  page,
+  request,
+}) => {
+  const fixture = setupFixture();
+  const displayName = `file-browser-create-file-${Date.now()}`;
+  const createdFileName = `created-file-${Date.now()}.txt`;
+  let sessionId: string | undefined;
+
+  try {
+    sessionId = await launchMockSession(request, displayName, fixture.rootDir);
+    await focusSession(page, displayName);
+    const drawer = await openFileBrowserForFocusedSession(page);
+
+    await drawer.getByRole("button", { name: "新建" }).click();
+    const createDialog = page.locator(".file-browser-dialog").first();
+    await expect(createDialog).toBeVisible();
+    await createDialog
+      .getByRole("button", { name: "文件", exact: true })
+      .click();
+    await createDialog.locator("input").fill(createdFileName);
+    await createDialog.getByRole("button", { name: "创建" }).click();
+
+    await expect(drawer.getByTestId(`file-entry-${createdFileName}`)).toBeVisible();
+    expect(existsSync(path.join(fixture.rootDir, createdFileName))).toBe(true);
+  } finally {
+    await deleteSessionIfPresent(request, sessionId);
+    rmSync(fixture.rootDir, { recursive: true, force: true });
+    rmSync(fixture.uploadFilePath, { force: true });
+  }
+});
+
+test("file browser create dialog stays open when the name is temporarily empty", async ({
+  page,
+  request,
+}) => {
+  const fixture = setupFixture();
+  const displayName = `file-browser-create-empty-${Date.now()}`;
+  let sessionId: string | undefined;
+
+  try {
+    sessionId = await launchMockSession(request, displayName, fixture.rootDir);
+    await focusSession(page, displayName);
+    const drawer = await openFileBrowserForFocusedSession(page);
+
+    await drawer.getByRole("button", { name: "新建" }).click();
+    const createDialog = page.locator(".file-browser-dialog").first();
+    await expect(createDialog).toBeVisible();
+
+    const nameInput = createDialog.locator("input");
+    await nameInput.fill("");
+
+    await expect(createDialog).toBeVisible();
+    await expect(nameInput).toHaveValue("");
+    await expect(createDialog.getByRole("button", { name: "创建" })).toBeDisabled();
+
+    await createDialog.getByRole("button", { name: "取消" }).click();
+    await expect(createDialog).toHaveCount(0);
   } finally {
     await deleteSessionIfPresent(request, sessionId);
     rmSync(fixture.rootDir, { recursive: true, force: true });

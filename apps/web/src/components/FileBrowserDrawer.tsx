@@ -51,12 +51,20 @@ interface ChmodState {
   value: string;
 }
 
-function joinPath(basePath: string, name: string): string {
-  if (!basePath || basePath === "/") {
-    return `/${name}`;
-  }
+type CreateEntryKind = "directory" | "file";
 
-  return `${basePath.replace(/\/+$/, "")}/${name}`;
+interface CreateEntryState {
+  kind: CreateEntryKind;
+  value: string;
+}
+
+const DEFAULT_CREATE_ENTRY_NAMES: Record<CreateEntryKind, string> = {
+  directory: "新建文件夹",
+  file: "新建文件.txt",
+};
+
+function getCreateEntryLabel(kind: CreateEntryKind): string {
+  return kind === "directory" ? "文件夹" : "文件";
 }
 
 function getFileIcon(entry: FileEntry): string {
@@ -175,7 +183,8 @@ export function FileBrowserDrawer({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renameState, setRenameState] = useState<RenameState | null>(null);
-  const [newFolderName, setNewFolderName] = useState("");
+  const [createEntryState, setCreateEntryState] =
+    useState<CreateEntryState | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [chmodState, setChmodState] = useState<ChmodState | null>(null);
   const [dragDepth, setDragDepth] = useState(0);
@@ -227,6 +236,7 @@ export function FileBrowserDrawer({
     toggleSort,
     selectPath,
     setCheckboxSelection,
+    createFile,
     createFolder,
     renameEntry,
     deleteEntries,
@@ -517,7 +527,12 @@ export function FileBrowserDrawer({
         <button
           className="file-browser-pill"
           disabled={!ready}
-          onClick={() => setNewFolderName("新建文件夹")}
+          onClick={() =>
+            setCreateEntryState({
+              kind: "directory",
+              value: DEFAULT_CREATE_ENTRY_NAMES.directory,
+            })
+          }
           type="button"
         >
           新建
@@ -861,28 +876,93 @@ export function FileBrowserDrawer({
         </div>
       )}
 
-      {newFolderName && (
+      {createEntryState && (
         <div className="file-browser-modal">
           <div className="file-browser-dialog">
-            <h3>新建文件夹</h3>
+            <h3>新建{getCreateEntryLabel(createEntryState.kind)}</h3>
+            <div className="file-browser-dialog-kind-tabs">
+              <button
+                aria-pressed={createEntryState.kind === "directory"}
+                className={`file-browser-pill${createEntryState.kind === "directory" ? " is-active" : ""}`}
+                onClick={() =>
+                  setCreateEntryState((current) =>
+                    current
+                      ? {
+                          kind: "directory",
+                          value:
+                            current.value ===
+                            DEFAULT_CREATE_ENTRY_NAMES[current.kind]
+                              ? DEFAULT_CREATE_ENTRY_NAMES.directory
+                              : current.value,
+                        }
+                      : current,
+                  )
+                }
+                type="button"
+              >
+                文件夹
+              </button>
+              <button
+                aria-pressed={createEntryState.kind === "file"}
+                className={`file-browser-pill${createEntryState.kind === "file" ? " is-active" : ""}`}
+                onClick={() =>
+                  setCreateEntryState((current) =>
+                    current
+                      ? {
+                          kind: "file",
+                          value:
+                            current.value ===
+                            DEFAULT_CREATE_ENTRY_NAMES[current.kind]
+                              ? DEFAULT_CREATE_ENTRY_NAMES.file
+                              : current.value,
+                        }
+                      : current,
+                  )
+                }
+                type="button"
+              >
+                文件
+              </button>
+            </div>
             <input
               className="drawer-input"
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
+              placeholder={`输入${getCreateEntryLabel(createEntryState.kind)}名称`}
+              value={createEntryState.value}
+              onChange={(event) =>
+                setCreateEntryState((current) =>
+                  current
+                    ? {
+                        ...current,
+                        value: event.target.value,
+                      }
+                    : current,
+                )
+              }
             />
             <div className="file-browser-dialog-actions">
               <button
                 className="file-browser-pill"
-                onClick={() => setNewFolderName("")}
+                onClick={() => setCreateEntryState(null)}
                 type="button"
               >
                 取消
               </button>
               <button
                 className="file-browser-pill"
+                disabled={!createEntryState.value.trim()}
                 onClick={async () => {
-                  await createFolder(newFolderName);
-                  setNewFolderName("");
+                  const nextName = createEntryState.value.trim();
+                  if (!nextName) {
+                    return;
+                  }
+
+                  if (createEntryState.kind === "directory") {
+                    await createFolder(nextName);
+                  } else {
+                    await createFile(nextName);
+                  }
+
+                  setCreateEntryState(null);
                 }}
                 type="button"
               >

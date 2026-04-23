@@ -558,6 +558,17 @@ export function useFileBrowser(
     [upload],
   );
 
+  const createFile = useCallback(
+    async (fileName: string) => {
+      if (!currentPath.trim()) {
+        throw new Error("当前目录尚未准备好");
+      }
+
+      await saveTextFile(joinPath(currentPath, fileName), "");
+    },
+    [currentPath, saveTextFile],
+  );
+
   const downloadEntries = useCallback(
     async (paths: string[]) => {
       for (const pathValue of paths) {
@@ -602,6 +613,7 @@ export function useFileBrowser(
     toggleSort,
     selectPath,
     setCheckboxSelection,
+    createFile,
     createFolder,
     renameEntry,
     deleteEntries,

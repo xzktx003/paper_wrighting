@@ -2040,6 +2040,12 @@ input {
   color: #ffb5ac;
 }
 
+.file-browser-pill.is-active {
+  border-color: rgba(246, 178, 107, 0.46);
+  background: rgba(246, 178, 107, 0.18);
+  color: #ffe8cb;
+}
+
 .file-browser-toggle {
   display: inline-flex;
   align-items: center;
@@ -2357,6 +2363,11 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   background: rgba(14, 18, 23, 0.98);
+}
+
+.file-browser-dialog-kind-tabs {
+  display: flex;
+  gap: 8px;
 }
 
 .file-browser-dialog--editor {
