@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   AgentSessionRecord,
@@ -44,6 +44,27 @@ export function TopBar({
 }: TopBarProps) {
   const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
   const [showHints, setShowHints] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(
+    Boolean(document.fullscreenElement),
+  );
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
   const hintsRef = useRef<HTMLDivElement | null>(null);
   const hintsPopoverId = "operation-hints-popover";
   const runningCount = sessions.filter(
@@ -65,6 +86,10 @@ export function TopBar({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setShowHints(false);
+      }
+      if (event.key === "F11") {
+        event.preventDefault();
+        toggleFullscreen();
       }
     }
 
@@ -149,7 +174,7 @@ export function TopBar({
               <span>卡片放大</span>
             </div>
             <div className="top-bar-hint-item">
-              <kbd>Esc</kbd>
+              <kbd>Alt+Q</kbd>
               <span>返回宫格</span>
             </div>
             <div className="top-bar-hint-item">
@@ -159,6 +184,10 @@ export function TopBar({
             <div className="top-bar-hint-item">
               <kbd>Tab</kbd>
               <span>切换焦点</span>
+            </div>
+            <div className="top-bar-hint-item">
+              <kbd>F11</kbd>
+              <span>全屏切换</span>
             </div>
           </div>
         )}
@@ -201,6 +230,15 @@ export function TopBar({
             🟡 {awaitingCount} 等待输入
           </span>
         )}
+        <button
+          className={`top-bar-action top-bar-action--ghost${isFullscreen ? " top-bar-action--active" : ""}`}
+          data-testid="fullscreen-toggle"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "退出全屏" : "进入全屏"}
+          type="button"
+        >
+          {isFullscreen ? "⛶ 退出全屏" : "⛶ 全屏"}
+        </button>
         <button
           className="top-bar-collapse-btn"
           data-testid="top-bar-collapse"

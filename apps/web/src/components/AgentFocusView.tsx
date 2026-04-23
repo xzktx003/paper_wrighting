@@ -42,9 +42,23 @@ export function AgentFocusView({
       const active = document.activeElement as HTMLElement | null;
 
       if (e.key === "Escape") {
-        if (isInTerminal(target) || isInTerminal(active)) {
-          return;
+        // Esc is reserved for dialog-like interactions; never use it to exit focus mode.
+        if (!isInTerminal(target) && !isInTerminal(active)) {
+          e.stopPropagation();
         }
+        return;
+      }
+
+      const isExitShortcut =
+        e.altKey &&
+        !e.ctrlKey &&
+        !e.shiftKey &&
+        !e.metaKey &&
+        (e.code === "KeyQ" || e.key.toLowerCase() === "q");
+
+      if (isExitShortcut) {
+        e.preventDefault();
+        e.stopPropagation();
         onExit();
         return;
       }
@@ -108,7 +122,7 @@ export function AgentFocusView({
           >
             ✎ 改名
           </button>
-          <button className="focus-exit-btn" onClick={onExit}>
+          <button className="focus-exit-btn" onClick={onExit} title="Alt+Q">
             返回宫格
           </button>
           {focusedSession.interactionState === "exited" &&
