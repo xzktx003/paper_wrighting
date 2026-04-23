@@ -52,6 +52,12 @@
 - 输入主机、会话名和目录后，可以直接拉起并进入聚焦态。
 - mac 浏览器提示 `⌘+E`，Windows / Linux 浏览器提示 `Ctrl+E`。
 
+## 操作演示
+
+<video src="docs/readme-assets/20260423_151840.mp4" controls muted playsinline width="100%"></video>
+
+如果当前 Markdown 渲染器不支持内嵌视频，可以直接打开：[操作演示视频](docs/readme-assets/20260423_151840.mp4)
+
 ## 它能做什么
 
 ### 统一看板管理多个 Agent 会话
