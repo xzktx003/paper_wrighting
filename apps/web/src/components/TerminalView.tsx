@@ -172,10 +172,17 @@ export function TerminalView({
       const active = document.activeElement as HTMLElement | null;
       if (!active || active === document.body) return false;
       if (active.classList.contains("xterm-helper-textarea")) return false;
+      // NOTE: HTMLButtonElement is intentionally NOT in this whitelist.
+      // Kanban buttons (sidebar collapse, focus-back-to-grid, action toolbar
+      // entries, etc.) are transient triggers — they do not accept text
+      // input, so the terminal must be allowed to reclaim focus right away.
+      // If we leave a button focused, syncTerminalFocusReport reports
+      // CSI O (focus-out) to the embedded TUI and Copilot CLI silently
+      // drops the next keystrokes ("input dies after I click any button"
+      // regression). See tests/e2e/copilot-focus.spec.ts.
       return (
         active instanceof HTMLIFrameElement ||
         active instanceof HTMLInputElement ||
-        active instanceof HTMLButtonElement ||
         active instanceof HTMLSelectElement ||
         active instanceof HTMLTextAreaElement ||
         Boolean(active.isContentEditable) ||
@@ -260,6 +267,24 @@ export function TerminalView({
       }
 
       if (ws?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      // The first sync after a TUI opts into focus tracking (DECSET 1004)
+      // must optimistically report focus-in. Otherwise a transient
+      // `document.activeElement !== helperTextarea` observed while the
+      // terminal is still being (re)mounted or while xterm is flushing its
+      // handshake reply would be reported as focus-out, and TUIs like
+      // Copilot CLI then silently drop the user's first keystrokes until a
+      // focus-in ever comes back. Subsequent focus/blur events on the
+      // helper textarea will correct this if the terminal is in fact not
+      // focused.
+      if (lastReportedTerminalFocus === null) {
+        if (!ensureInputOwner()) {
+          return;
+        }
+        ws.send("\u001b[I");
+        lastReportedTerminalFocus = "in";
         return;
       }
 
@@ -477,6 +502,22 @@ export function TerminalView({
       handleTerminalFocusOut = (event) => {
         const target = event.target as HTMLElement | null;
         if (!target?.classList.contains("xterm-helper-textarea")) {
+          return;
+        }
+
+        // If focus moved to a transient element (e.g. a button) we must
+        // reclaim it immediately so the next keystroke reaches the terminal
+        // rather than being swallowed by the button or dropped by a TUI that
+        // saw a spurious focus-out.  A setTimeout deferral is too late for
+        // fast typists or Playwright-driven tests.
+        const related = event.relatedTarget as HTMLElement | null;
+        const isTransient =
+          related instanceof HTMLButtonElement ||
+          related?.closest("button") != null;
+
+        if (isTransient && !disposed && !isIntentionalExternalFocus()) {
+          focusInteractiveTerminal(true);
+          syncTerminalFocusReport();
           return;
         }
 

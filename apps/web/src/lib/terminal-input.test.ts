@@ -22,4 +22,16 @@ describe("stripTerminalResponsePayload", () => {
   it("keeps DSR status replies intact so interactive prompts get their answers", () => {
     assert.equal(stripTerminalResponsePayload("\u001b[0n"), "\u001b[0n");
   });
+
+  it("strips xterm.js's built-in DECSET 1004 focus-in reports so the manual focus tracker stays the single source of truth", () => {
+    assert.equal(stripTerminalResponsePayload("\u001b[I"), "");
+  });
+
+  it("strips xterm.js's built-in DECSET 1004 focus-out reports for the same reason", () => {
+    assert.equal(stripTerminalResponsePayload("\u001b[O"), "");
+  });
+
+  it("strips inline focus reports while preserving surrounding keystrokes", () => {
+    assert.equal(stripTerminalResponsePayload("a\u001b[Ib\u001b[Oc"), "abc");
+  });
 });

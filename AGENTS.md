@@ -106,6 +106,25 @@
 - 只有 *replay* 内容（历史回显）允许在服务端被 `sanitizeReplayForTerminal` 清洗；*live stdin* 必须保留 Primary DA、DSR、CPR 等握手/状态应答，但允许过滤会把 shell prompt 污染成噪音的 Secondary DA。
 - 如需新增过滤器，必须同步新增对应的“应答被转发”测试用例，遵循先红后绿。
 
+### Focus View 输入路由纪律
+
+**背景**：真实用户并不总是把鼠标点回终端屏幕本体。只要焦点落到 focus view 里的标题、徽标、空白头部等“非交互静态区域”，后续普通字符就必须仍然回到活跃终端；否则 Copilot CLI 会表现成“界面还在，但就是打不进字”。另外，`button` 不是文本输入控件，不能因为它暂时持有焦点就阻止字符回到终端。
+
+**必须保护的测试**（位于 `tests/e2e/copilot-focus.spec.ts`、`tests/e2e/tmux-enhancements.spec.ts`）：
+
+1. **kanban terminal keeps Copilot-like TUI input working after the user clicks outside the terminal**  
+   - 在 mock Copilot TUI 已启动后，点击 focus view 标题这类终端外的静态区域，然后立即输入。  
+   - 断言：mock 必须收到完整的 `second`，不能丢首字、不能重复首字。
+
+2. **browser: 点击 focus view 标题让终端失焦后，普通字符输入仍会精确回到终端**  
+   - 在 tmux mock agent 会话中，点击 focus view 标题，然后直接输入一整行。  
+   - 断言：tmux pane 必须收到精确的 `stdin:<marker>`，且点击标题后 `xterm-helper-textarea` 仍保持为 `document.activeElement`。
+
+**开发约束**：
+- `AgentFocusView` 的 capture-phase 键盘补救逻辑不得把 `HTMLButtonElement` 或 `HTMLAnchorElement` 当作“正在输入的控件”；否则普通字符会被留在按钮/链接焦点上，活跃终端收不到输入。
+- `focus view` 内的非交互静态区域（标题、状态徽标、头部空白区等）必须在 `pointerdown` 阶段把焦点还给 `.xterm-helper-textarea`，而不是等 `keydown` 时再做补救。真正的键盘事件应当尽量直接进入 xterm，而不是依赖合成 `KeyboardEvent`。
+- 如果仍需在 `keydown` 中补发事件给终端，必须 `preventDefault()` 原始事件，避免首字符被浏览器默认行为和补发事件各处理一次，形成 `ssecond` 这类重复输入。
+
 ## 安全与配置要求
 
 - 严禁提交主机凭证、SSH 密钥或任何机器相关敏感信息。

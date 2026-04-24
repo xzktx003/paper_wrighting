@@ -12,6 +12,8 @@ import {
 
 import { resolveTmuxBinary } from "./tmux-binary";
 
+test.use({ ignoreHTTPSErrors: true });
+
 const TMUX_BINARY = resolveTmuxBinary();
 const COPILOT_SESSION_ROOT = path.join(
   os.homedir(),
@@ -1005,6 +1007,25 @@ test("browser: 终端 helper textarea 失焦后仍能继续把文本输入发回
     await expect
       .poll(() => tmuxPaneContainsText(sessionName, "mouse-ready"))
       .toBeTruthy();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const terminal = document.querySelector(
+            ".focus-main .terminal-view",
+          ) as
+            | (HTMLDivElement & {
+                __xterm?: {
+                  options?: {
+                    disableStdin?: boolean;
+                  };
+                };
+              })
+            | null;
+
+          return terminal?.__xterm?.options?.disableStdin ?? null;
+        }),
+      )
+      .toBe(false);
 
     await screen.click({ position: { x: 90, y: 50 } });
     await expect
@@ -1050,6 +1071,105 @@ test("browser: 终端 helper textarea 失焦后仍能继续把文本输入发回
       .poll(() => tmuxPaneContainsText(sessionName, `stdin:${secondMarker}`), {
         timeout: 10000,
       })
+      .toBeTruthy();
+  } finally {
+    if (launchedSessionId) {
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
+    }
+    killTmuxSession(sessionName);
+  }
+});
+
+test("browser: 点击 focus view 标题让终端失焦后，普通字符输入仍会精确回到终端", async ({
+  page,
+  request,
+}) => {
+  const sessionName = `e2e-terminal-header-refocus-${Date.now()}`;
+  const displayName = `E2E Terminal Header Refocus ${Date.now()}`;
+  const marker = `header-refocus-${Date.now()}`;
+
+  let launchedSessionId: string | undefined;
+
+  killTmuxSession(sessionName);
+
+  try {
+    runTmux([
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      process.cwd(),
+      "node ./scripts/mock-terminal-agent.mjs mouse",
+    ]);
+
+    const launchResponse = await request.post(
+      backendPath("/api/agent-launch/pty"),
+      {
+        data: {
+          workspaceId: "default",
+          displayName,
+          agentKind: "copilot",
+          command: `tmux attach -t '${sessionName}'`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    launchedSessionId = (await launchResponse.json()).id;
+    await waitForSessionInList(request, launchedSessionId!);
+
+    await page.goto("/");
+    await ensureGridMode(page);
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    await card.dblclick();
+
+    const terminal = page.locator(".focus-main .terminal-view");
+    const title = page.locator(".focus-main-name");
+    await expect(terminal).toBeVisible({ timeout: 15000 });
+    await expect(title).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(() => tmuxPaneContainsText(sessionName, "mouse-ready"))
+      .toBeTruthy();
+
+    await title.click();
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document.activeElement?.classList.contains(
+              "xterm-helper-textarea",
+            ) ?? false,
+        ),
+      )
+      .toBeTruthy();
+
+    await page.keyboard.type(marker);
+    await page.keyboard.press("Enter");
+
+    await expect
+      .poll(() => tmuxPaneContainsText(sessionName, `stdin:${marker}`), {
+        timeout: 10000,
+      })
+      .toBeTruthy();
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document.activeElement?.classList.contains(
+              "xterm-helper-textarea",
+            ) ?? false,
+        ),
+      )
       .toBeTruthy();
   } finally {
     if (launchedSessionId) {

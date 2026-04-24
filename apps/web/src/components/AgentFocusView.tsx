@@ -29,6 +29,36 @@ export function AgentFocusView({
   onReconnect,
   onRename,
 }: AgentFocusViewProps) {
+  function handleFocusViewPointerDownCapture(
+    event: React.PointerEvent<HTMLDivElement>,
+  ) {
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+
+    // Static header/text regions inside focus view are effectively part of the
+    // terminal workspace. If the user clicks them, keep the terminal ready for
+    // immediate typing instead of leaving focus on the document body and
+    // relying on synthetic key forwarding.
+    if (target.closest(".focus-main-terminal")) {
+      return;
+    }
+
+    if (
+      target.closest(
+        'button, input, textarea, select, a, [contenteditable="true"], [contenteditable=""], [role="dialog"], [role="alertdialog"]',
+      )
+    ) {
+      return;
+    }
+
+    const textarea = document.querySelector(
+      ".focus-main-terminal .xterm-helper-textarea",
+    ) as HTMLTextAreaElement | null;
+    textarea?.focus();
+  }
+
   useEffect(() => {
     function isInTerminal(node: HTMLElement | null): boolean {
       return Boolean(
@@ -63,12 +93,14 @@ export function AgentFocusView({
         return;
       }
 
+      // Buttons and anchors are not text-entry surfaces. If they keep focus,
+      // printable keys must be redirected back into the active terminal
+      // instead of being dropped on the floor while a TUI like Copilot is
+      // waiting for stdin.
       const inInput =
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement ||
-        active instanceof HTMLButtonElement ||
         active instanceof HTMLSelectElement ||
-        active instanceof HTMLAnchorElement ||
         active?.isContentEditable ||
         active?.closest('[role="dialog"]') !== null ||
         active?.closest('[role="alertdialog"]') !== null;
@@ -77,6 +109,7 @@ export function AgentFocusView({
           ".focus-main-terminal .xterm-helper-textarea",
         ) as HTMLTextAreaElement | null;
         if (textarea) {
+          e.preventDefault();
           textarea.focus();
           const forwarded = new KeyboardEvent("keydown", {
             key: e.key,
@@ -108,6 +141,7 @@ export function AgentFocusView({
   return (
     <div
       className={`focus-view${sidebarCollapsed ? " focus-view--sidebar-collapsed" : ""}`}
+      onPointerDownCapture={handleFocusViewPointerDownCapture}
     >
       <div className="focus-main">
         <div className="focus-main-header">
