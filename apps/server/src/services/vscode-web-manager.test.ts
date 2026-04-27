@@ -59,7 +59,6 @@ test("ensureSession rejects remote sessions", async () => {
   );
 });
 
-
 test("ensureSession rejects when no supported provider is installed", async () => {
   const manager = new VsCodeWebManager({
     findCommand: async () => null,
@@ -696,3 +695,4 @@ test("ensureSession registers an unref-ed idle timer so `node --test` can exit a
     await manager.dispose();
   }
 });
+
