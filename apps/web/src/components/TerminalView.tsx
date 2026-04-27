@@ -5,6 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 import { buildTerminalWebSocketUrl } from "../lib/api";
+import { shouldRepairPassiveTerminalFocus } from "../lib/terminal-focus";
 import { stripTerminalResponsePayload } from "../lib/terminal-input";
 
 interface TerminalViewProps {
@@ -43,6 +44,7 @@ const DEFAULT_PREVIEW_GEOMETRY: TerminalGeometry = {
 };
 
 const EXTERNAL_FOCUS_GRACE_MS = 750;
+const PASSIVE_FOCUS_REPAIR_INTERVAL_MS = 500;
 
 const previewGeometryCache = new Map<string, TerminalGeometry>();
 const terminalInputOwners = new Map<string, TerminalInputOwner>();
@@ -71,15 +73,15 @@ export function TerminalView({
     if (!container || !stage) return;
 
     const timeoutIds: number[] = [];
+    const intervalIds: number[] = [];
     const animationFrameIds: number[] = [];
     const isPreview = !interactive;
     const ownerToken = Symbol(agentSessionId);
     const ownerPriority = interactive ? 2 : 1;
     let handleMouseDownCapture: (() => void) | null = null;
     let handlePointerDownCapture: (() => void) | null = null;
+    let handleTerminalFocusIn: ((event: FocusEvent) => void) | null = null;
     let handleTerminalFocusOut: ((event: FocusEvent) => void) | null = null;
-    let handleTerminalInputFocus: (() => void) | null = null;
-    let handleTerminalInputBlur: (() => void) | null = null;
     let handleWindowFocus: (() => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
@@ -89,6 +91,7 @@ export function TerminalView({
     let disposed = false;
     let closeAfterOpen = false;
     let lastProtectedExternalFocusAt = 0;
+    let lastTerminalIntentAt = 0;
 
     const ensureInputOwner = () => {
       const currentOwner = terminalInputOwners.get(agentSessionId);
@@ -169,9 +172,10 @@ export function TerminalView({
     applyPreviewLayout();
     term.open(stage);
     container.__xterm = term;
-    const helperTextarea = container.querySelector(
-      ".xterm-helper-textarea",
-    ) as HTMLTextAreaElement | null;
+    const getHelperTextarea = () =>
+      container.querySelector(
+        ".xterm-helper-textarea",
+      ) as HTMLTextAreaElement | null;
 
     termRef.current = term;
     fitRef.current = fitAddon;
@@ -214,6 +218,10 @@ export function TerminalView({
       }
 
       lastProtectedExternalFocusAt = Date.now();
+    };
+
+    const rememberTerminalIntent = (): void => {
+      lastTerminalIntentAt = Date.now();
     };
 
     const isIntentionalExternalFocus = (): boolean => {
@@ -338,7 +346,7 @@ export function TerminalView({
       }
 
       const nextFocusState =
-        document.activeElement === helperTextarea ? "in" : "out";
+        document.activeElement === getHelperTextarea() ? "in" : "out";
       if (lastReportedTerminalFocus === nextFocusState) {
         return;
       }
@@ -526,25 +534,49 @@ export function TerminalView({
     });
 
     if (interactive) {
-      handleTerminalInputFocus = () => {
-        scheduleTerminalFocusReport();
+      const repairPassiveFocusDrift = () => {
+        const helperTextarea = getHelperTextarea();
+        if (
+          !shouldRepairPassiveTerminalFocus({
+            documentHasFocus: document.hasFocus(),
+            helperAvailable: helperTextarea !== null,
+            helperFocused: document.activeElement === helperTextarea,
+            intentionalExternalFocus: isIntentionalExternalFocus(),
+            lastProtectedExternalFocusAt,
+            lastTerminalIntentAt,
+          })
+        ) {
+          return;
+        }
+
+        focusInteractiveTerminal();
+        syncTerminalFocusReport();
       };
 
-      handleTerminalInputBlur = () => {
+      handleTerminalFocusIn = (event) => {
+        const target = event.target as HTMLElement | null;
+        if (!target?.classList.contains("xterm-helper-textarea")) {
+          return;
+        }
+
+        rememberTerminalIntent();
         scheduleTerminalFocusReport();
       };
 
       term.attachCustomWheelEventHandler((event) => {
+        rememberTerminalIntent();
         focusInteractiveTerminal(true);
         event.stopPropagation();
         return true;
       });
 
       handlePointerDownCapture = () => {
+        rememberTerminalIntent();
         focusInteractiveTerminal(true);
       };
 
       handleMouseDownCapture = () => {
+        rememberTerminalIntent();
         focusInteractiveTerminal(true);
       };
 
@@ -553,6 +585,8 @@ export function TerminalView({
         if (!target?.classList.contains("xterm-helper-textarea")) {
           return;
         }
+
+        scheduleTerminalFocusReport();
 
         // If focus moved to a transient element (e.g. a button) we must
         // reclaim it immediately so the next keystroke reaches the terminal
@@ -596,6 +630,7 @@ export function TerminalView({
 
       container.addEventListener("pointerdown", handlePointerDownCapture, true);
       container.addEventListener("mousedown", handleMouseDownCapture, true);
+      container.addEventListener("focusin", handleTerminalFocusIn, true);
       container.addEventListener("focusout", handleTerminalFocusOut, true);
       window.addEventListener("focus", handleWindowFocus);
       document.addEventListener(
@@ -604,8 +639,12 @@ export function TerminalView({
         true,
       );
       document.addEventListener("focusin", handleDocumentFocusInCapture, true);
-      helperTextarea?.addEventListener("focus", handleTerminalInputFocus);
-      helperTextarea?.addEventListener("blur", handleTerminalInputBlur);
+      intervalIds.push(
+        window.setInterval(
+          repairPassiveFocusDrift,
+          PASSIVE_FOCUS_REPAIR_INTERVAL_MS,
+        ),
+      );
       scheduleFocusInteractiveTerminal();
     }
 
@@ -656,11 +695,8 @@ export function TerminalView({
       if (handleTerminalFocusOut) {
         container.removeEventListener("focusout", handleTerminalFocusOut, true);
       }
-      if (handleTerminalInputFocus) {
-        helperTextarea?.removeEventListener("focus", handleTerminalInputFocus);
-      }
-      if (handleTerminalInputBlur) {
-        helperTextarea?.removeEventListener("blur", handleTerminalInputBlur);
+      if (handleTerminalFocusIn) {
+        container.removeEventListener("focusin", handleTerminalFocusIn, true);
       }
       if (handleDocumentPointerDownCapture) {
         document.removeEventListener(
@@ -682,6 +718,9 @@ export function TerminalView({
       window.clearTimeout(connectTimeoutId);
       for (const timeoutId of timeoutIds) {
         window.clearTimeout(timeoutId);
+      }
+      for (const intervalId of intervalIds) {
+        window.clearInterval(intervalId);
       }
       for (const animationFrameId of animationFrameIds) {
         window.cancelAnimationFrame(animationFrameId);
