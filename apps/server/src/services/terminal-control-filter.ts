@@ -7,7 +7,10 @@ const TERMINAL_REPLAY_PATTERNS = [
   /\u001bP[\s\S]*?\u001b\\/g,
 ];
 
-const TERMINAL_INPUT_PATTERNS = [/\u001b\[>[\d;]*c/g];
+const TERMINAL_INPUT_PATTERNS = [
+  /\u001b\[>[\d;]*c/g,
+  /\u001b\](?:10|11|4);rgb:[^\u0007]*(?:\u0007|\u001b\\)/g,
+];
 
 function stripPatterns(text: string, patterns: RegExp[]): string {
   return patterns.reduce(

@@ -39,6 +39,14 @@ test("keep DSR replies intact so TUIs receive their status answers", () => {
   assert.equal(sanitized, "\u001b[0n");
 });
 
+test("strip OSC color-query replies so shell prompts do not echo rgb payload noise", () => {
+  const sanitized = stripTerminalResponsePayload(
+    "\u001b]11;rgb:0e0e/1212/1717\u0007\u001b]10;rgb:f4f4/f1f1/eaea\u0007",
+  );
+
+  assert.equal(sanitized, "");
+});
+
 test("sanitize replay removes window and cursor report sequences", () => {
   const replay =
     "prompt> \u001b[>cprompt redraw\u001b[6n\u001b[18t\u001b[12;42Rstill here";
