@@ -47,6 +47,14 @@ test("strip OSC color-query replies so shell prompts do not echo rgb payload noi
   assert.equal(sanitized, "");
 });
 
+test("strip OSC 4 rgb replies so palette queries do not echo color noise", () => {
+  const sanitized = stripTerminalResponsePayload(
+    "\u001b]4;rgb:1111/2222/3333\u001b\\",
+  );
+
+  assert.equal(sanitized, "");
+});
+
 test("sanitize replay removes window and cursor report sequences", () => {
   const replay =
     "prompt> \u001b[>cprompt redraw\u001b[6n\u001b[18t\u001b[12;42Rstill here";
