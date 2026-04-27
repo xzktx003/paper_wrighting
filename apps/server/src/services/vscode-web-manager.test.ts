@@ -59,6 +59,7 @@ test("ensureSession rejects remote sessions", async () => {
   );
 });
 
+
 test("ensureSession rejects when no supported provider is installed", async () => {
   const manager = new VsCodeWebManager({
     findCommand: async () => null,
