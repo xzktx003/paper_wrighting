@@ -22,3 +22,4 @@ vibe-kanban
 apps/server/.codex
 apps/server/.codex/
 .omx/
+.worktrees/
