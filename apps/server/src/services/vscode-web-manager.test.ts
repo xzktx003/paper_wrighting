@@ -695,4 +695,3 @@ test("ensureSession registers an unref-ed idle timer so `node --test` can exit a
     await manager.dispose();
   }
 });
-

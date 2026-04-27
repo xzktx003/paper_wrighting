@@ -35,21 +35,21 @@ describe("stripTerminalResponsePayload", () => {
     assert.equal(stripTerminalResponsePayload("a\u001b[Ib\u001b[Oc"), "abc");
   });
 
-  it('strips OSC color-query replies so rgb payload noise never reaches the PTY', () => {
+  it("strips OSC color-query replies so rgb payload noise never reaches the PTY", () => {
     assert.equal(
       stripTerminalResponsePayload(
-        '\u001b]11;rgb:0e0e/1212/1717\u0007\u001b]10;rgb:f4f4/f1f1/eaea\u0007',
+        "\u001b]11;rgb:0e0e/1212/1717\u0007\u001b]10;rgb:f4f4/f1f1/eaea\u0007",
       ),
-      '',
+      "",
     );
   });
 
-  it('strips OSC color-query replies terminated by ST so rgb payload noise never reaches the PTY', () => {
+  it("strips OSC color-query replies terminated by ST so rgb payload noise never reaches the PTY", () => {
     assert.equal(
       stripTerminalResponsePayload(
-        '\u001b]4;0;rgb:0000/0000/0000\u001b\\\u001b]4;1;rgb:ffff/ffff/ffff\u001b\\',
+        "\u001b]4;0;rgb:0000/0000/0000\u001b\\\u001b]4;1;rgb:ffff/ffff/ffff\u001b\\",
       ),
-      '',
+      "",
     );
   });
 });

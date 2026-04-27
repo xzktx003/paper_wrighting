@@ -25,6 +25,6 @@ const OSC_COLOR_REPLY_PATTERN =
 
 export function stripTerminalResponsePayload(payload: string): string {
   return payload
-    .replace(FOCUS_REPORT_PATTERN, '')
-    .replace(OSC_COLOR_REPLY_PATTERN, '');
+    .replace(FOCUS_REPORT_PATTERN, "")
+    .replace(OSC_COLOR_REPLY_PATTERN, "");
 }
