@@ -23,20 +23,6 @@ describe("stripTerminalResponsePayload", () => {
     assert.equal(stripTerminalResponsePayload("\u001b[0n"), "\u001b[0n");
   });
 
-  it("strips noisy OSC color-reply messages terminated by BEL", () => {
-    // OSC 4;... BEL
-    assert.equal(stripTerminalResponsePayload("\u001b]4;1;rgb:ff/00/ff\u0007"), "");
-    // Surrounded by keystrokes
-    assert.equal(stripTerminalResponsePayload("a\u001b]4;1;rgb:ff/00/ff\u0007b"), "ab");
-  });
-
-  it("strips noisy OSC color-reply messages terminated by ST", () => {
-    // OSC 4;... ST (ESC \)
-    assert.equal(stripTerminalResponsePayload("\u001b]4;1;rgb:ff/00/ff\u001b\\"), "");
-    // Surrounded by keystrokes
-    assert.equal(stripTerminalResponsePayload("a\u001b]4;1;rgb:ff/00/ff\u001b\\b"), "ab");
-  });
-
   it("strips xterm.js's built-in DECSET 1004 focus-in reports so the manual focus tracker stays the single source of truth", () => {
     assert.equal(stripTerminalResponsePayload("\u001b[I"), "");
   });
@@ -47,5 +33,51 @@ describe("stripTerminalResponsePayload", () => {
 
   it("strips inline focus reports while preserving surrounding keystrokes", () => {
     assert.equal(stripTerminalResponsePayload("a\u001b[Ib\u001b[Oc"), "abc");
+  });
+
+  it("strips OSC color-query replies so rgb payload noise never reaches the PTY", () => {
+    assert.equal(
+      stripTerminalResponsePayload(
+        "\u001b]11;rgb:0e0e/1212/1717\u0007\u001b]10;rgb:f4f4/f1f1/eaea\u0007",
+      ),
+      "",
+    );
+  });
+
+  it("strips canonical 2-digit OSC rgb replies so short hex payload noise never reaches the PTY", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]11;rgb:ff/00/ab\u0007"),
+      "",
+    );
+  });
+
+  it("keeps malformed OSC 10 replies intact when the rgb payload is not canonical", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]10;rgb:not-a-color\u0007"),
+      "\u001b]10;rgb:not-a-color\u0007",
+    );
+  });
+
+  it("keeps all-hex OSC rgb replies intact when the payload length is wrong", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]11;rgb:abc/def/012\u0007"),
+      "\u001b]11;rgb:abc/def/012\u0007",
+    );
+  });
+
+  it("strips OSC color-query replies terminated by ST so rgb payload noise never reaches the PTY", () => {
+    assert.equal(
+      stripTerminalResponsePayload(
+        "\u001b]4;0;rgb:0000/0000/0000\u001b\\\u001b]4;1;rgb:ffff/ffff/ffff\u001b\\",
+      ),
+      "",
+    );
+  });
+
+  it("keeps malformed OSC 4 replies intact when the rgb payload is not canonical", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]4;0;rgb:bad/value\u001b\\"),
+      "\u001b]4;0;rgb:bad/value\u001b\\",
+    );
   });
 });
