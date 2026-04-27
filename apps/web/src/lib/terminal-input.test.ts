@@ -44,10 +44,24 @@ describe("stripTerminalResponsePayload", () => {
     );
   });
 
+  it("strips canonical 2-digit OSC rgb replies so short hex payload noise never reaches the PTY", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]11;rgb:ff/00/ab\u0007"),
+      "",
+    );
+  });
+
   it("keeps malformed OSC 10 replies intact when the rgb payload is not canonical", () => {
     assert.equal(
       stripTerminalResponsePayload("\u001b]10;rgb:not-a-color\u0007"),
       "\u001b]10;rgb:not-a-color\u0007",
+    );
+  });
+
+  it("keeps all-hex OSC rgb replies intact when the payload length is wrong", () => {
+    assert.equal(
+      stripTerminalResponsePayload("\u001b]11;rgb:abc/def/012\u0007"),
+      "\u001b]11;rgb:abc/def/012\u0007",
     );
   });
 

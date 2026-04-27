@@ -47,12 +47,28 @@ test("strip OSC color-query replies so shell prompts do not echo rgb payload noi
   assert.equal(sanitized, "");
 });
 
+test("strip canonical 2-digit OSC rgb replies so short hex payload noise does not reach the PTY", () => {
+  const sanitized = stripTerminalResponsePayload(
+    "\u001b]11;rgb:ff/00/ab\u0007",
+  );
+
+  assert.equal(sanitized, "");
+});
+
 test("keep malformed OSC 10 replies intact when the rgb payload is not canonical", () => {
   const sanitized = stripTerminalResponsePayload(
     "\u001b]10;rgb:not-a-color\u0007",
   );
 
   assert.equal(sanitized, "\u001b]10;rgb:not-a-color\u0007");
+});
+
+test("keep all-hex OSC rgb replies intact when the payload length is wrong", () => {
+  const sanitized = stripTerminalResponsePayload(
+    "\u001b]11;rgb:abc/def/012\u0007",
+  );
+
+  assert.equal(sanitized, "\u001b]11;rgb:abc/def/012\u0007");
 });
 
 test("strip OSC 4 rgb replies so palette queries do not echo color noise", () => {
