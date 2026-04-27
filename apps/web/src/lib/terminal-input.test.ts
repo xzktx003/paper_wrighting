@@ -43,4 +43,13 @@ describe("stripTerminalResponsePayload", () => {
       '',
     );
   });
+
+  it('strips OSC color-query replies terminated by ST so rgb payload noise never reaches the PTY', () => {
+    assert.equal(
+      stripTerminalResponsePayload(
+        '\u001b]4;0;rgb:0000/0000/0000\u001b\\\u001b]4;1;rgb:ffff/ffff/ffff\u001b\\',
+      ),
+      '',
+    );
+  });
 });
