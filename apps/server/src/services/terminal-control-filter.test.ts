@@ -49,7 +49,7 @@ test("strip OSC color-query replies so shell prompts do not echo rgb payload noi
 
 test("strip OSC 4 rgb replies so palette queries do not echo color noise", () => {
   const sanitized = stripTerminalResponsePayload(
-    "\u001b]4;rgb:1111/2222/3333\u001b\\",
+    "\u001b]4;0;rgb:1111/2222/3333\u001b\\",
   );
 
   assert.equal(sanitized, "");
