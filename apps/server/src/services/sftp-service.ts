@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 
 import { Client } from "ssh2";
 import type { Attributes, SFTPWrapper } from "ssh2";
@@ -23,6 +24,57 @@ interface PooledConnection {
   client: Client;
   homePath: Promise<string>;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  ready: Promise<void>;
+}
+
+const DEFAULT_SSH_IDENTITY_FILES = [
+  "id_ed25519",
+  "id_ecdsa",
+  "id_ecdsa_sk",
+  "id_rsa",
+  "id_dsa",
+  "id_xmss",
+] as const;
+
+export interface SftpAuthenticationDependencies {
+  homeDirectory: string;
+  env: Record<string, string | undefined>;
+  fileExists: (pathValue: string) => boolean;
+  readFile: (pathValue: string) => Buffer;
+}
+
+function findDefaultIdentityFile(
+  dependencies: SftpAuthenticationDependencies,
+): string | undefined {
+  for (const candidate of DEFAULT_SSH_IDENTITY_FILES) {
+    const pathValue = `${dependencies.homeDirectory}/.ssh/${candidate}`;
+    if (dependencies.fileExists(pathValue)) {
+      return pathValue;
+    }
+  }
+
+  return undefined;
+}
+
+export function resolveSftpAuthenticationOptions(
+  target: SshTarget,
+  dependencies: SftpAuthenticationDependencies = {
+    homeDirectory: homedir(),
+    env: process.env,
+    fileExists: existsSync,
+    readFile: readFileSync,
+  },
+): { privateKey?: Buffer; agent?: string } {
+  const identityFile =
+    target.identityFile ?? findDefaultIdentityFile(dependencies);
+  const agent = dependencies.env.SSH_AUTH_SOCK;
+
+  return {
+    ...(identityFile
+      ? { privateKey: dependencies.readFile(identityFile) }
+      : {}),
+    ...(agent ? { agent } : {}),
+  };
 }
 
 function createConnectionKey(target: SshTarget): string {
@@ -420,6 +472,7 @@ export class SftpService {
     const connectionKey = createConnectionKey(target);
     const existing = this.connections.get(connectionKey);
     if (existing) {
+      await existing.ready;
       return existing;
     }
 
@@ -428,10 +481,10 @@ export class SftpService {
       client,
       homePath: Promise.resolve(""),
       idleTimer: null,
+      ready: Promise.resolve(),
     } satisfies PooledConnection;
-    this.connections.set(connectionKey, connection);
 
-    await new Promise<void>((resolve, reject) => {
+    connection.ready = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("SFTP connection timed out"));
       }, 30_000);
@@ -452,11 +505,17 @@ export class SftpService {
           host: target.host,
           port: target.port ?? 22,
           username: target.username,
-          ...(target.identityFile
-            ? { privateKey: readFileSync(target.identityFile) }
-            : {}),
+          ...resolveSftpAuthenticationOptions(target),
         });
     });
+    this.connections.set(connectionKey, connection);
+
+    try {
+      await connection.ready;
+    } catch (error) {
+      this.connections.delete(connectionKey);
+      throw error;
+    }
 
     connection.homePath = withSftp(
       client,

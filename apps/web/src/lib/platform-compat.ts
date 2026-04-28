@@ -2,6 +2,11 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function buildExecCommand(command: string, args: string[] = []): string {
+  const quotedArgs = args.map((arg) => shellQuote(arg)).join(" ");
+  return quotedArgs ? `exec ${command} ${quotedArgs}` : `exec ${command}`;
+}
+
 function buildRemoteInteractiveShellBootstrap(finalCommand: string): string {
   return [
     'if [ -n "${SHELL:-}" ] && [ -x "$SHELL" ]; then',
@@ -65,6 +70,28 @@ export function buildRemoteTmuxCommand(
 
 export function buildRemoteInteractiveShellExecCommand(): string {
   return buildRemoteInteractiveShellBootstrap('exec "$SHELL_BIN" -i');
+}
+
+export function buildResilientCopilotInvocation(args: string[] = []): string {
+  return [
+    "if command -v copilot >/dev/null 2>&1; then",
+    '  COPILOT_BIN="$(command -v copilot)";',
+    '  COPILOT_DIR="$(dirname "$COPILOT_BIN")";',
+    '  COPILOT_SHEBANG="$(sed -n \'1p\' "$COPILOT_BIN" 2>/dev/null || true)";',
+    '  if [ "$COPILOT_SHEBANG" != "#!/usr/bin/env node" ] || [ -f "$COPILOT_DIR/index.js" ]; then',
+    `    ${buildExecCommand('"$COPILOT_BIN"', args)};`,
+    "  fi;",
+    "fi;",
+    "if command -v node >/dev/null 2>&1; then",
+    '  NODE_BIN="$(command -v node)";',
+    '  NODE_DIR="$(dirname "$NODE_BIN")";',
+    '  COPILOT_LOADER="$NODE_DIR/../lib/node_modules/@github/copilot/npm-loader.js";',
+    '  if [ -f "$COPILOT_LOADER" ]; then',
+    `    ${buildExecCommand('"$NODE_BIN" "$COPILOT_LOADER"', args)};`,
+    "  fi;",
+    "fi;",
+    buildExecCommand("copilot", args),
+  ].join(" ");
 }
 
 export function getQuickTmuxShortcutLabel(): string {

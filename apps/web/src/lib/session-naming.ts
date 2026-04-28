@@ -5,12 +5,17 @@ export interface BuildDefaultSessionNameInput {
   existingNames?: string[];
 }
 
-function normalizeSessionNameSegment(value: string): string {
+function normalizeSessionNameSegment(
+  value: string,
+  options: { allowDots?: boolean } = {},
+): string {
+  const allowedPunctuation = options.allowDots ? "._-" : "_-";
+
   return value
     .trim()
     .toLowerCase()
     .replace(/[\s/:@\\]+/g, "_")
-    .replace(/[^a-z0-9._-]/g, "_")
+    .replace(new RegExp(`[^a-z0-9${allowedPunctuation}]`, "g"), "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
@@ -39,7 +44,10 @@ export function buildDefaultSessionName({
   launchMode,
   existingNames = [],
 }: BuildDefaultSessionNameInput): string {
-  const normalizedHost = normalizeSessionNameSegment(hostLabel) || "host";
+  const normalizedHost =
+    normalizeSessionNameSegment(hostLabel, {
+      allowDots: launchMode !== "tmux",
+    }) || "host";
   const normalizedKind = normalizeSessionNameSegment(agentKind) || "shell";
   const transportLabel = launchMode === "tmux" ? "tmux" : "shell";
 

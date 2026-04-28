@@ -56,6 +56,32 @@ async function waitForReplayFrame(
   });
 }
 
+async function waitForExitedSession(
+  baseUrl: string,
+  agentSessionId: string,
+  timeoutMs = 3_000,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const detailResponse = await fetch(
+      `${baseUrl}/api/agent-sessions/${agentSessionId}`,
+    );
+    assert.equal(detailResponse.status, 200);
+    const detail = (await detailResponse.json()) as {
+      agentSession: { interactionState: string };
+    };
+
+    if (detail.agentSession.interactionState === "exited") {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error("agent session did not exit in time");
+}
+
 test("terminal websocket replay strips CPR queries before sending scrollback to new clients", async () => {
   const { app } = buildServer();
   let agentSessionId: string | undefined;
@@ -97,6 +123,58 @@ test("terminal websocket replay strips CPR queries before sending scrollback to 
     assert.equal(replayFrame.event, "replay");
     assert.match(replayFrame.data ?? "", /cpr-burst-start/);
     assert.doesNotMatch(replayFrame.data ?? "", /\[6n|\[6n/);
+  } finally {
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+  }
+});
+
+test("terminal websocket replays exited session output instead of closing before replay", async () => {
+  const { app } = buildServer();
+  let agentSessionId: string | undefined;
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const terminalUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const launchResponse = await fetch(`${baseUrl}/api/agent-launch/pty`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "default",
+        displayName: `terminal-exit-replay-${Date.now()}`,
+        agentKind: "shell",
+        command: "printf 'before-exit\\n'; exit 1",
+        workingDirectory: process.cwd(),
+      }),
+    });
+
+    assert.equal(launchResponse.status, 201);
+
+    const payload = (await launchResponse.json()) as { id: string };
+    agentSessionId = payload.id;
+
+    await waitForExitedSession(baseUrl, agentSessionId);
+
+    const replayFrame = await waitForReplayFrame(
+      `${terminalUrl}/ws/agent-sessions/${agentSessionId}/terminal`,
+    );
+
+    assert.equal(replayFrame.event, "replay");
+    assert.match(replayFrame.data ?? "", /before-exit/);
+    assert.match(replayFrame.data ?? "", /Process exited with code 1/);
   } finally {
     if (agentSessionId) {
       await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {

@@ -3,7 +3,11 @@ import type {
   ScanResult,
 } from "@agent-orchestrator/shared";
 
-import { buildRemoteInteractiveShellCommand } from "./platform-compat";
+import {
+  buildResilientCopilotInvocation,
+  buildRemoteInteractiveShellCommand,
+  buildRemoteTmuxCommand,
+} from "./platform-compat";
 
 export type LaunchMode = "direct" | "tmux";
 
@@ -64,6 +68,24 @@ function buildAgentInvocation(
   return agentKind;
 }
 
+function buildRemoteAgentInvocation(
+  agentKind: string,
+  displayName: string,
+  sessionId?: string,
+): string | undefined {
+  if (agentKind === "shell") {
+    return undefined;
+  }
+
+  if (agentKind === "copilot") {
+    return buildResilientCopilotInvocation(
+      sessionId ? [`--resume=${sessionId}`] : [],
+    );
+  }
+
+  return buildAgentInvocation(agentKind, displayName, sessionId);
+}
+
 export function buildDirectLaunchCommand(
   agentKind: string,
   workingDirectory: string,
@@ -90,7 +112,11 @@ export function buildTmuxLaunchCommand(
     return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
   }
 
-  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${shellQuote(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId))}`;
+  if (agentKind === "copilot") {
+    return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(`cd ${formatWorkingDirectory(workingDirectory)} && ${buildRemoteAgentInvocation(agentKind, displayName, sessionId)}`, true)}`;
+  }
+
+  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
 }
 
 export function buildRemoteDirectLaunchCommand(
@@ -103,12 +129,7 @@ export function buildRemoteDirectLaunchCommand(
     return `cd ${formatWorkingDirectory(workingDirectory)} && exec "\${SHELL:-\$(command -v bash || command -v zsh || command -v sh || printf /bin/sh)}" -i`;
   }
 
-  return buildDirectLaunchCommand(
-    agentKind,
-    workingDirectory,
-    displayName,
-    sessionId,
-  );
+  return `cd ${formatWorkingDirectory(workingDirectory)} && ${buildRemoteAgentInvocation(agentKind, displayName, sessionId)}`;
 }
 
 export function buildTmuxAttachCommand(

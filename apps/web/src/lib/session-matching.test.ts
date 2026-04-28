@@ -12,6 +12,7 @@ import {
   formatWorkingDirectory,
   buildDirectLaunchCommand,
   buildTmuxLaunchCommand,
+  buildRemoteDirectLaunchCommand,
   buildTmuxAttachCommand,
   findExistingSession,
 } from "./session-matching.js";
@@ -117,6 +118,30 @@ describe("buildTmuxLaunchCommand", () => {
     const cmd = buildTmuxLaunchCommand("shell", "~/code", "test", "my-session");
     assert.ok(cmd.startsWith("tmux new-session -s"));
     assert.ok(cmd.includes("'my-session'"));
+  });
+
+  it("keeps non-shell tmux panes open after the agent command exits", () => {
+    const cmd = buildTmuxLaunchCommand(
+      "copilot",
+      "~/code",
+      "test",
+      "my-session",
+    );
+
+    assert.ok(cmd.startsWith("tmux new-session -s"));
+    assert.ok(cmd.includes("'my-session'"));
+    assert.ok(cmd.includes('exec "$SHELL_BIN" -i'));
+    assert.ok(cmd.includes("copilot"));
+    assert.ok(cmd.includes("@github/copilot/npm-loader.js"));
+  });
+});
+
+describe("buildRemoteDirectLaunchCommand", () => {
+  it("adds a node loader fallback for remote copilot launches", () => {
+    const cmd = buildRemoteDirectLaunchCommand("copilot", "~/code", "test");
+
+    assert.ok(cmd.includes("command -v copilot"));
+    assert.ok(cmd.includes("@github/copilot/npm-loader.js"));
   });
 });
 

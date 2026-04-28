@@ -21,7 +21,7 @@ describe("buildDefaultSessionName", () => {
       launchMode: "tmux",
     });
 
-    assert.equal(name, "10.30.0.21_codex_tmux");
+    assert.equal(name, "10_30_0_21_codex_tmux");
   });
 
   it("adds a numeric suffix when the base name already exists", () => {
@@ -29,9 +29,9 @@ describe("buildDefaultSessionName", () => {
       hostLabel: "10.30.0.21",
       agentKind: "codex",
       launchMode: "tmux",
-      existingNames: ["10.30.0.21_codex_tmux", "10.30.0.21_codex_tmux_2"],
+      existingNames: ["10_30_0_21_codex_tmux", "10_30_0_21_codex_tmux_2"],
     });
 
-    assert.equal(name, "10.30.0.21_codex_tmux_3");
+    assert.equal(name, "10_30_0_21_codex_tmux_3");
   });
 });

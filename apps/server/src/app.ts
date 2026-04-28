@@ -15,7 +15,10 @@ import { LocalTmuxAdapter } from "./services/local-tmux-adapter.js";
 import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
 import { SftpService } from "./services/sftp-service.js";
 import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
-import { stripTerminalResponsePayload } from "./services/terminal-control-filter.js";
+import {
+  sanitizeReplayForTerminal,
+  stripTerminalResponsePayload,
+} from "./services/terminal-control-filter.js";
 import { VsCodeWebManager } from "./services/vscode-web-manager.js";
 
 interface BuildServerOptions {
@@ -102,29 +105,41 @@ export function buildServer(options: BuildServerOptions = {}): {
             data,
           });
 
-        if (!ptyRuntimeManager.has(id)) {
-          socket.close(4004, "没有找到 PTY 会话");
-          return;
-        }
-
         let replaying = true;
         const bufferedLiveFrames: string[] = [];
-        const unsubscribe = ptyRuntimeManager.subscribe(
-          id,
-          (data) => {
-            if (replaying) {
-              bufferedLiveFrames.push(data);
-              return;
-            }
+        let unsubscribe = () => {};
 
-            socket.send(data);
-          },
-          { replay: false },
-        );
+        if (ptyRuntimeManager.has(id)) {
+          unsubscribe = ptyRuntimeManager.subscribe(
+            id,
+            (data) => {
+              if (replaying) {
+                bufferedLiveFrames.push(data);
+                return;
+              }
 
-        const replay = ptyRuntimeManager.getScrollback(id);
-        if (replay) {
-          socket.send(buildTerminalControlFrame("replay", replay));
+              socket.send(data);
+            },
+            { replay: false },
+          );
+
+          const replay = ptyRuntimeManager.getScrollback(id);
+          if (replay) {
+            socket.send(buildTerminalControlFrame("replay", replay));
+          }
+        } else if (registry.has(id)) {
+          const replay = sanitizeReplayForTerminal(
+            registry
+              .getDetail(id)
+              .outputEntries.map((entry) => entry.text)
+              .join(""),
+          );
+          if (replay) {
+            socket.send(buildTerminalControlFrame("replay", replay));
+          }
+        } else {
+          socket.close(4004, "没有找到 PTY 会话");
+          return;
         }
         socket.send(buildTerminalControlFrame("replay-complete"));
         replaying = false;

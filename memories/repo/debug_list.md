@@ -4,11 +4,17 @@
 - 从终端切回 VS Code iframe 后焦点被终端抢回：`TerminalView` 未把 `iframe` 视为有意外部焦点；修复为把 `HTMLIFrameElement` 加入允许列表。
 - 从终端切到文件浏览器编辑器或 VS Code 后，输入过程中焦点仍会被终端抢走：终端只看当前 `activeElement`，交接瞬间看到 `body` 就误抢；同时 VS Code 抽屉把 `reused` 变化当成新实例；修复为增加外部输入焦点保护窗口，并忽略 `reused` 单独变化。
 - VS Code 分栏开着时，用户已经点回终端，过一会输入仍会“死掉”：`TerminalView` 只在离散 blur/focus 事件上补救，没有覆盖 iframe 生命周期造成的被动失焦；修复为记录最近一次终端/外部焦点意图，并仅在“最近一次是终端”时启用轻量焦点修复守护。
+- 远端文件浏览在真实 SSH 主机上统一报 `All configured authentication methods failed`：终端链路依赖系统 `ssh`，能吃到默认私钥；SFTP 链路直接用 `ssh2`，之前只在 `identityFile` 显式存在时才带私钥，导致未写 `IdentityFile` 的主机全部认证失败。修复为 SFTP 认证支持显式 key、标准默认私钥回退，并兼容 `SSH_AUTH_SOCK`。
+- 远端 SSH 会话在线时，文件浏览器首屏偶发空白并报 `write ECONNRESET` / `No response from server`：`SftpService` 在连接还没 `ready` 时就把连接放进池里，UI 初始化打出的并发 `/api/fs/list` 会抢到半初始化连接。修复为复用连接前必须等待 `ready`，并在连接失败时及时把坏连接移出池。
+- 远端 SSH 会话已经退出时，kanban 终端只剩 `[连接已断开]`：PTY runtime 退出就删除 handle，terminal websocket 后续重连拿不到 scrollback，只能 4004 关闭，导致真实错误（例如 `fatal: Gerrit Code Review: exec: not found`）被泛化提示覆盖。修复为 runtime 已退出但 session 仍存在时，从 registry 的历史输出回放 terminal 内容。
 - live stdin 过滤握手应答导致 Copilot CLI 等 TUI 卡死：修复为仅清洗 replay，不过滤 live stdin 的 DA/DSR/CPR 等应答。
 - 终端 focus-report mock 未进入 raw mode 导致测试假红：修复为断言前先切 raw mode。
 - Secondary DA 应答污染 shell 提示符：修复为只过滤会造成噪音的 Secondary DA，保留必要握手应答。
 - 非交互 tmux 缩略图回写 resize 导致真实 pane 缩小：修复为缓存 live geometry，在前端做本地缩放预览。
 - SSH -> tmux resize 不生效：`node-pty.resize()` 不足；修复为额外发送 `SIGWINCH`。
+- 远端新建 tmux 会话时，非 shell agent 会在启动命令退出后把整个 tmux session 一起结束，看起来像“只能建 shell，不能建远端 tmux”：前端 `buildTmuxLaunchCommand` 的非 shell 分支少了 keep-pane-open 包装，和服务端实现漂移；修复为复用带 `exec "$SHELL_BIN" -i` 的 tmux pane 命令构造。
+- 远端 `10.30.0.24` 上从看板启动 Copilot 会话时，看起来像“tmux 创建失败”，实际是主机把 `copilot` 解析到了缺少 `index.js` 的 `~/.nvm/.../bin/copilot` node shim：修复为远端 Copilot 启动命令优先尝试健康的 `copilot`，命中损坏 shim 时回退到 `node ../lib/node_modules/@github/copilot/npm-loader.js` 直接拉起 CLI。
+- 远端 `10.30.0.24` 上直接创建 shell tmux 时，默认名 `10.30.0.24_shell_tmux` 会被旧版 tmux 3.0a 直接拒绝并报 `bad session name`：根因是 tmux 模式默认名仍保留 `.`；修复为 tmux 模式下把 host label 里的 `.` 也归一化成 `_`，生成 `10_30_0_24_shell_tmux` 这类 tmux-safe 名称。
 - 文件浏览器创建弹窗在输入清空时意外关闭：把草稿字符串误当作弹窗开关；修复为显式维护弹窗状态。
 - StrictMode 下 WebSocket cleanup 造成假断开提示：CONNECTING 阶段过早 close；修复为等到 `onopen` 后再关闭。
 - Playwright 只复用前端导致坏后端环境被误复用：修复为前后端分别做健康检查。
