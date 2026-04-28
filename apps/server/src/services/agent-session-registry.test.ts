@@ -77,6 +77,65 @@ test("repeated identical terminal redraws do not keep sessions running", async (
   await waitForInteractionState(registry, session.id, "awaiting_input");
 });
 
+test("awaiting-input timer retries when the first idle check fires early", () => {
+  const originalNow = Date.now;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+
+  let now = 1_000;
+  let nextHandle = 1;
+  const scheduled = new Map<number, { callback: () => void; delay: number }>();
+
+  Date.now = () => now;
+  globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+    const handle = nextHandle++;
+    scheduled.set(handle, {
+      callback,
+      delay: Number(delay ?? 0),
+    });
+    return handle as unknown as NodeJS.Timeout;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((handle: NodeJS.Timeout) => {
+    scheduled.delete(handle as unknown as number);
+  }) as typeof clearTimeout;
+
+  const fireTimeout = (handle: number) => {
+    const timeout = scheduled.get(handle);
+    assert.ok(timeout, `expected timeout ${handle} to be scheduled`);
+    scheduled.delete(handle);
+    timeout.callback();
+  };
+
+  try {
+    const registry = new AgentSessionRegistry(60);
+    const session = createSession(registry);
+
+    registry.appendOutput(session.id, "prompt> ", "stdout");
+
+    assert.equal(scheduled.size, 1);
+    const [firstHandle] = [...scheduled.keys()];
+    now = 1_059;
+    fireTimeout(firstHandle);
+
+    assert.equal(registry.get(session.id).interactionState, "running");
+    assert.equal(
+      scheduled.size,
+      1,
+      "expected an early idle check to re-arm the timer",
+    );
+
+    const [retryHandle] = [...scheduled.keys()];
+    now = 1_061;
+    fireTimeout(retryHandle);
+
+    assert.equal(registry.get(session.id).interactionState, "awaiting_input");
+  } finally {
+    Date.now = originalNow;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
 test("identical redraws do not reorder sessions in the board", async () => {
   const registry = new AgentSessionRegistry(60);
   const first = createSession(registry);

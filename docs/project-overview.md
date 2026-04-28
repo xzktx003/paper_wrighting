@@ -269,7 +269,7 @@ pnpm install
 
 该脚本会：
 
-- 清理 3000/4000 端口监听。
+- 清理默认端口监听。
 - 启动后端和前端。
 - 默认开启 HTTPS。
 - 生成或复用 `.dev-runtime/certs/` 下的自签证书。
@@ -299,16 +299,16 @@ pnpm --dir apps/server dev
 
 注意：
 
-- 前端默认端口 3000，后端默认端口 4000。
-- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:3000/`。
-- 不要用 `https://10.30.0.22:3000/` 访问一个 HTTP dev server。
+- 前端默认端口 3100，后端默认端口 3200。
+- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:3100/`。
+- 不要用 `https://10.30.0.22:3100/` 访问一个 HTTP dev server。
 - 如果只启动前端，页面会打开，但 API、WebSocket、tmux、文件浏览器、VS Code Web 都不可用。
-- Vite 前端代理 `/api` 到 `http://localhost:4000`，代理 `/ws` 到 `ws://localhost:4000`。
+- Vite 前端代理 `/api` 到 `http://localhost:3200`，代理 `/ws` 到 `ws://localhost:3200`。
 
 ### 健康检查
 
 ```bash
-curl http://127.0.0.1:4000/api/health
+curl http://127.0.0.1:3200/api/health
 ```
 
 预期：
@@ -496,7 +496,7 @@ UI 和 API 应围绕 `AgentSessionRecord` 工作。不要让 terminal id、tmux 
 确认后端是否启动：
 
 ```bash
-curl http://127.0.0.1:4000/api/health
+curl http://127.0.0.1:3200/api/health
 ```
 
 如果失败，启动：
@@ -505,12 +505,12 @@ curl http://127.0.0.1:4000/api/health
 pnpm --dir apps/server dev
 ```
 
-### 访问 `https://10.30.0.22:3000` 没内容
+### 访问 `https://10.30.0.22:3100` 没内容
 
 手动 `pnpm --dir apps/web dev` 默认是 HTTP。应访问：
 
 ```text
-http://10.30.0.22:3000/
+http://10.30.0.22:3100/
 ```
 
 要 HTTPS，请用 `scripts/restart-dev.sh` 或配置 `VITE_DEV_HTTPS`、证书路径。

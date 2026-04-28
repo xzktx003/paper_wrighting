@@ -226,18 +226,45 @@ Host hm24
 
 这个脚本会自动完成以下事情：
 
-- 读取 `.env`。
-- 清理旧的前后端进程与端口占用。
-- 启动后端 Fastify 服务。
-- 启动前端 Vite 服务。
-- 默认启用 HTTPS，并在 `.dev-runtime/certs/` 下自动生成或复用自签证书。
-- 输出前端 Local / Network 地址、后端健康检查地址和日志路径。
+- 清理占用中端口，并在同一个端口重新启动服务
+- 启动后端服务
+- 启动前端服务，默认绑定 `0.0.0.0`，方便局域网访问
+- 默认启用 HTTPS，并自动生成或复用自签证书
+- 输出前端实际 Local/Network 地址、后端健康检查地址和日志路径
 
-常用变体：
+启动成功后，脚本会打印：
+
+- 前端实际本地地址（Local）
+- 前端局域网地址（Network，当前环境可用时）
+- 后端健康检查 URL
+
+默认前端使用 3100 端口，后端使用 3200 端口。脚本会优先释放这两个端口上的旧进程，然后仍然在这两个端口上重新启动。
+
+根目录的 `.env` 文件可以覆盖 `WEB_PORT` 和 `SERVER_PORT`，从而调整启动端口。仓库根目录提供了 `.env.example` 示例文件，可以复制并根据需要修改。
+
+如果你想显式指定端口，可以这样启动：
 
 ```bash
-WEB_PORT=3100 PORT=4100 ./scripts/restart-dev.sh
+WEB_PORT=3100 SERVER_PORT=4100 ./scripts/restart-dev.sh
+```
+
+默认通过 HTTPS 启动（`scripts/restart-dev.sh` 内 `WEB_HTTPS` 默认值为 `1`），以满足跨机器访问时浏览器安全上下文要求。
+
+如果你想临时关闭 HTTPS（例如仅本机调试），可以这样启动：
+
+```bash
 WEB_HTTPS=0 ./scripts/restart-dev.sh
+```
+
+如果你要从另一台机器访问并使用浏览器窗口共享能力（需要安全上下文），请保持 HTTPS 开启：
+
+```bash
+WEB_HTTPS=1 ./scripts/restart-dev.sh
+```
+
+如果你希望证书包含你的局域网 IP，可以覆盖 SAN：
+
+```bash
 WEB_HTTPS=1 WEB_HTTPS_SAN='DNS:localhost,IP:127.0.0.1,IP:10.30.0.15' ./scripts/restart-dev.sh
 ```
 
@@ -437,7 +464,14 @@ node ./scripts/generate-readme-screenshots.mjs
 - 前端地址：`https://localhost:3000`
 - 后端地址：`http://127.0.0.1:4000`
 
-如果你本地用的是其他地址：
+运行前请先保证前端和后端都已经启动。默认假设：
+
+- 前端地址是 `https://localhost:3100`
+- 后端地址是 `http://127.0.0.1:3200`
+
+建议把截图脚本指向一套刚启动、没有历史会话的前后端实例。否则 README 截图里可能会混入你当前正在使用的真实会话。
+
+如果你本地关闭了 HTTPS、用了其他端口，或者想指向另一套已经启动的实例，可以覆盖：
 
 ```bash
 README_BASE_URL=https://localhost:8484 README_API_URL=http://127.0.0.1:8282 node ./scripts/generate-readme-screenshots.mjs
@@ -495,10 +529,10 @@ sudo npx playwright install-deps
 
 ```bash
 ./scripts/restart-dev.sh
-curl http://127.0.0.1:4000/api/health
+curl http://127.0.0.1:3200/api/health
 ```
 
-如果你改过端口，请把 `4000` 替换成实际 `PORT`。
+如果你改过端口，请把 `3200` 替换成实际 `SERVER_PORT`。
 
 ### VS Code Web 打不开
 

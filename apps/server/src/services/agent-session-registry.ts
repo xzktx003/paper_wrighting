@@ -465,7 +465,10 @@ export class AgentSessionRegistry {
     );
   }
 
-  private refreshAwaitingInputTimer(agentSessionId: string): void {
+  private refreshAwaitingInputTimer(
+    agentSessionId: string,
+    delayMs = this.awaitingInputIdleMs,
+  ): void {
     this.clearAwaitingInputTimer(agentSessionId);
 
     // NOTE: `setTimeout(...).unref()` happens after we store the handle
@@ -478,7 +481,10 @@ export class AgentSessionRegistry {
       }
 
       const lastChangedAt = this.lastScreenChangedAt.get(agentSessionId) ?? 0;
-      if (Date.now() - lastChangedAt < this.awaitingInputIdleMs) {
+      const remainingMs =
+        this.awaitingInputIdleMs - (Date.now() - lastChangedAt);
+      if (remainingMs > 0) {
+        this.refreshAwaitingInputTimer(agentSessionId, remainingMs);
         return;
       }
 
@@ -491,7 +497,7 @@ export class AgentSessionRegistry {
         stateConfidence: "medium",
         lastHeartbeatAt: new Date().toISOString(),
       });
-    }, this.awaitingInputIdleMs);
+}, delayMs);
     timeout.unref();
 
     this.awaitingInputTimers.set(agentSessionId, timeout);

@@ -13,8 +13,11 @@ import path from 'node:path';
 
 import { chromium } from '@playwright/test';
 
-const baseUrl = process.env.README_BASE_URL ?? 'https://localhost:3000';
-const apiBaseUrl = process.env.README_API_URL ?? 'http://127.0.0.1:4000';
+import { loadRootEnv, resolveReadmeUrls } from './dev-port-config.mjs';
+
+loadRootEnv();
+
+const { baseUrl, apiBaseUrl } = resolveReadmeUrls(process.env);
 const outputDir = path.resolve(process.cwd(), 'docs/readme-assets');
 
 function isExecutablePath(filePath) {

@@ -3,6 +3,17 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "${ROOT_DIR}/.env"
+  set +a
+fi
+
+SERVER_PORT="${SERVER_PORT:-3200}"
+WEB_PORT="${WEB_PORT:-3100}"
+
 RUNTIME_DIR="${ROOT_DIR}/.dev-runtime"
 PLAYWRIGHT_BIN_DIR="${ROOT_DIR}/.playwright-bin"
 SERVER_APP_DIR="${ROOT_DIR}/apps/server"
@@ -20,10 +31,8 @@ fi
 
 SERVER_BIND_HOST="${SERVER_BIND_HOST:-${HOST:-0.0.0.0}}"
 SERVER_PUBLIC_HOST="${SERVER_PUBLIC_HOST:-127.0.0.1}"
-SERVER_PORT="${SERVER_PORT:-${PORT:-4000}}"
 
 WEB_HOST="${WEB_HOST:-0.0.0.0}"
-WEB_PORT="${WEB_PORT:-3000}"
 WEB_HTTPS="${WEB_HTTPS:-1}"
 WEB_HTTPS_CERT="${WEB_HTTPS_CERT:-${RUNTIME_DIR}/certs/dev-cert.pem}"
 WEB_HTTPS_KEY="${WEB_HTTPS_KEY:-${RUNTIME_DIR}/certs/dev-key.pem}"
@@ -93,10 +102,10 @@ wait_for_http() {
   local name="$1"
   local url="$2"
   local attempts="${3:-60}"
-  local curl_args=(-fsS)
+  local curl_args=(--noproxy '*' -fsS)
 
   if [[ "$url" == https://* ]]; then
-    curl_args=(-k -fsS)
+    curl_args=(--noproxy '*' -k -fsS)
   fi
 
   for ((i = 1; i <= attempts; i += 1)); do
