@@ -252,6 +252,9 @@ WEB_PORT=3100 SERVER_PORT=4100 ./scripts/restart-dev.sh
 
 默认通过 HTTPS 启动（`scripts/restart-dev.sh` 内 `WEB_HTTPS` 默认值为 `1`），以满足跨机器访问时浏览器安全上下文要求。
 
+`./scripts/restart-dev.sh` 现在会在本机安装了 `mkcert` 时优先生成浏览器信任的本地开发证书；只有在 `mkcert`
+不可用时，才回退到 OpenSSL 自签名证书。
+
 如果你想临时关闭 HTTPS（例如仅本机调试），可以这样启动：
 
 ```bash
@@ -269,6 +272,19 @@ WEB_HTTPS=1 ./scripts/restart-dev.sh
 ```bash
 WEB_HTTPS=1 WEB_HTTPS_SAN='DNS:localhost,IP:127.0.0.1,IP:10.30.0.15' ./scripts/restart-dev.sh
 ```
+
+如果你需要在内嵌 VS Code Web 里正常使用 PNG 预览、webview 或其它依赖
+service worker 的能力，请优先使用浏览器信任的证书：
+
+```bash
+brew install mkcert nss        # macOS
+# 或 sudo apt install mkcert   # Ubuntu / Debian
+mkcert -install
+./scripts/restart-dev.sh
+```
+
+如果当前机器还没准备好受信任证书，`WEB_HTTPS=0` 的 localhost 调试模式通常也能让这些 VS Code
+预览功能恢复，但这只适合本机调试，不适合跨机器访问。
 
 ### 6. 分别启动前后端（备用）
 

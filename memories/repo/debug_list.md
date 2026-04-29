@@ -21,6 +21,7 @@
 - Playwright Chromium 缺系统库时浏览器测试无法启动：沉淀了本地 `.deb` + `LD_LIBRARY_PATH` 的 rootless workaround。
 - idle cleanup timer 未 `.unref()` 导致 `pnpm -r test` 不退出：修复为统一 `.unref()` 并补 `hasRef() === false` 回归。
 - `awaiting_input` 单测在高负载下偶发超时：修复策略是收紧测试 override，而不是改全局默认值。
+- kanban 里的内嵌 VS Code Web 在自签 HTTPS 下会出现 PNG 预览 / webview 打不开：根因是 code-server 的 webview / 图片预览链路依赖 service worker，而浏览器不会为不受信任的自签证书注册这些 service worker。修复为让 `restart-dev.sh` 在可用时优先用 `mkcert` 生成受信任本地证书，并在回退到 OpenSSL 自签证书时输出明确告警。
 - shell 逻辑默认依赖 zsh 导致兼容性问题：修复为优先 `SHELL`，再回退到 `bash -> zsh -> sh`。
 - tmux 路径只支持单一路径导致不同机器行为不稳：修复为支持 `TMUX_BINARY`、Homebrew 常见路径和 `PATH` 自动探测。
 - 端口与代理硬编码导致切换环境易错连：修复为统一改成 env 驱动。

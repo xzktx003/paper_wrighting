@@ -193,72 +193,14 @@ build_default_https_san() {
   printf '%s\n' "${san_entries[*]}"
 }
 
-certificate_matches_requested_san() {
-  local cert_path="$1"
-  local requested_san="$2"
-  local certificate_text
-  local san_entry
-
-  if [[ ! -f "$cert_path" ]]; then
-    return 1
-  fi
-
-  certificate_text="$(openssl x509 -in "$cert_path" -noout -text 2>/dev/null || true)"
-  if [[ -z "$certificate_text" ]]; then
-    return 1
-  fi
-
-  IFS=',' read -r -a san_entries <<<"$requested_san"
-  for san_entry in "${san_entries[@]}"; do
-    if ! grep -F "$san_entry" <<<"$certificate_text" >/dev/null; then
-      return 1
-    fi
-  done
-
-  return 0
-}
-
 if [[ -z "$WEB_HTTPS_SAN" ]]; then
   WEB_HTTPS_SAN="$(build_default_https_san)"
 fi
-ensure_https_certificate() {
-  if [[ "$WEB_HTTPS" != "1" ]]; then
-    return 0
-  fi
-
-  if ! command -v openssl >/dev/null 2>&1; then
-    log 'WEB_HTTPS=1 requires openssl, but openssl is not installed'
-    return 1
-  fi
-
-  if [[ -f "$WEB_HTTPS_CERT" && -f "$WEB_HTTPS_KEY" ]]; then
-    if certificate_matches_requested_san "$WEB_HTTPS_CERT" "$WEB_HTTPS_SAN"; then
-      return 0
-    fi
-
-    log "Regenerating self-signed certificate with SANs: ${WEB_HTTPS_SAN}"
-    rm -f "$WEB_HTTPS_CERT" "$WEB_HTTPS_KEY"
-  fi
-
-  mkdir -p "$(dirname "$WEB_HTTPS_CERT")"
-  mkdir -p "$(dirname "$WEB_HTTPS_KEY")"
-
-  log "Generating self-signed certificate: ${WEB_HTTPS_CERT}"
-  openssl req \
-    -x509 \
-    -newkey rsa:2048 \
-    -sha256 \
-    -nodes \
-    -days 365 \
-    -keyout "$WEB_HTTPS_KEY" \
-    -out "$WEB_HTTPS_CERT" \
-    -subj '/CN=localhost' \
-    -addext "subjectAltName=${WEB_HTTPS_SAN}" >/dev/null 2>&1
-}
 
 mkdir -p "$RUNTIME_DIR"
 
-if ! ensure_https_certificate; then
+if ! WEB_HTTPS="$WEB_HTTPS" WEB_HTTPS_CERT="$WEB_HTTPS_CERT" WEB_HTTPS_KEY="$WEB_HTTPS_KEY" WEB_HTTPS_SAN="$WEB_HTTPS_SAN" \
+  node "${ROOT_DIR}/scripts/ensure-dev-https-cert.mjs"; then
   exit 1
 fi
 

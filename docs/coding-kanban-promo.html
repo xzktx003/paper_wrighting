@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coding Kanban 宣传稿</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --panel-soft: #1c2128;
+        --text: #e6edf3;
+        --muted: #9da7b3;
+        --line: rgba(255, 255, 255, 0.1);
+        --brand: #58a6ff;
+        --brand-strong: #2f81f7;
+        --accent: #7ee787;
+        --warning: #f2cc60;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+          sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(88, 166, 255, 0.16), transparent 30%),
+          linear-gradient(180deg, #0a0f16 0%, var(--bg) 28%, #0b1119 100%);
+        color: var(--text);
+      }
+
+      a {
+        color: var(--brand);
+        text-decoration: none;
+      }
+
+      img,
+      video {
+        display: block;
+        width: 100%;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      code {
+        font-family:
+          'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 0.15rem 0.4rem;
+        border-radius: 8px;
+      }
+
+      .page {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 40px 24px 96px;
+      }
+
+      .hero {
+        padding: 32px;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background:
+          linear-gradient(135deg, rgba(88, 166, 255, 0.18), rgba(126, 231, 135, 0.08)),
+          rgba(13, 17, 23, 0.82);
+        box-shadow: var(--shadow);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(88, 166, 255, 0.12);
+        border: 1px solid rgba(88, 166, 255, 0.25);
+        color: #c6defe;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .hero h1 {
+        margin-top: 18px;
+        font-size: clamp(40px, 7vw, 76px);
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+      }
+
+      .hero .lead {
+        margin-top: 20px;
+        max-width: 900px;
+        font-size: 20px;
+        line-height: 1.8;
+        color: var(--muted);
+      }
+
+      .question-grid,
+      .value-grid,
+      .feature-grid,
+      .media-grid,
+      .install-grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .question-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 28px;
+      }
+
+      .question-card,
+      .value-card,
+      .feature-card,
+      .quote,
+      .install-card {
+        background: rgba(22, 27, 34, 0.86);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 22px;
+      }
+
+      .question-card {
+        min-height: 160px;
+      }
+
+      .question-card .index {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: rgba(88, 166, 255, 0.14);
+        color: #d8eafe;
+        font-weight: 800;
+      }
+
+      .question-card h2 {
+        margin-top: 14px;
+        font-size: 28px;
+        line-height: 1.35;
+      }
+
+      .question-card p {
+        margin-top: 10px;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
+      section {
+        margin-top: 34px;
+      }
+
+      .section-title {
+        font-size: 34px;
+        line-height: 1.2;
+        margin-bottom: 14px;
+      }
+
+      .section-desc {
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.8;
+        max-width: 960px;
+      }
+
+      .quote {
+        margin-top: 24px;
+        border-left: 4px solid var(--brand);
+        font-size: 22px;
+        line-height: 1.8;
+      }
+
+      .quote strong {
+        color: #ffffff;
+      }
+
+      .value-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 24px;
+      }
+
+      .value-card h3,
+      .feature-card h3,
+      .install-card h3 {
+        font-size: 22px;
+      }
+
+      .value-card p,
+      .feature-card p,
+      .install-card p,
+      .install-card li {
+        margin-top: 10px;
+        line-height: 1.85;
+        color: var(--muted);
+      }
+
+      .feature-grid,
+      .media-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 24px;
+      }
+
+      figure {
+        margin: 0;
+      }
+
+      figcaption {
+        margin-top: 10px;
+        color: var(--muted);
+        line-height: 1.7;
+        font-size: 14px;
+      }
+
+      .feature-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--line);
+        color: #d2dae2;
+        font-size: 13px;
+      }
+
+      .install-grid {
+        grid-template-columns: 1.2fr 1fr;
+        margin-top: 24px;
+      }
+
+      pre {
+        overflow: auto;
+        padding: 18px;
+        border-radius: 18px;
+        background: #0b0f14;
+        border: 1px solid var(--line);
+        color: #d6e9ff;
+        line-height: 1.7;
+      }
+
+      ul {
+        padding-left: 20px;
+        margin: 12px 0 0;
+      }
+
+      .footer {
+        margin-top: 42px;
+        padding: 26px 28px;
+        border-radius: 24px;
+        background:
+          linear-gradient(135deg, rgba(47, 129, 247, 0.16), rgba(126, 231, 135, 0.08)),
+          rgba(22, 27, 34, 0.9);
+        border: 1px solid var(--line);
+      }
+
+      .footer p {
+        margin-top: 12px;
+        color: #d7dee5;
+        font-size: 18px;
+        line-height: 1.85;
+      }
+
+      .meta {
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 960px) {
+        .question-grid,
+        .value-grid,
+        .feature-grid,
+        .media-grid,
+        .install-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding: 24px;
+        }
+
+        .hero h1 {
+          font-size: 44px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="badge">AI Coding 时代的浏览器工作台</div>
+        <h1>Coding Kanban：把你的多终端、多主机、多会话，收进同一张看板</h1>
+        <p class="lead">
+          相信大家在最近保活的 AI coding 时代，或多或少都会遇到这些问题：
+          会话越来越多、窗口越开越乱、远程文件越改越麻烦、机器一换环境就得重新连一遍。
+          <strong>Coding Kanban</strong>
+          给出的答案很直接——把本地终端、SSH 远端、tmux、文件浏览器、VS Code Web，
+          全部收口到一个可视化、可切换、可接管的浏览器工作台里。
+        </p>
+
+        <div class="question-grid">
+          <article class="question-card">
+            <div class="index">1</div>
+            <h2>你是不是还在为同时进行好几个 coding 会话而忙得手忙脚乱？</h2>
+            <p>
+              Copilot、Codex、Claude、shell 来回切，多个终端窗口反复跳，想接着输一句话都要先找对那个窗口。
+            </p>
+          </article>
+          <article class="question-card">
+            <div class="index">2</div>
+            <h2>你是不是还在为了服务器端文件浏览麻烦，而一直使用终端 <code>ls</code>、<code>cd</code>？</h2>
+            <p>
+              看目录、改配置、下日志、传文件，全靠命令行硬切，明明只是想“顺手看一眼、改一行”。
+            </p>
+          </article>
+          <article class="question-card">
+            <div class="index">3</div>
+            <h2>你是不是还在因为同时开太多 VS Code 和终端而让电脑内存报警？</h2>
+            <p>
+              一个项目一个窗口，一台服务器一个编辑器，再开几个终端标签，笔记本风扇直接起飞。
+            </p>
+          </article>
+          <article class="question-card">
+            <div class="index">4</div>
+            <h2>你是不是还在因为电脑一带回家，就得重连 VS Code、MobaXterm、terminal？</h2>
+            <p>
+              工作流碎在不同客户端里，换台机器、换个网络、换个位置，连接关系就得重新拼一次。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">那么今天，我们给你一个更适合 AI Coding 的解决方案——Coding Kanban</h2>
+        <p class="section-desc">
+          它不是又一个“会开 shell 的页面”，而是一个面向 CLI Coding Agent 的多终端编排工作台：
+          你可以同屏观察多个会话、双击进入聚焦终端、直接打开远端文件浏览器、
+          在同一个页面里拉起或复用 VS Code Web，还能把现有 tmux 会话和历史工作目录重新接管进来。
+        </p>
+        <div class="quote">
+          <strong>一句话总结：</strong>
+          把“观察多个 Agent → 切到某个会话 → 继续输入 → 看文件 → 改文件 → 打开编辑器”
+          这一整串动作，压缩成一个连续工作流。
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">它到底解决了什么？</h2>
+        <div class="value-grid">
+          <article class="value-card">
+            <h3>一个页面，统一管多个会话</h3>
+            <p>
+              本地 PTY、SSH 远端 PTY、tmux 会话、扫描到的历史目录、观察中的 VS Code
+              窗口，全部在一张宫格看板里统一展示。
+            </p>
+          </article>
+          <article class="value-card">
+            <h3>一个工作流，覆盖终端 + 文件 + 编辑器</h3>
+            <p>
+              不是看板只负责“看”，编辑器只负责“改”。聚焦态里可以直接开文件浏览器和 VS Code Web，
+              终端上下文不用断。
+            </p>
+          </article>
+          <article class="value-card">
+            <h3>一个浏览器，跨机器继续工作</h3>
+            <p>
+              更适合本地自托管、内网开发机、团队共享工作台这些场景。换电脑、换位置，
+              你的工作流不必再拆散重连。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">实时画面：这不是概念图，是刚刚通过 Playwright 截下来的活页面</h2>
+        <p class="section-desc">
+          下面这几张图，来自当前仓库对应应用的实时页面截图；既保留 README
+          里的标准素材，也补充了更贴近宣传场景的现场界面。
+        </p>
+        <div class="media-grid">
+          <figure>
+            <img src="promo-assets/live-board-overview.png" alt="Coding Kanban 实时看板截图" />
+            <figcaption>
+              Playwright 实时截图：多会话宫格总览。你能一眼看到名称、状态、主机、工作目录和终端缩略图。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="promo-assets/live-topbar-hints.png" alt="Coding Kanban 顶栏与操作提示" />
+            <figcaption>
+              Playwright 实时截图：顶栏不仅是按钮集合，还是整个工作流入口——新建会话、扫描 tmux、扫描会话、快连 tmux、操作提示都集中在这里。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="promo-assets/live-focus-overview.png" alt="Coding Kanban 聚焦终端实时截图" />
+            <figcaption>
+              Playwright 实时截图：双击卡片进入聚焦态，在主终端继续输入，右侧依然保留其他会话上下文。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="promo-assets/live-quick-tmux-dialog.png" alt="Coding Kanban 快速连接 tmux 实时截图" />
+            <figcaption>
+              Playwright 实时截图：快速连接本机或远端 tmux，会话存在即 attach，不存在就创建。
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <div class="feature-grid">
+          <article class="feature-card feature-copy">
+            <h3>1. 多 Agent 看板，不再靠窗口记忆工作</h3>
+            <p>
+              Coding Kanban 把会话从“标签页”升级成“看板卡片”。
+              每张卡片都能显示名称、主机、工作目录、状态、Agent 类型和终端缩略图；
+              你可以筛选、隐藏、恢复、重命名、关闭、终止 tmux，也能双击直接进入聚焦态。
+            </p>
+            <p>
+              换句话说，它不是让你“拥有更多终端”，而是让你终于能管理这些终端。
+            </p>
+            <div class="pill-row">
+              <span class="pill">本地 PTY</span>
+              <span class="pill">SSH 远端</span>
+              <span class="pill">tmux 接管</span>
+              <span class="pill">隐藏/恢复</span>
+              <span class="pill">聚焦工作流</span>
+            </div>
+          </article>
+          <figure>
+            <img src="readme-assets/board-overview.png" alt="README 标准宫格总览图" />
+            <figcaption>
+              README 标准素材：官方整理后的宫格总览，适合配合上方实时截图一起理解界面结构。
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <div class="feature-grid">
+          <figure>
+            <img src="promo-assets/live-file-browser-drawer.png" alt="Coding Kanban 文件浏览器实时截图" />
+            <figcaption>
+              Playwright 实时截图：在聚焦态直接拉起文件浏览器，终端、目录树、文件操作位于同一工作视角。
+            </figcaption>
+          </figure>
+          <article class="feature-card feature-copy">
+            <h3>2. 远端文件浏览，不用再把 <code>ls</code> / <code>cd</code> 当文件管理器</h3>
+            <p>
+              聚焦态下，内置文件浏览器可以直接打开本地文件系统，也支持通过 SSH/SFTP
+              访问远端开发机。目录树、面包屑、隐藏文件、筛选、排序、拖拽上传、下载、重命名、删除、chmod
+              一应俱全。
+            </p>
+            <p>
+              文本文件还能直接预览和编辑保存。对于“看日志、改配置、顺手修一行”的高频动作来说，
+              这比反复切回另一个终端或另一个 SFTP 工具高效得多。
+            </p>
+            <div class="pill-row">
+              <span class="pill">本地文件</span>
+              <span class="pill">SSH / SFTP</span>
+              <span class="pill">文本预览</span>
+              <span class="pill">编辑保存</span>
+              <span class="pill">上传下载</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="feature-grid">
+          <article class="feature-card feature-copy">
+            <h3>3. VS Code Web 内嵌，不再每台机器都单独开一个编辑器</h3>
+            <p>
+              本地终端会话和 SSH 远端会话都能直接打开内嵌 VS Code Web。
+              对本地环境，它会优先复用 <code>code-server</code>，其次兼容
+              <code>openvscode-server</code>；对 SSH 远端，它会通过 SSH 启动或复用远端
+              <code>code-server</code>，再统一代理到当前后端的 <code>/vscode/</code>。
+            </p>
+            <p>
+              这意味着：你不必为了每台开发机都单独开一个完整的桌面 VS Code 窗口，
+              也不必在本机和远端编辑器之间来回跳。
+            </p>
+            <div class="pill-row">
+              <span class="pill">本地 VS Code Web</span>
+              <span class="pill">SSH 远端 VS Code Web</span>
+              <span class="pill">扩展目录复用</span>
+              <span class="pill">统一代理</span>
+            </div>
+          </article>
+          <figure>
+            <img src="promo-assets/live-focus-vscode.png" alt="Coding Kanban VS Code Web 实时截图" />
+            <figcaption>
+              Playwright 实时截图：聚焦终端旁直接打开 VS Code Web，把编辑器接入终端上下文，而不是切走上下文。
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <div class="feature-grid">
+          <figure>
+            <img src="readme-assets/quick-tmux-connect.png" alt="README 快速连接 tmux 图" />
+            <figcaption>
+              README 标准素材：快速连接 tmux。默认命令为 <code>tmux new-session -A -s &lt;session&gt; -c &lt;dir&gt;</code>。
+            </figcaption>
+          </figure>
+          <article class="feature-card feature-copy">
+            <h3>4. tmux 扫描、接管与恢复，让“已有会话”重新变得可管理</h3>
+            <p>
+              很多团队的问题不是“不会创建新会话”，而是“已有 tmux 和历史工作目录越来越多，却没人能管理”。
+              Coding Kanban 不只支持新建，还支持扫描本地和 SSH 远端 tmux，把已存在的 pane
+              接进来看板继续控制。
+            </p>
+            <p>
+              同时，它还能扫描工作目录、识别 Copilot 的 session-state，并尝试把扫描结果和 tmux pane
+              合并，减少重复卡片。这让“重新捡起昨天的工作”比“从头重建环境”更容易。
+            </p>
+            <div class="pill-row">
+              <span class="pill">tmux 扫描</span>
+              <span class="pill">takeover / release</span>
+              <span class="pill">历史工作目录</span>
+              <span class="pill">Copilot session-state</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">README 原生素材：结构图、工作流、安装图和视频演示</h2>
+        <div class="media-grid">
+          <figure>
+            <img src="readme-assets/architecture-overview.svg" alt="Coding Kanban 架构总览图" />
+            <figcaption>
+              仓库 README 素材：前端、后端、SSH、tmux、文件系统与 VS Code Web 的整体架构关系。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="readme-assets/usage-workflow.svg" alt="Coding Kanban 使用工作流图" />
+            <figcaption>
+              仓库 README 素材：从创建会话、观察、切换到文件和编辑器的连续工作流。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="readme-assets/install-flow.svg" alt="Coding Kanban 安装流程图" />
+            <figcaption>
+              仓库 README 素材：适合放在对外介绍里，快速说明部署门槛和启动路径。
+            </figcaption>
+          </figure>
+          <figure>
+            <video
+              src="readme-assets/20260423_151840.mp4"
+              controls
+              muted
+              playsinline
+            ></video>
+            <figcaption>
+              仓库 README 视频素材：实际操作演示，适合在分享、群内宣发或文档页里直接播放。
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">适合谁用？</h2>
+        <div class="value-grid">
+          <article class="value-card">
+            <h3>本地自托管开发者</h3>
+            <p>
+              希望把自己的 CLI Agent、tmux、远端开发机、文件浏览和编辑器统一在一个浏览器工作台里。
+            </p>
+          </article>
+          <article class="value-card">
+            <h3>内网开发机 / GPU 服务器用户</h3>
+            <p>
+              习惯在固定开发机上跑长任务，但不想每台机器都开完整的桌面远程编辑环境。
+            </p>
+          </article>
+          <article class="value-card">
+            <h3>多 Agent 并行的 AI Coding 团队</h3>
+            <p>
+              需要同时观察多个会话状态、快速切换输入、接管已有工作目录和远端 tmux 的团队工作流。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="section-title">安装方法：一句话交给你的大模型</h2>
+        <p class="section-desc">
+          如果你现在就在用大模型协助开发，最省事的方式其实非常简单：直接让它把仓库依赖装好并启动。
+          注意，仓库里实际使用的脚本名是 <code>./scripts/restart-dev.sh</code>。
+        </p>
+        <div class="install-grid">
+          <article class="install-card">
+            <h3>你可以直接这样说</h3>
+            <pre>把 http://10.10.1.58/xing.hu/coding_kanban 这个仓库的依赖安装好，
+然后运行 ./scripts/restart-dev.sh</pre>
+            <p>
+              脚本会自动清理占用端口、启动后端、启动前端、默认启用 HTTPS，并打印出实际 Local /
+              Network 地址，方便你在局域网里直接打开。
+            </p>
+          </article>
+          <article class="install-card">
+            <h3>它会帮你准备什么</h3>
+            <ul>
+              <li>Node.js + pnpm 依赖安装</li>
+              <li>前后端开发服务同时启动</li>
+              <li>局域网可访问的前端地址</li>
+              <li>默认 HTTPS 的浏览器工作台</li>
+              <li>后续可接入 SSH 主机、tmux、文件浏览器和 VS Code Web</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="footer">
+        <div class="badge">结语</div>
+        <p>
+          如果你已经进入“一个人同时保活多个 AI coding 会话”的工作状态，
+          那么你真正缺的往往不是更多终端，而是一个能把这些终端、文件和编辑器组织起来的工作台。
+        </p>
+        <p>
+          <strong>Coding Kanban</strong>
+          做的正是这件事：让本地与远端、终端与编辑器、已有会话与新会话，全部回到同一个浏览器界面里。
+          少一点窗口切换，多一点真正连续的编码流。
+        </p>
+        <p class="meta">
+          本页内容基于当前仓库 README、功能文档，以及对运行中应用的 Playwright 实时截图整理而成。
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -497,7 +497,7 @@ export class AgentSessionRegistry {
         stateConfidence: "medium",
         lastHeartbeatAt: new Date().toISOString(),
       });
-}, delayMs);
+    }, delayMs);
     timeout.unref();
 
     this.awaitingInputTimers.set(agentSessionId, timeout);
