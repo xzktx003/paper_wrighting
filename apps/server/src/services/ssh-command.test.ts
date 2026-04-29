@@ -80,6 +80,45 @@ test("buildSshArgs can still clear inherited forwards when requested", () => {
   ]);
 });
 
+test("buildSshArgs supports local port forwarding tunnels", () => {
+  const args = buildSshArgs(
+    {
+      host: "10.30.0.24",
+      port: 22,
+      username: "xuzk",
+    },
+    {
+      batchMode: true,
+      connectTimeoutSeconds: 5,
+      exitOnForwardFailure: true,
+      localForwardings: [
+        {
+          bindAddress: "127.0.0.1",
+          localPort: 43131,
+          remoteHost: "127.0.0.1",
+          remotePort: 13338,
+        },
+      ],
+      noCommand: true,
+    },
+  );
+
+  assert.deepEqual(args, [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-L",
+    "127.0.0.1:43131:127.0.0.1:13338",
+    "-N",
+    "-p",
+    "22",
+    "xuzk@10.30.0.24",
+  ]);
+});
+
 test("formatSshDestination rejects unsafe values", () => {
   assert.throws(
     () =>

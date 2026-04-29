@@ -24,3 +24,7 @@
 - shell 逻辑默认依赖 zsh 导致兼容性问题：修复为优先 `SHELL`，再回退到 `bash -> zsh -> sh`。
 - tmux 路径只支持单一路径导致不同机器行为不稳：修复为支持 `TMUX_BINARY`、Homebrew 常见路径和 `PATH` 自动探测。
 - 端口与代理硬编码导致切换环境易错连：修复为统一改成 env 驱动。
+- SSH 远端会话打开 VS Code Web 时总被判定为“不支持”：根因是 `VsCodeWebManager` 之前只覆盖了本地 editor 生命周期。修复为补充 SSH 远端 `code-server` 的启动/复用、健康检查与 `/vscode/` 代理目标切换，先支持像 `10.30.0.24` 这类可被后端直连的远端主机。
+- `10.30.0.24` 上 SSH 远端会话已经能返回 VS Code URL，但 iframe 仍只显示 404。根因是三层叠加：VS Code tunnel 继承了 ssh config 里的 `RemoteForward 18888`、远端错误复用了 `.vscode-server/.../code-server` 这类 agent binary、旧错误进程还长期占用 `13338` 端口。修复为让 tunnel 走 configless ssh、远端只用 standalone `code-server`，并在健康检查失败时先清理目标端口上的陈旧监听进程，再启动新实例。
+- SSH 远端会话在前端里依然打不开 VS Code，只剩文件浏览器可用。根因是 `App.tsx` 里的 `vscodeAvailable` 仍保留“仅本地会话可用”的布尔门禁；后端远端 `/vscode-web` 已经正常 200，但前端压根不让 SSH session 打开 VS Code。修复为让聚焦态 SSH 会话同样允许打开 VS Code Web，并同步修正文案。
+- `10.30.0.23` / `10.30.0.21_host` 这类远端主机仍然打不开 VS Code。根因分两层：一是部分机器没装 standalone `code-server`；二是 remote VS Code 的 configless tunnel 虽然避开了 ssh config 里的 `RemoteForward` 污染，却没有先解析 ssh config 的 alias / port / identity，导致 alias 主机和“IP 但靠 ssh config 改端口”的主机都把 tunnel 连错。修复为在目标机补装 standalone `code-server`，并让 tunnel 在 `ssh -F /dev/null` 前先通过 `ssh -G` 解析真实 `hostname/port/identityfile` 再连接。

@@ -53,6 +53,7 @@ import {
   buildRemoteDirectLaunchCommand,
   wrapRemoteInteractiveCommand,
 } from "./lib/session-matching";
+import { isVsCodeAvailable } from "./lib/side-panel-availability";
 import { touchVsCodeCacheSessionIds } from "./lib/vscode-cache";
 import "./app.css";
 
@@ -560,8 +561,10 @@ export default function App() {
   }, [fileBrowserSessionStates, focusedSession, sshHosts]);
   const panelAvailable = viewMode === "focus" && Boolean(focusedSession);
   const fileBrowserAvailable = panelAvailable;
-  const vscodeAvailable =
-    panelAvailable && Boolean(focusedSession) && !focusedSession?.sshTarget;
+  const vscodeAvailable = isVsCodeAvailable({
+    panelAvailable,
+    focusedSession,
+  });
   const fileBrowserOpen =
     panelAvailable && focusedSidePanelState?.activeTool === "files";
   const vscodeOpen =

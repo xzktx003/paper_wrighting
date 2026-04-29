@@ -144,7 +144,7 @@ export function TopBar({
           title={
             vscodeAvailable
               ? "打开当前终端的 VS Code Web"
-              : "仅在本地终端聚焦态可用"
+              : "仅在终端聚焦态可用"
           }
           type="button"
         >

@@ -4,6 +4,14 @@ export interface BuildSshArgsOptions {
   batchMode?: boolean;
   clearAllForwardings?: boolean;
   connectTimeoutSeconds?: number;
+  exitOnForwardFailure?: boolean;
+  localForwardings?: Array<{
+    bindAddress?: string;
+    localPort: number;
+    remoteHost: string;
+    remotePort: number;
+  }>;
+  noCommand?: boolean;
   remoteCommand?: string;
   requestTty?: boolean;
 }
@@ -33,6 +41,10 @@ export function buildSshArgs(
 ): string[] {
   assertSafeSshField("identity file", sshTarget.identityFile);
   assertSafeSshField("remote command", options.remoteCommand);
+  for (const forward of options.localForwardings ?? []) {
+    assertSafeSshField("local forward bind address", forward.bindAddress);
+    assertSafeSshField("local forward host", forward.remoteHost);
+  }
 
   const args: string[] = [];
 
@@ -50,6 +62,22 @@ export function buildSshArgs(
 
   if (options.connectTimeoutSeconds) {
     args.push("-o", `ConnectTimeout=${options.connectTimeoutSeconds}`);
+  }
+
+  if (options.exitOnForwardFailure) {
+    args.push("-o", "ExitOnForwardFailure=yes");
+  }
+
+  for (const forward of options.localForwardings ?? []) {
+    const bindPrefix = forward.bindAddress ? `${forward.bindAddress}:` : "";
+    args.push(
+      "-L",
+      `${bindPrefix}${forward.localPort}:${forward.remoteHost}:${forward.remotePort}`,
+    );
+  }
+
+  if (options.noCommand) {
+    args.push("-N");
   }
 
   if (sshTarget.port) {

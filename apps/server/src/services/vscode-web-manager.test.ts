@@ -5,12 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import type { AgentSessionRecord } from "@agent-orchestrator/shared";
+import type { AgentSessionRecord, SshTarget } from "@agent-orchestrator/shared";
 
 import {
-  UnsupportedVsCodeWebSessionError,
   VsCodeWebManager,
   VsCodeWebUnavailableError,
+  resolveSshTunnelTarget,
 } from "./vscode-web-manager.js";
 
 const TEST_DATA_ROOT = "/tmp/coding-kanban-vscode-root";
@@ -45,18 +45,159 @@ function buildSession(
   };
 }
 
-test("ensureSession rejects remote sessions", async () => {
-  const manager = new VsCodeWebManager();
+test("ensureSession starts remote code-server targets for SSH sessions", async () => {
+  const remoteCommands: string[] = [];
+  const tunnelLaunches: Array<{ command: string; args: string[] }> = [];
+  const tunnel = new FakeChildProcess();
+  const waitedUrls: string[] = [];
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43131,
+    runRemoteCommand: async (_sshTarget: SshTarget, command: string) => {
+      remoteCommands.push(command);
+      if (command.includes('printf "state=%s\\n" "$STATE"')) {
+        return [
+          "state=started",
+          "port=13338",
+          "workingDirectory=/srv/remote-project",
+          "pid=4242",
+          "",
+        ].join("\n");
+      }
 
-  await assert.rejects(
-    () =>
-      manager.ensureSession(
-        buildSession("session-1", {
-          sshTarget: { host: "10.0.0.2" },
-        }),
-      ),
-    UnsupportedVsCodeWebSessionError,
+      return "";
+    },
+    spawnProcess: (command: string, args: string[]) => {
+      tunnelLaunches.push({ command, args });
+      return tunnel as never;
+    },
+    resolveTunnelTarget: async (sshTarget: SshTarget) => sshTarget,
+    waitForUrlReady: async (url) => {
+      waitedUrls.push(url);
+    },
+  });
+
+  const response = await manager.ensureSession(
+    buildSession("session-1", {
+      displayName: "Remote Shell session-1",
+      sourceType: "remote-connect",
+      sshTarget: { host: "10.30.0.24", username: "xuzk" },
+      workingDirectory: "~/remote-project",
+    }),
+    {
+      requestHost: "10.30.0.22",
+      requestProtocol: "https",
+    },
   );
+
+  assert.equal(response.provider, "code-server");
+  assert.equal(
+    response.url,
+    "https://10.30.0.22/vscode/?folder=%2Fsrv%2Fremote-project",
+  );
+  assert.equal(response.reused, false);
+  assert.equal(response.workingDirectory, "/srv/remote-project");
+  assert.equal(manager.getProxyTargetUrl(), "http://127.0.0.1:43131");
+  assert.deepEqual(waitedUrls, ["http://127.0.0.1:43131"]);
+  assert.equal(remoteCommands.length, 1);
+  assert.match(remoteCommands[0] ?? "", /code-server/);
+  assert.match(remoteCommands[0] ?? "", /python3/);
+  assert.doesNotMatch(
+    remoteCommands[0] ?? "",
+    /\.vscode-server\/(?:bin|cli\/servers)\//,
+  );
+  assert.deepEqual(tunnelLaunches, [
+    {
+      command: "ssh",
+      args: [
+        "-F",
+        "/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=5",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-L",
+        "127.0.0.1:43131:127.0.0.1:13338",
+        "-N",
+        "xuzk@10.30.0.24",
+      ],
+    },
+  ]);
+
+  await manager.stopSession("session-1");
+
+  assert.equal(tunnel.killed, true);
+  assert.equal(remoteCommands.length, 2);
+  assert.match(remoteCommands[1] ?? "", /kill '4242'/);
+});
+
+test("ensureSession resolves ssh aliases before launching configless remote vscode tunnels", async () => {
+  const tunnelLaunches: Array<{ command: string; args: string[] }> = [];
+  const tunnel = new FakeChildProcess();
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43132,
+    runRemoteCommand: async (_sshTarget: SshTarget, command: string) => {
+      if (command.includes('printf "state=%s\\n" "$STATE"')) {
+        return [
+          "state=reused",
+          "port=13338",
+          "workingDirectory=/data01/home/xuzk",
+          "pid=",
+          "",
+        ].join("\n");
+      }
+
+      return "";
+    },
+    spawnProcess: (command: string, args: string[]) => {
+      tunnelLaunches.push({ command, args });
+      return tunnel as never;
+    },
+    waitForUrlReady: async () => {},
+    resolveTunnelTarget: async () => ({
+      host: "10.30.0.21",
+      port: 22,
+      username: "xuzk",
+    }),
+  } as never);
+
+  await manager.ensureSession(
+    buildSession("session-alias", {
+      displayName: "Remote Alias",
+      sourceType: "remote-connect",
+      sshTarget: { host: "10.30.0.21_host", username: "xuzk" },
+      workingDirectory: "/data01/home/xuzk",
+    }),
+    {
+      requestHost: "10.30.0.22",
+      requestProtocol: "https",
+    },
+  );
+
+  assert.equal(tunnelLaunches.length, 1);
+  assert.equal(tunnelLaunches[0]?.args.at(-1), "xuzk@10.30.0.21");
+});
+
+test("resolveSshTunnelTarget keeps numeric hosts but still applies ssh config port and identity", async () => {
+  const resolved = await resolveSshTunnelTarget(
+    { host: "10.30.0.23", username: "xuzk" },
+    async () =>
+      [
+        "user xuzk",
+        "hostname 10.30.0.23",
+        "port 10022",
+        "identityfile /tmp/test-key",
+        "",
+      ].join("\n"),
+  );
+
+  assert.deepEqual(resolved, {
+    host: "10.30.0.23",
+    port: 10022,
+    username: "xuzk",
+    identityFile: "/tmp/test-key",
+  });
 });
 
 test("ensureSession rejects when no supported provider is installed", async () => {
@@ -695,4 +836,3 @@ test("ensureSession registers an unref-ed idle timer so `node --test` can exit a
     await manager.dispose();
   }
 });
-

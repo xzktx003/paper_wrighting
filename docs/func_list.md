@@ -56,9 +56,9 @@
 
 ## 8. VS Code Web
 
-- 仅本地聚焦会话支持打开内嵌 VS Code Web 面板。
-- 后端优先复用 `code-server`，其次支持 `openvscode-server`。
-- 会话级工作区使用稳定的 `.code-workspace` 文件。
+- 本地与 SSH 聚焦会话都支持打开内嵌 VS Code Web 面板。
+- 本地后端优先复用 `code-server`，其次支持 `openvscode-server`；SSH 远端首版通过 SSH 启动/复用远端 `code-server`。
+- 本地会话使用稳定的 `.code-workspace` 文件；SSH 远端会话直接打开远端工作目录。
 - 扩展目录优先复用用户的 `~/.vscode-server/extensions`。
 
 ## 9. VS Code 窗口观察

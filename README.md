@@ -108,10 +108,10 @@
 
 ### 6. 内嵌 VS Code Web
 
-- 仅本地终端会话支持打开 VS Code Web。
-- 后端会优先复用 `code-server`，找不到时再尝试 `openvscode-server`。
+- 本地终端会话可直接打开 VS Code Web；SSH 远端会话会通过 SSH 启动/复用远端 `code-server`，再由当前后端统一代理到 `/vscode/`。
+- 本地后端会优先复用 `code-server`，找不到时再尝试 `openvscode-server`；SSH 远端首版仅走 `code-server`。
 - 默认复用当前用户的 `~/.vscode-server/extensions` 作为共享扩展目录，避免重复安装扩展。
-- 每个会话会生成稳定的 `.code-workspace` 文件，便于复用工作区状态。
+- 本地会话会生成稳定的 `.code-workspace` 文件，SSH 远端会话直接打开远端工作目录。
 
 ### 7. 观察本地 VS Code 窗口
 
@@ -198,6 +198,8 @@ cp .env.example .env
 | `VSCODE_WEB_EXTENSIONS_DIR` | 内嵌 VS Code Web 的扩展目录 | `~/.vscode-server/extensions` 或内置目录 |
 | `VSCODE_WEB_PUBLIC_HOST` | 浏览器访问 `/vscode` 的公共主机名 | 当前请求 Host |
 | `VSCODE_WEB_BIND_HOST` | code-server / openvscode-server 的内部绑定地址 | `0.0.0.0` |
+| `VSCODE_WEB_REMOTE_BIND_HOST` | SSH 远端 code-server 的绑定地址 | `127.0.0.1` |
+| `VSCODE_WEB_REMOTE_PORT` | SSH 远端 code-server 的固定端口 | `13338` |
 
 说明：
 
@@ -389,14 +391,14 @@ curl http://127.0.0.1:4000/api/health
 
 ### 场景 8：打开 VS Code Web
 
-1. 进入一个本地会话的聚焦态。
+1. 进入一个本地或 SSH 会话的聚焦态。
 2. 点击顶栏“VS Code”。
-3. 系统会自动启动或复用 `code-server` / `openvscode-server`。
+3. 系统会自动启动或复用对应的 VS Code Web 运行时：本地优先 `code-server/openvscode-server`，SSH 远端首版使用远端 `code-server`。
 4. 在右侧面板中直接编辑当前会话工作目录。
 
 注意：
 
-- 目前只支持本地会话，SSH 远端会话暂不支持内嵌 VS Code Web。
+- SSH 远端模式通过 SSH 本地转发接入远端 VS Code Web，不要求远端额外暴露 HTTP 端口。
 - 如果切换扩展目录，可通过 `VSCODE_WEB_EXTENSIONS_DIR` 覆盖默认值。
 
 ### 场景 9：隐藏和恢复不需要立即处理的会话
@@ -536,10 +538,10 @@ curl http://127.0.0.1:3200/api/health
 
 ### VS Code Web 打不开
 
-- 确认当前聚焦的是本地终端会话，而不是 SSH 会话。
 - 确认系统能找到 `code-server` 或 `openvscode-server`。
-- 如果没有安装，后端会尝试自动安装 `code-server` standalone。
+- 如果没有安装，本地或远端后端都会尝试自动安装 `code-server` standalone。
 - 如果扩展目录或公共 Host 需要定制，请检查 `VSCODE_WEB_EXTENSIONS_DIR`、`VSCODE_WEB_PUBLIC_HOST`、`VSCODE_WEB_BIND_HOST`。
+- SSH 远端会话还要确认当前后端能正常建立 SSH 本地转发，并按需调整 `VSCODE_WEB_REMOTE_BIND_HOST` / `VSCODE_WEB_REMOTE_PORT`。
 
 ### README 截图脚本无法启动浏览器
 
@@ -551,4 +553,4 @@ curl http://127.0.0.1:3200/api/health
 
 - [ ] 服务重启后恢复历史对话。
 - [ ] 补充 Electron 打包形态。
-- [ ] 继续完善远端 VS Code Web 和更多恢复策略。
+- [ ] 继续完善远端 VS Code Web 的恢复策略和更多主机兼容性。

@@ -9,6 +9,7 @@ import net from "node:net";
 import type {
   AgentSessionRecord,
   OpenVsCodeWebResponse,
+  SshTarget,
   VsCodeWebProvider,
 } from "@agent-orchestrator/shared";
 
@@ -17,6 +18,7 @@ import {
   resolvePreferredShell,
   resolveShellStartupEnv,
 } from "./runtime-compat.js";
+import { buildSshArgs } from "./ssh-command.js";
 
 const DEFAULT_VSCODE_WEB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_VSCODE_WEB_PROXY_PATH = "/vscode/";
@@ -37,6 +39,7 @@ export class VsCodeWebUnavailableError extends Error {
 
 interface RunningGlobalServer {
   ownedByManager: boolean;
+  onStop?: () => Promise<void>;
   processHandle: {
     killed: boolean;
     kill: (signal?: NodeJS.Signals) => boolean;
@@ -45,9 +48,11 @@ interface RunningGlobalServer {
   exited: boolean;
   idleTimer: NodeJS.Timeout | null;
   lastUsedAt: number;
-  port: number;
   provider: VsCodeWebProvider;
+  proxyTargetUrl: string;
   readyPromise: Promise<void>;
+  scope: "local" | "remote";
+  targetKey: string;
 }
 
 interface DetectedRunningServer {
@@ -83,6 +88,7 @@ interface VsCodeWebManagerDeps {
   listUserProcesses?: () => Promise<UserProcessEntry[]>;
   now?: () => number;
   removePath?: (path: string) => Promise<void>;
+  resolveTunnelTarget?: (sshTarget: SshTarget) => Promise<SshTarget>;
   resolveLaunchEnv?: () => Promise<NodeJS.ProcessEnv>;
   resolveExtensionsDir?: (root: string) => string;
   resolvePreferredPort?: (dataRoot: string) => Promise<number | null>;
@@ -95,6 +101,7 @@ interface VsCodeWebManagerDeps {
       stdio: "ignore";
     },
   ) => ChildProcess;
+  runRemoteCommand?: (sshTarget: SshTarget, command: string) => Promise<string>;
   waitForUrlReady?: (url: string) => Promise<void>;
   writeFile?: (path: string, content: string) => Promise<void>;
 }
@@ -274,12 +281,14 @@ function defaultResolveExtensionsDir(root: string): string {
 
 function buildEditorUrl(
   baseUrl: string,
-  workspacePath: string,
+  workspacePath: string | null,
   workingDirectory: string,
 ): string {
   const url = new URL(baseUrl);
   url.pathname = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
-  url.searchParams.set("workspace", workspacePath);
+  if (workspacePath) {
+    url.searchParams.set("workspace", workspacePath);
+  }
   url.searchParams.set("folder", workingDirectory);
   return url.toString();
 }
@@ -676,6 +685,122 @@ async function defaultWriteFile(pathValue: string, content: string) {
   await writeFile(pathValue, content, "utf8");
 }
 
+async function defaultRunRemoteCommand(
+  sshTarget: SshTarget,
+  command: string,
+): Promise<string> {
+  const encodedCommand = Buffer.from(command, "utf8").toString("base64");
+  const sshArgs = buildSshArgs(sshTarget, {
+    batchMode: true,
+    clearAllForwardings: true,
+    remoteCommand: `sh -lc ${quoteForPosixShell(
+      `printf %s ${quoteForPosixShell(encodedCommand)} | base64 -d | sh`,
+    )}`,
+  });
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      "ssh",
+      sshArgs,
+      {
+        env: process.env,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          const message = stderr.trim() || error.message;
+          reject(new Error(message));
+          return;
+        }
+
+        resolve(stdout);
+      },
+    );
+  });
+}
+
+export async function resolveSshTunnelTarget(
+  sshTarget: SshTarget,
+  lookup: (args: string[]) => Promise<string>,
+): Promise<SshTarget> {
+  const args = ["-G", sshTarget.host];
+  if (sshTarget.port) {
+    args.unshift(String(sshTarget.port));
+    args.unshift("-p");
+  }
+  if (sshTarget.username) {
+    args.unshift(sshTarget.username);
+    args.unshift("-l");
+  }
+
+  let stdout: string;
+  try {
+    stdout = await lookup(args);
+  } catch {
+    return sshTarget;
+  }
+
+  let resolvedHost = sshTarget.host;
+  let resolvedPort = sshTarget.port;
+  let resolvedUser = sshTarget.username;
+  let resolvedIdentityFile = sshTarget.identityFile;
+
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf(" ");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex);
+    const value = trimmed.slice(separatorIndex + 1).trim();
+    if (!value) {
+      continue;
+    }
+
+    if (key === "hostname") {
+      resolvedHost = value;
+    } else if (key === "port") {
+      const parsedPort = Number.parseInt(value, 10);
+      if (Number.isInteger(parsedPort) && parsedPort > 0) {
+        resolvedPort = parsedPort;
+      }
+    } else if (key === "user") {
+      resolvedUser = value;
+    } else if (key === "identityfile" && !resolvedIdentityFile) {
+      resolvedIdentityFile = value;
+    }
+  }
+
+  return {
+    ...sshTarget,
+    host: resolvedHost,
+    ...(resolvedPort ? { port: resolvedPort } : {}),
+    ...(resolvedUser ? { username: resolvedUser } : {}),
+    ...(resolvedIdentityFile ? { identityFile: resolvedIdentityFile } : {}),
+  };
+}
+
+async function defaultResolveTunnelTarget(
+  sshTarget: SshTarget,
+): Promise<SshTarget> {
+  return resolveSshTunnelTarget(sshTarget, async (args) => {
+    return new Promise((resolve, reject) => {
+      execFile("ssh", args, { env: process.env }, (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout);
+      });
+    });
+  });
+}
+
 async function resolveProviderCommand(
   findCommand: (candidate: string) => Promise<string | null>,
 ): Promise<{ command: string; provider: VsCodeWebProvider } | null> {
@@ -753,6 +878,208 @@ function buildWorkspaceContent(
   );
 }
 
+function resolveRemoteWorkingDirectory(input?: string): string {
+  const trimmed = input?.trim();
+  return trimmed ? trimmed : "$HOME";
+}
+
+function resolveRemoteBindHost(): string {
+  return process.env.VSCODE_WEB_REMOTE_BIND_HOST?.trim() || "127.0.0.1";
+}
+
+function resolveRemotePreferredPort(): number {
+  const configured = Number.parseInt(
+    process.env.VSCODE_WEB_REMOTE_PORT?.trim() || "",
+    10,
+  );
+  return Number.isInteger(configured) && configured > 0 ? configured : 13338;
+}
+
+function sanitizeRemoteHostLabel(host: string): string {
+  return (
+    host
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "remote"
+  );
+}
+
+function parseRemoteLaunchResult(stdout: string): {
+  pid: number | null;
+  reused: boolean;
+  workingDirectory: string;
+} {
+  const values = new Map<string, string>();
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    values.set(
+      trimmed.slice(0, separatorIndex),
+      trimmed.slice(separatorIndex + 1),
+    );
+  }
+
+  const state = values.get("state");
+  const workingDirectory = values.get("workingDirectory");
+  if (!state || !workingDirectory) {
+    throw new Error(`Unexpected remote VS Code output: ${stdout.trim()}`);
+  }
+
+  const pidValue = values.get("pid");
+  const pid =
+    pidValue && /^\d+$/.test(pidValue) ? Number.parseInt(pidValue, 10) : null;
+
+  return {
+    pid,
+    reused: state === "reused",
+    workingDirectory,
+  };
+}
+
+function buildRemoteCodeServerLaunchCommand(
+  sshTarget: SshTarget,
+  port: number,
+  workingDirectory: string,
+): string {
+  const remoteRoot = `"$HOME/.local/share/coding-kanban/vscode-web-remote/${sanitizeRemoteHostLabel(
+    sshTarget.host,
+  )}"`;
+  const bindHost = resolveRemoteBindHost();
+
+  return [
+    "set -eu",
+    'export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:$PATH"',
+    `ROOT=${remoteRoot}`,
+    'USER_DATA_DIR="$ROOT/user-data"',
+    'EXTENSIONS_DIR="$HOME/.vscode-server/extensions"',
+    'if [ ! -d "$EXTENSIONS_DIR" ]; then EXTENSIONS_DIR="$ROOT/extensions"; fi',
+    'mkdir -p "$USER_DATA_DIR" "$EXTENSIONS_DIR"',
+    `WORKING_DIRECTORY=${quoteForPosixShell(workingDirectory)}`,
+    'if cd "$WORKING_DIRECTORY" 2>/dev/null; then',
+    '  WORKING_DIRECTORY="$(pwd -P)"',
+    "else",
+    '  WORKING_DIRECTORY="$HOME"',
+    "fi",
+    'CODE_SERVER_BIN=""',
+    "if command -v code-server >/dev/null 2>&1; then",
+    '  CANDIDATE="$(command -v code-server)"',
+    '  if ! printf %s "$CANDIDATE" | grep -q "/.vscode-server/"; then',
+    '    CODE_SERVER_BIN="$CANDIDATE"',
+    "  fi",
+    "fi",
+    'if [ -z "$CODE_SERVER_BIN" ]; then',
+    '  rm -f "$HOME"/.cache/code-server/code-server-*.tar.gz.incomplete',
+    "  curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone >/dev/null 2>&1",
+    '  if [ -x "$HOME/.local/bin/code-server" ]; then',
+    '    CODE_SERVER_BIN="$HOME/.local/bin/code-server"',
+    "  elif command -v code-server >/dev/null 2>&1; then",
+    '    CODE_SERVER_BIN="$(command -v code-server)"',
+    "  fi",
+    "fi",
+    'if [ -z "$CODE_SERVER_BIN" ]; then',
+    '  echo "standalone code-server is unavailable after install" >&2',
+    "  exit 1",
+    "fi",
+    `if curl --connect-timeout 2 --max-time 3 -fsS ${quoteForPosixShell(
+      `http://${bindHost}:${port}/`,
+    )} >/dev/null 2>&1; then`,
+    '  STATE="reused"',
+    '  PID=""',
+    "else",
+    `  python3 - ${quoteForPosixShell(String(port))} <<'PY'`,
+    "import os",
+    "import signal",
+    "import sys",
+    "",
+    "port = int(sys.argv[1])",
+    "target = f'{port:04X}'",
+    "inodes = set()",
+    "",
+    "for proc_path in ('/proc/net/tcp', '/proc/net/tcp6'):",
+    "    try:",
+    "        with open(proc_path, 'r', encoding='utf-8') as handle:",
+    "            next(handle, None)",
+    "            for line in handle:",
+    "                parts = line.split()",
+    "                if len(parts) < 10:",
+    "                    continue",
+    "                local = parts[1]",
+    "                state = parts[3]",
+    "                inode = parts[9]",
+    "                local_port = local.split(':', 1)[1].upper()",
+    "                if local_port == target and state == '0A':",
+    "                    inodes.add(inode)",
+    "    except OSError:",
+    "        continue",
+    "",
+    "for pid in filter(str.isdigit, os.listdir('/proc')):",
+    "    fd_dir = f'/proc/{pid}/fd'",
+    "    try:",
+    "        fds = os.listdir(fd_dir)",
+    "    except OSError:",
+    "        continue",
+    "    for fd in fds:",
+    "        try:",
+    "            target_link = os.readlink(f'{fd_dir}/{fd}')",
+    "        except OSError:",
+    "            continue",
+    "        if not target_link.startswith('socket:['):",
+    "            continue",
+    "        inode = target_link[8:-1]",
+    "        if inode not in inodes:",
+    "            continue",
+    "        try:",
+    "            os.kill(int(pid), signal.SIGTERM)",
+    "        except OSError:",
+    "            pass",
+    "        break",
+    "PY",
+    "  sleep 1",
+    '  nohup "$CODE_SERVER_BIN" --auth none --bind-addr ' +
+      `${quoteForPosixShell(`${bindHost}:${port}`)} ` +
+      '--disable-update-check --user-data-dir "$USER_DATA_DIR" ' +
+      '--extensions-dir "$EXTENSIONS_DIR" >/dev/null 2>&1 < /dev/null &',
+    '  PID="$!"',
+    '  STATE="started"',
+    "fi",
+    'printf "state=%s\\n" "$STATE"',
+    `printf "port=%s\\n" ${quoteForPosixShell(String(port))}`,
+    'printf "workingDirectory=%s\\n" "$WORKING_DIRECTORY"',
+    'printf "pid=%s\\n" "$PID"',
+  ].join("\n");
+}
+
+function buildRemoteTunnelArgs(
+  sshTarget: SshTarget,
+  localPort: number,
+  remotePort: number,
+): string[] {
+  return [
+    "-F",
+    "/dev/null",
+    ...buildSshArgs(sshTarget, {
+      batchMode: true,
+      connectTimeoutSeconds: 5,
+      exitOnForwardFailure: true,
+      localForwardings: [
+        {
+          bindAddress: "127.0.0.1",
+          localPort,
+          remoteHost: "127.0.0.1",
+          remotePort,
+        },
+      ],
+      noCommand: true,
+    }),
+  ];
+}
+
 export class VsCodeWebManager {
   private readonly allocatePort: (preferredPort?: number) => Promise<number>;
   private readonly createDataRoot: () => Promise<string>;
@@ -765,6 +1092,9 @@ export class VsCodeWebManager {
   private readonly listUserProcesses: () => Promise<UserProcessEntry[]>;
   private readonly now: () => number;
   private readonly removePath: (path: string) => Promise<void>;
+  private readonly resolveTunnelTarget: (
+    sshTarget: SshTarget,
+  ) => Promise<SshTarget>;
   private readonly resolveLaunchEnv: () => Promise<NodeJS.ProcessEnv>;
   private readonly resolveExtensionsDir: (root: string) => string;
   private readonly resolvePreferredPort: (
@@ -779,12 +1109,17 @@ export class VsCodeWebManager {
       stdio: "ignore";
     },
   ) => ChildProcess;
+  private readonly runRemoteCommand: (
+    sshTarget: SshTarget,
+    command: string,
+  ) => Promise<string>;
   private readonly waitForUrlReady: (url: string) => Promise<void>;
   private readonly writeFile: (path: string, content: string) => Promise<void>;
   private dataRootPathsPromise: Promise<DataRootPaths> | null = null;
   private globalServer: RunningGlobalServer | null = null;
   private installPromise: Promise<void> | null = null;
   private launchEnvPromise: Promise<NodeJS.ProcessEnv> | null = null;
+  private readonly activeSessionIds = new Set<string>();
   private readonly workspaceContents = new Map<string, string>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
@@ -801,12 +1136,15 @@ export class VsCodeWebManager {
     this.installCodeServer = deps.installCodeServer ?? defaultInstallCodeServer;
     this.now = deps.now ?? (() => Date.now());
     this.removePath = deps.removePath ?? defaultRemovePath;
+    this.resolveTunnelTarget =
+      deps.resolveTunnelTarget ?? defaultResolveTunnelTarget;
     this.resolveLaunchEnv = deps.resolveLaunchEnv ?? defaultResolveLaunchEnv;
     this.resolveExtensionsDir =
       deps.resolveExtensionsDir ?? defaultResolveExtensionsDir;
     this.resolvePreferredPort =
       deps.resolvePreferredPort ?? defaultResolvePreferredPort;
     this.spawnProcess = deps.spawnProcess ?? defaultSpawnProcess;
+    this.runRemoteCommand = deps.runRemoteCommand ?? defaultRunRemoteCommand;
     this.waitForUrlReady = deps.waitForUrlReady ?? defaultWaitForUrlReady;
     this.writeFile = deps.writeFile ?? defaultWriteFile;
   }
@@ -933,10 +1271,15 @@ export class VsCodeWebManager {
     provider: VsCodeWebProvider;
   }): Promise<{ reused: boolean; server: RunningGlobalServer }> {
     const existing = this.globalServer;
-    if (existing && !existing.processHandle.killed && !existing.exited) {
+    if (
+      existing &&
+      existing.scope === "local" &&
+      !existing.processHandle.killed &&
+      !existing.exited
+    ) {
       try {
         await existing.readyPromise;
-        await this.waitForUrlReady(buildLocalOrigin(existing.port));
+        await this.waitForUrlReady(existing.proxyTargetUrl);
         this.touchGlobalServer();
         return {
           reused: true,
@@ -948,6 +1291,10 @@ export class VsCodeWebManager {
           this.globalServer = null;
         }
       }
+    }
+
+    if (existing) {
+      await this.stopGlobalServer();
     }
 
     const dataRootPaths = await this.ensureDataRootPaths();
@@ -971,9 +1318,11 @@ export class VsCodeWebManager {
           exited: false,
           idleTimer: null,
           lastUsedAt: this.now(),
-          port: runningServer.port,
           provider: runningServer.provider,
+          proxyTargetUrl: localOrigin,
           readyPromise: Promise.resolve(),
+          scope: "local",
+          targetKey: "local",
         };
 
         this.globalServer = server;
@@ -1019,9 +1368,11 @@ export class VsCodeWebManager {
       exited: false,
       idleTimer: null,
       lastUsedAt: this.now(),
-      port,
       provider: providerCommand.provider,
+      proxyTargetUrl: localOrigin,
       readyPromise: Promise.resolve(),
+      scope: "local",
+      targetKey: "local",
     };
 
     child.on("exit", () => {
@@ -1092,6 +1443,129 @@ export class VsCodeWebManager {
     }
   }
 
+  private async ensureRemoteServer(session: AgentSessionRecord): Promise<{
+    reused: boolean;
+    server: RunningGlobalServer;
+    workingDirectory: string;
+  }> {
+    const sshTarget = session.sshTarget;
+    if (!sshTarget) {
+      throw new UnsupportedVsCodeWebSessionError("缺少 SSH 目标");
+    }
+
+    const tunnelTarget = await this.resolveTunnelTarget(sshTarget);
+    const port = resolveRemotePreferredPort();
+    const targetKey = `${tunnelTarget.host}:${tunnelTarget.port ?? 22}:${port}`;
+    const existing = this.globalServer;
+
+    if (
+      existing &&
+      existing.scope === "remote" &&
+      existing.targetKey === targetKey &&
+      !existing.processHandle.killed &&
+      !existing.exited
+    ) {
+      const reuseResult = parseRemoteLaunchResult(
+        await this.runRemoteCommand(
+          sshTarget,
+          buildRemoteCodeServerLaunchCommand(
+            sshTarget,
+            port,
+            resolveRemoteWorkingDirectory(session.workingDirectory),
+          ),
+        ),
+      );
+      await existing.readyPromise;
+      await this.waitForUrlReady(existing.proxyTargetUrl);
+      this.touchGlobalServer();
+      return {
+        reused: reuseResult.reused,
+        server: existing,
+        workingDirectory: reuseResult.workingDirectory,
+      };
+    }
+
+    if (existing) {
+      await this.stopGlobalServer();
+    }
+
+    const launchResult = parseRemoteLaunchResult(
+      await this.runRemoteCommand(
+        sshTarget,
+        buildRemoteCodeServerLaunchCommand(
+          sshTarget,
+          port,
+          resolveRemoteWorkingDirectory(session.workingDirectory),
+        ),
+      ),
+    );
+
+    const stopRemoteProcess = async () => {
+      if (!launchResult.pid) {
+        return;
+      }
+
+      await this.runRemoteCommand(
+        sshTarget,
+        `kill ${quoteForPosixShell(String(launchResult.pid))} >/dev/null 2>&1 || true`,
+      ).catch(() => {});
+    };
+
+    const tunnelPort = await this.allocatePort();
+    const tunnel = this.spawnProcess(
+      "ssh",
+      buildRemoteTunnelArgs(tunnelTarget, tunnelPort, port),
+      {
+        cwd: homedir(),
+        env: process.env,
+        stdio: "ignore",
+      },
+    );
+    const targetUrl = buildLocalOrigin(tunnelPort);
+
+    const server: RunningGlobalServer = {
+      ownedByManager: true,
+      onStop:
+        !launchResult.reused && launchResult.pid !== null
+          ? stopRemoteProcess
+          : undefined,
+      processHandle: tunnel,
+      exited: false,
+      idleTimer: null,
+      lastUsedAt: this.now(),
+      provider: "code-server",
+      proxyTargetUrl: targetUrl,
+      readyPromise: Promise.resolve(),
+      scope: "remote",
+      targetKey,
+    };
+
+    tunnel.on("exit", () => {
+      server.exited = true;
+      if (server.idleTimer) {
+        clearTimeout(server.idleTimer);
+      }
+      if (this.globalServer === server) {
+        this.globalServer = null;
+      }
+    });
+
+    this.globalServer = server;
+
+    try {
+      await this.waitForUrlReady(targetUrl);
+      this.touchGlobalServer();
+      return {
+        reused: launchResult.reused,
+        server,
+        workingDirectory: launchResult.workingDirectory,
+      };
+    } catch (error) {
+      await this.stopGlobalServer();
+      throw error;
+    }
+  }
+
   private async ensureWorkspaceFile(
     session: AgentSessionRecord,
   ): Promise<{ path: string; workingDirectory: string }> {
@@ -1121,37 +1595,50 @@ export class VsCodeWebManager {
     session: AgentSessionRecord,
     options: EnsureVsCodeWebSessionOptions = {},
   ): Promise<OpenVsCodeWebResponse> {
-    if (session.sshTarget) {
-      throw new UnsupportedVsCodeWebSessionError(
-        "VS Code Web 第一版仅支持本地终端会话",
-      );
-    }
-
     const publicProtocol = options.requestProtocol ?? "http";
     const publicHost = resolvePublicHost(options.requestHost);
-    const workspace = await this.ensureWorkspaceFile(session);
-    const providerCommand = await this.ensureProviderCommand();
+    let reused = false;
+    let server: RunningGlobalServer;
+    let workingDirectory: string;
+    let workspacePath: string | null = null;
 
-    if (!providerCommand) {
-      throw new VsCodeWebUnavailableError(
-        "未检测到可用的 VS Code Web 运行时，且自动安装 code-server 失败。",
-      );
+    if (session.sshTarget) {
+      const remoteSession = await this.ensureRemoteServer(session);
+      reused = remoteSession.reused;
+      server = remoteSession.server;
+      workingDirectory = remoteSession.workingDirectory;
+    } else {
+      const workspace = await this.ensureWorkspaceFile(session);
+      const providerCommand = await this.ensureProviderCommand();
+
+      if (!providerCommand) {
+        throw new VsCodeWebUnavailableError(
+          "未检测到可用的 VS Code Web 运行时，且自动安装 code-server 失败。",
+        );
+      }
+
+      const localSession = await this.ensureGlobalServer(providerCommand);
+      reused = localSession.reused;
+      server = localSession.server;
+      workingDirectory = workspace.workingDirectory;
+      workspacePath = workspace.path;
     }
 
-    const { reused, server } = await this.ensureGlobalServer(providerCommand);
+    this.activeSessionIds.add(session.id);
     return {
       provider: server.provider,
       url: buildEditorUrl(
         `${publicProtocol}://${publicHost}${DEFAULT_VSCODE_WEB_PROXY_PATH}`,
-        workspace.path,
-        workspace.workingDirectory,
+        workspacePath,
+        workingDirectory,
       ),
       reused,
-      workingDirectory: workspace.workingDirectory,
+      workingDirectory,
     };
   }
 
   async stopSession(sessionId: string): Promise<void> {
+    this.activeSessionIds.delete(sessionId);
     const workspacePath = this.sessionWorkspacePaths.get(sessionId);
     this.sessionWorkspacePaths.delete(sessionId);
     if (workspacePath) {
@@ -1159,7 +1646,7 @@ export class VsCodeWebManager {
       await this.removePath(workspacePath).catch(() => {});
     }
 
-    if (this.sessionWorkspacePaths.size === 0 && this.globalServer) {
+    if (this.activeSessionIds.size === 0 && this.globalServer) {
       await this.stopGlobalServer();
     }
   }
@@ -1177,6 +1664,9 @@ export class VsCodeWebManager {
     if (server.ownedByManager && !server.processHandle.killed) {
       server.processHandle.kill("SIGTERM");
     }
+    if (server.onStop) {
+      await server.onStop().catch(() => {});
+    }
   }
 
   async dispose(): Promise<void> {
@@ -1192,6 +1682,6 @@ export class VsCodeWebManager {
       return null;
     }
 
-    return buildLocalOrigin(this.globalServer.port);
+    return this.globalServer.proxyTargetUrl;
   }
 }
