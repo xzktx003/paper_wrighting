@@ -22,5 +22,9 @@ export function shouldRepairPassiveTerminalFocus(
     return false;
   }
 
+  if (options.lastProtectedExternalFocusAt === 0) {
+    return true;
+  }
+
   return options.lastTerminalIntentAt > options.lastProtectedExternalFocusAt;
 }

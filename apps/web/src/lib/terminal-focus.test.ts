@@ -59,4 +59,18 @@ describe("shouldRepairPassiveTerminalFocus", () => {
       false,
     );
   });
+
+  it("repairs focus when no external target has claimed ownership yet", () => {
+    assert.equal(
+      shouldRepairPassiveTerminalFocus({
+        documentHasFocus: true,
+        helperAvailable: true,
+        helperFocused: false,
+        intentionalExternalFocus: false,
+        lastProtectedExternalFocusAt: 0,
+        lastTerminalIntentAt: 0,
+      }),
+      true,
+    );
+  });
 });
