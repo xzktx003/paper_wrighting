@@ -220,8 +220,18 @@ export async function deleteFile(id: string, filePath: string) {
   if (!res.ok) {
     throw new Error(await res.text());
   }
-  return res.json() as Promise<{ ok: boolean; error?: string }>;
+  return res.json();
 }
+
+export interface CompileResult {
+  ok: boolean;
+  pdfUrl?: string;
+  log?: string;
+  errors?: string[];
+  warnings?: string[];
+  error?: string;
+}
+
 
 export function updateFileOrder(id: string, folder: string, order: string[]) {
   return request<{ ok: boolean }>(`/api/projects/${id}/file-order`, {
@@ -301,7 +311,7 @@ export function compileProject(payload: {
   mainFile: string;
   engine: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
 }) {
-  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string }>(
+  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; availableEngines?: string[] }>(
     `/api/compile`,
     {
       method: 'POST',

@@ -37,3 +37,22 @@
 - Agent mode can inspect paper context and propose edits for user confirmation, but it does not directly write files or run code.
 - Tools mode is the only AI conversation mode that can perform multi-step tool work, including controlled operations under the project `code/` directory.
 - The previous standalone Code conversation scope has been removed from the new-conversation UI; code work is handled through Tools mode instead.
+
+## BibTeX Citation Search
+
+- Editor supports BibTeX citation autocomplete: type `@` followed by search keywords to search CrossRef academic paper database.
+- Search results display paper title, authors, year, journal, and DOI information.
+- Selected citations can be inserted as formatted BibTeX entries.
+- API endpoint `/api/bibtex/search` queries CrossRef for academic papers.
+- API endpoint `/api/bibtex/bibtex` retrieves full BibTeX entry by DOI.
+
+## UI Animations & Transitions
+
+- Comprehensive animation system with fade-in, slide, scale, bounce, and shimmer effects.
+- Staggered message reveal animation in chat view for sequential message appearance.
+- Typing indicator with animated dots during AI response generation.
+- Loading skeleton with shimmer effect for content loading states.
+- Hover effects: lift, scale, and press feedback on interactive elements.
+- Theme transitions with smooth color and background changes.
+- LaTeX preview content change animation with subtle shimmer effect.
+- Respects `prefers-reduced-motion` accessibility setting.

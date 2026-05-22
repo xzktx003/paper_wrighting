@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-$HOME/.claude-code/caddy-root.crt} node src/index.js"
+    "dev": "OPENPRISM_PORT=8787 NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-$HOME/.claude-code/caddy-root.crt} node src/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",

@@ -22,6 +22,20 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
     const scrollingRef = useRef(false);
     const containerRef = (ref as React.RefObject<HTMLDivElement>) || innerRef;
     const [fontSize, setFontSize] = useState(14);
+    const [isRendering, setIsRendering] = useState(false);
+    const [prevContent, setPrevContent] = useState(content);
+
+    // Detect content changes for animation
+    useEffect(() => {
+      if (content !== prevContent) {
+        setIsRendering(true);
+        const timer = setTimeout(() => {
+          setIsRendering(false);
+          setPrevContent(content);
+        }, 150);
+        return () => clearTimeout(timer);
+      }
+    }, [content, prevContent]);
 
     const rendered = useMemo(() => renderLatex(content, { projectId, currentFile }), [content, projectId, currentFile]);
 
@@ -51,7 +65,7 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="latex-preview-container"
+        className={`latex-preview-container ${isRendering ? 'animate-shimmer' : ''}`}
         style={{
           overflow: 'auto',
           height: '100%',
@@ -61,6 +75,7 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
       >
         {/* Zoom controls - top right */}
         <div
+          className="animate-fade-in"
           style={{
             position: 'sticky',
             top: 8,
@@ -68,20 +83,22 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
             display: 'flex',
             gap: '4px',
             alignItems: 'center',
-            background: 'rgba(255,255,255,0.92)',
+            background: 'var(--panel)',
             backdropFilter: 'blur(4px)',
             padding: '4px 8px',
             borderRadius: '6px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: 'var(--shadow)',
             float: 'right',
             marginRight: '12px',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+            border: '1px solid var(--border)',
           }}
         >
           <button
             onClick={zoomOut}
             title="缩小"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '14px', color: '#666', padding: '2px 6px', borderRadius: '4px', lineHeight: 1 }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#ddd')}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--text-secondary)', padding: '2px 6px', borderRadius: '4px', lineHeight: 1 }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             A-
@@ -89,8 +106,8 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
           <button
             onClick={zoomReset}
             title="重置"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', color: '#888', padding: '2px 4px', borderRadius: '4px', minWidth: '36px', textAlign: 'center' }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#ddd')}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--muted)', padding: '2px 4px', borderRadius: '4px', minWidth: '36px', textAlign: 'center' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             {fontSize}px
@@ -98,8 +115,8 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
           <button
             onClick={zoomIn}
             title="放大"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', color: '#666', padding: '2px 6px', borderRadius: '4px', lineHeight: 1 }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#ddd')}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '16px', color: 'var(--text-secondary)', padding: '2px 6px', borderRadius: '4px', lineHeight: 1 }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             A+
@@ -112,15 +129,15 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
             width: '100%',
             maxWidth: '680px',
             margin: '0 auto',
-            background: '#fff',
-            boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+            background: '#ffffff',  // 保持白色背景（模拟纸张）
+            boxShadow: 'var(--shadow)',
             borderRadius: '2px',
             padding: '48px 56px',
             minHeight: 'calc(100% - 20px)',
             fontFamily: '"Computer Modern Serif", "Latin Modern Roman", "CMU Serif", "STIX Two Text", "Times New Roman", serif',
             fontSize: `${fontSize}px`,
             lineHeight: 1.6,
-            color: '#1a1a1a',
+            color: '#1a1a1a',  // 深色文字确保可读性
             boxSizing: 'border-box',
           }}
           dangerouslySetInnerHTML={{ __html: rendered }}
@@ -136,24 +153,33 @@ LatexPreview.displayName = 'LatexPreview';
 const latexStyles = `
 @import url('https://cdn.jsdelivr.net/gh/aaaakshat/cm-web-fonts@latest/fonts.css');
 
+/* LaTeX preview - white background with dark text */
+.latex-preview-page {
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
 .latex-preview-page h1 {
   font-size: 20px;
   font-weight: bold;
   text-align: center;
   margin: 20px 0 8px;
   font-family: inherit;
+  color: #1a1a1a;
 }
 .latex-preview-page h2 {
   font-size: 16px;
   font-weight: bold;
   margin: 24px 0 8px;
   font-family: inherit;
+  color: #1a1a1a;
 }
 .latex-preview-page h3 {
   font-size: 14.5px;
   font-weight: bold;
   margin: 18px 0 6px;
   font-family: inherit;
+  color: #1a1a1a;
 }
 .latex-preview-page h4 {
   font-size: 14px;
@@ -161,11 +187,13 @@ const latexStyles = `
   font-style: italic;
   margin: 14px 0 4px;
   font-family: inherit;
+  color: #1a1a1a;
 }
 .latex-preview-page p {
   margin: 6px 0;
   text-align: justify;
   text-indent: 1.5em;
+  color: #1a1a1a;
 }
 .latex-preview-page p.no-indent {
   text-indent: 0;
@@ -173,6 +201,7 @@ const latexStyles = `
 .latex-preview-page .latex-abstract {
   margin: 16px 32px;
   font-size: 13px;
+  color: #1a1a1a;
 }
 .latex-preview-page .latex-abstract .abstract-title {
   text-align: center;
@@ -189,19 +218,21 @@ const latexStyles = `
 .latex-preview-page .latex-quote {
   margin: 10px 24px;
   font-style: italic;
-  border-left: 2px solid #ccc;
+  border-left: 2px solid #888;
   padding-left: 12px;
+  color: #555;
 }
 .latex-preview-page .latex-verbatim {
   font-family: "Computer Modern Typewriter", "Latin Modern Mono", "Courier New", monospace;
   font-size: 12px;
-  background: #f8f8f8;
-  border: 1px solid #e8e8e8;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
   border-radius: 2px;
   padding: 10px 14px;
   margin: 10px 0;
   white-space: pre-wrap;
   overflow-x: auto;
+  color: #333;
 }
 .latex-preview-page .latex-theorem {
   margin: 14px 0;
@@ -234,7 +265,7 @@ const latexStyles = `
 }
 .latex-preview-page .latex-figure .latex-caption {
   font-size: 12px;
-  color: #333;
+  color: #555;
   margin-top: 8px;
   text-indent: 0;
 }
@@ -247,7 +278,7 @@ const latexStyles = `
 }
 .latex-preview-page .latex-table-wrap .latex-caption {
   font-size: 12px;
-  color: #333;
+  color: #555;
   margin-bottom: 6px;
   text-indent: 0;
 }
@@ -255,15 +286,18 @@ const latexStyles = `
   border-collapse: collapse;
   margin: 8px auto;
   font-size: 13px;
+  color: #1a1a1a;
 }
 .latex-preview-page table.latex-tabular td,
 .latex-preview-page table.latex-tabular th {
   padding: 4px 10px;
   text-align: center;
+  border-color: #ccc;
+  color: #1a1a1a;
 }
-.latex-preview-page table.latex-tabular .hline-top { border-top: 1.5px solid #000; }
-.latex-preview-page table.latex-tabular .hline-bottom { border-bottom: 1.5px solid #000; }
-.latex-preview-page table.latex-tabular .hline-mid { border-bottom: 0.8px solid #000; }
+.latex-preview-page table.latex-tabular .hline-top { border-top: 1.5px solid #333; }
+.latex-preview-page table.latex-tabular .hline-bottom { border-bottom: 1.5px solid #333; }
+.latex-preview-page table.latex-tabular .hline-mid { border-bottom: 0.8px solid #333; }
 .latex-preview-page ul, .latex-preview-page ol {
   margin: 8px 0;
   padding-left: 28px;
@@ -280,7 +314,7 @@ const latexStyles = `
 .latex-preview-page .latex-footnote {
   font-size: 11px;
   vertical-align: super;
-  color: #555;
+  color: #666;
 }
 .latex-preview-page .latex-cite {
   color: #006621;
@@ -290,12 +324,25 @@ const latexStyles = `
 }
 .latex-preview-page .latex-hrule {
   border: none;
-  border-top: 0.8px solid #000;
+  border-top: 0.8px solid #ccc;
   margin: 12px 0;
 }
 .latex-preview-page .katex-display {
   margin: 12px 0;
   overflow-x: auto;
+}
+.latex-preview-page .latex-algorithm {
+  position: relative;
+}
+.latex-preview-page .latex-algorithmic {
+  padding: 8px 0;
+}
+.latex-preview-page .latex-code-block {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.latex-preview-page .latex-code-block code {
+  display: block;
+  white-space: pre;
 }
 `;
 
@@ -395,6 +442,26 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
 
   // Handle standalone includegraphics
   text = text.replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g, (_, imagePath) => renderImage(imagePath, '', options));
+
+  // Handle algorithm/algorithmic environments (Overleaf style)
+  text = text.replace(/\\begin\{algorithm\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{algorithm\}/g, (_, body) => {
+    counters.equation++;
+    return renderAlgorithmEnv(body, counters.equation);
+  });
+  text = text.replace(/\\begin\{algorithmic\}([\s\S]*?)\\end\{algorithmic\}/g, (_, body) => renderAlgorithmicEnv(body));
+  text = text.replace(/\\begin\{algorithm\*\}([\s\S]*?)\\end\{algorithm\*\}/g, (_, body) => renderAlgorithmEnv(body, undefined, true));
+
+  // Handle lstlisting (code listings)
+  text = text.replace(/\\begin\{lstlisting\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{lstlisting\}/g, (_, code) => renderCodeBlock(code.trim(), 'python'));
+  text = text.replace(/\\begin\{lstlisting\*\}([\s\S]*?)\\end\{lstlisting\*\}/g, (_, code) => renderCodeBlock(code.trim(), 'python'));
+
+  // Handle minted (Pygments-based code highlighting)
+  text = text.replace(/\\begin\{minted\}\{([^}]*)\}([\s\S]*?)\\end\{minted\}/g, (_, lang, code) => renderCodeBlock(code.trim(), lang.trim()));
+  text = text.replace(/\\begin\{minted\*\}\{([^}]*)\}([\s\S]*?)\\end\{minted\*\}/g, (_, lang, code) => renderCodeBlock(code.trim(), lang.trim()));
+
+  // Handle verbatim environments
+  text = text.replace(/\\begin\{verbatim\}([\s\S]*?)\\end\{verbatim\}/g, (_, code) => renderCodeBlock(code.trim(), 'text'));
+  text = text.replace(/\\begin\{Verbatim\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{Verbatim\}/g, (_, code) => renderCodeBlock(code.trim(), 'text'));
 
   // Handle itemize/enumerate
   text = text.replace(/\\begin\{enumerate\}/g, '<ol>');
@@ -563,6 +630,82 @@ function renderImage(imagePath: string, caption: string, options: RenderOptions)
     ? `<p class="latex-caption">${escapeHtml(caption)}</p>`
     : '';
   return `<div class="latex-figure"><img src="${escapeAttr(src)}" alt="${escapeAttr(caption || imagePath)}"/>${captionHtml}</div>`;
+}
+
+function renderAlgorithmEnv(body: string, num?: number, noNumber?: boolean): string {
+  const captionMatch = body.match(/\\caption\{([^}]*)\}/);
+  const caption = captionMatch?.[1]?.trim() || '';
+  const algBody = body.replace(/\\caption\{[^}]*\}/g, '').trim();
+  const algHtml = renderAlgorithmicEnv(algBody);
+  const numHtml = num && !noNumber ? `<span style="float:right;color:#333;font-size:12px">Algorithm ${num}</span>` : '';
+  const captionHtml = caption ? `<p class="latex-caption" style="text-align:center;margin-top:8px"><strong>Algorithm ${num || ''}:</strong> ${escapeHtml(caption)}</p>` : '';
+  return `<div class="latex-algorithm" style="margin:16px 0;padding:12px 16px;background:#fafafa;border:1px solid #e0e0e0;border-radius:4px">${numHtml}${algHtml}${captionHtml}</div>`;
+}
+
+function renderAlgorithmicEnv(body: string): string {
+  let html = '<div class="latex-algorithmic" style="font-family:\'Computer Modern Typewriter\',monospace;font-size:13px;line-height:1.5">';
+  
+  // Process algorithmic commands
+  const lines = body.split('\n');
+  for (const line of lines) {
+    let processed = line.trim();
+    if (!processed) continue;
+    
+    // State/Require/Ensure
+    processed = processed.replace(/\\(State|Require|Ensure|Loop|While|For|If|EndIf|EndFor|EndWhile|EndLoop)\b/g, 
+      '<span style="color:#0066cc;font-weight:600">\\$1</span>');
+    
+    // Comments
+    processed = processed.replace(/\\Comment\{([^}]*)\}/g, 
+      '<span style="color:#888;font-style:italic">// $1</span>');
+    processed = processed.replace(/\\State\{([^}]*)\}/g, 
+      '<div style="margin:4px 0;padding-left:8px;border-left:2px solid #ddd"><span style="color:#333">$1</span></div>');
+    processed = processed.replace(/\\Line\{([^}]*)\}/g, 
+      '<div style="margin:4px 0;padding-left:8px">$1</div>');
+    processed = processed.replace(/\\Return\b/g, 
+      '<span style="color:#cc0000;font-weight:600">return</span>');
+    processed = processed.replace(/\\Output\{([^}]*)\}/g, 
+      '<div style="margin:4px 0;padding-left:8px"><span style="color:#006600">Output:</span> $1</div>');
+    processed = processed.replace(/\\Input\{([^}]*)\}/g, 
+      '<div style="margin:4px 0;padding-left:8px"><span style="color:#006600">Input:</span> $1</div>');
+    processed = processed.replace(/\\And\b/g, 
+      '<span style="color:#0066cc">∧</span>');
+    processed = processed.replace(/\\Or\b/g, 
+      '<span style="color:#0066cc">∨</span>');
+    processed = processed.replace(/\\Not\b/g, 
+      '<span style="color:#0066cc">¬</span>');
+    processed = processed.replace(/\\gets\b/g, 
+      '<span style="color:#cc6600">←</span>');
+    processed = processed.replace(/\\to\b/g, 
+      '<span style="color:#cc6600">→</span>');
+    processed = processed.replace(/\\leq\b/g, '≤');
+    processed = processed.replace(/\\geq\b/g, '≥');
+    processed = processed.replace(/\\neq\b/g, '≠');
+    processed = processed.replace(/\\infty/g, '∞');
+    
+    // Remove remaining \ commands that weren't handled
+    processed = processed.replace(/\\[a-zA-Z]+\{[^}]*\}/g, (match) => {
+      const inner = match.match(/\{([^}]*)\}/)?.[1] || '';
+      return `<span style="color:#555">${escapeHtml(inner)}</span>`;
+    });
+    processed = processed.replace(/\\[a-zA-Z]+/g, '');
+    
+    if (processed) {
+      html += processed + '\n';
+    }
+  }
+  
+  html += '</div>';
+  return html;
+}
+
+function renderCodeBlock(code: string, language: string): string {
+  const langLabel = language && language !== 'text' ? language.toUpperCase() : 'CODE';
+  const escapedCode = escapeHtml(code);
+  return `<div class="latex-code-block" style="margin:12px 0;background:#1e1e1e;border-radius:4px;overflow:hidden">
+  <div style="padding:6px 12px;background:#2d2d2d;border-bottom:1px solid #404040;font-size:11px;color:#888;font-family:monospace">${escapeHtml(langLabel)}</div>
+  <pre style="margin:0;padding:12px;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12px;line-height:1.5;color:#d4d4d4"><code>${escapedCode}</code></pre>
+</div>`;
 }
 
 function renderMathBlock(math: string, eqNum?: number): string {

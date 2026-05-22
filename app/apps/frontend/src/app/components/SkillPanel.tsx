@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { listSkills, getSkill, createSkill, deleteSkill, SkillInfo } from '../api/skillApi';
+import { listSkills, getSkill, createSkill, deleteSkill, reloadSkills, SkillInfo } from '../api/skillApi';
 
 interface Props {
   globalSkills: string[];
   chapterSkills: string[];
   onActivateSkill: (skillName: string) => void;
 }
+
+const typeColors: Record<string, string> = {
+  writing: '#1976d2',
+  research: '#7b1fa2',
+  review: '#e65100',
+  analysis: '#2e7d32',
+  utility: '#6a1b9a',
+  experiment: '#455a64',
+  methodology: '#00695c',
+  argumentation: '#bf360c',
+};
+
+const typeOrder = ['all', 'writing', 'research', 'experiment', 'review', 'analysis', 'methodology', 'argumentation', 'utility'];
 
 export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Props) {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
@@ -14,6 +27,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
   const [skillPrompts, setSkillPrompts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', display_name: '', description: '', type: 'writing', trigger: 'manual', prompt: '' });
 
   const refreshSkills = () => listSkills().then(setSkills).catch(() => {});
@@ -45,6 +59,11 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
     refreshSkills();
   };
 
+  const handleReload = async () => {
+    await reloadSkills();
+    refreshSkills();
+  };
+
   const filtered = skills.filter(s => {
     if (filter !== 'all' && s.type !== filter) return false;
     if (search && !s.display_name?.toLowerCase().includes(search.toLowerCase()) && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -53,16 +72,11 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
 
   const isActive = (name: string) => globalSkills.includes(name) || chapterSkills.includes(name);
 
-  const typeColors: Record<string, string> = {
-    writing: '#1976d2',
-    research: '#7b1fa2',
-    review: '#e65100',
-    analysis: '#2e7d32',
-    utility: '#6a1b9a',
-    code: '#455a64',
-    methodology: '#00695c',
-    argumentation: '#bf360c',
-  };
+  const typeCounts: Record<string, number> = {};
+  for (const s of skills) {
+    const t = s.type || 'utility';
+    typeCounts[t] = (typeCounts[t] || 0) + 1;
+  }
 
   return (
     <div style={{ fontSize: '12px' }}>
@@ -74,6 +88,13 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
           onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, padding: '3px 6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px', boxSizing: 'border-box' }}
         />
+        <button
+          onClick={handleReload}
+          title="Reload skills"
+          style={{ padding: '3px 6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px', background: '#fff', cursor: 'pointer' }}
+        >
+          ↻
+        </button>
         <button
           onClick={() => setShowCreate(!showCreate)}
           style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid #1976d2', borderRadius: '3px', background: showCreate ? '#1976d2' : '#fff', color: showCreate ? '#fff' : '#1976d2', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -95,14 +116,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
           <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
             <select value={newSkill.type} onChange={e => setNewSkill(p => ({ ...p, type: e.target.value }))}
               style={{ flex: 1, padding: '3px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px' }}>
-              <option value="writing">writing</option>
-              <option value="research">research</option>
-              <option value="review">review</option>
-              <option value="analysis">analysis</option>
-              <option value="utility">utility</option>
-              <option value="code">code</option>
-              <option value="methodology">methodology</option>
-              <option value="argumentation">argumentation</option>
+              {typeOrder.filter(t => t !== 'all').map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <select value={newSkill.trigger} onChange={e => setNewSkill(p => ({ ...p, trigger: e.target.value }))}
               style={{ flex: 1, padding: '3px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px' }}>
@@ -119,26 +133,50 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
         </div>
       )}
 
-      <div style={{ padding: '4px 8px', display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-        {['all', 'writing', 'research', 'review', 'analysis', 'methodology', 'argumentation', 'utility', 'code'].map(t => (
-          <button
-            key={t}
-            onClick={() => setFilter(t)}
-            style={{
-              padding: '2px 6px', fontSize: '10px', border: '1px solid #ddd',
-              borderRadius: '3px', cursor: 'pointer',
-              background: filter === t ? (typeColors[t] || '#1976d2') : '#fff',
-              color: filter === t ? '#fff' : '#333',
-            }}
-          >
-            {t}
-          </button>
-        ))}
+      {/* Tags toggle */}
+      <div
+        onClick={() => setTagsExpanded(!tagsExpanded)}
+        style={{ padding: '3px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', userSelect: 'none', color: '#666', fontSize: '11px' }}
+      >
+        <span style={{ fontSize: '9px', transition: 'transform 0.15s', transform: tagsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+        <span>Tags</span>
+        {filter !== 'all' && (
+          <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: typeColors[filter] || '#999', color: '#fff', marginLeft: '4px' }}>
+            {filter}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: '10px', color: '#aaa' }}>{filtered.length} skills</span>
       </div>
+
+      {tagsExpanded && (
+        <div style={{ padding: '4px 8px', display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+          {typeOrder.map(t => {
+            const count = t === 'all' ? skills.length : (typeCounts[t] || 0);
+            if (t !== 'all' && count === 0) return null;
+            return (
+              <button
+                key={t}
+                onClick={() => setFilter(t)}
+                style={{
+                  padding: '2px 6px', fontSize: '10px', border: '1px solid #ddd',
+                  borderRadius: '3px', cursor: 'pointer',
+                  background: filter === t ? (typeColors[t] || '#1976d2') : '#fff',
+                  color: filter === t ? '#fff' : '#333',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {t}{count > 0 ? ` (${count})` : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ padding: '2px 8px', fontSize: '10px', color: '#888' }}>
-        {filtered.length} skills | {globalSkills.length} active
+        {globalSkills.length} active
       </div>
-      <div style={{ maxHeight: '300px', overflow: 'auto' }}>
+
+      <div style={{ maxHeight: '350px', overflow: 'auto' }}>
         {filtered.map(skill => (
           <div key={skill.name} style={{ borderBottom: '1px solid #f0f0f0' }}>
             <div
