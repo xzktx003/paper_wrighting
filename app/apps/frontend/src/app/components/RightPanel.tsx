@@ -54,7 +54,6 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
             <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', fontSize: '10px', fontWeight: 600 }}>
                 {activeConv.context_scope.type === 'chapter' ? `Ch: ${activeConv.context_scope.file}` :
-                 activeConv.context_scope.type === 'code' ? 'Code' :
                  activeConv.context_scope.type === 'global' ? 'Global' : 'Free'}
               </span>
               <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--bg-secondary)', fontSize: '10px', fontWeight: 500 }}>

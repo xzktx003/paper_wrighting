@@ -1,0 +1,24 @@
+\begin{table*}[h]
+\centering
+\caption{Main results on LLaMA3 and Qwen3 families. "Wiki2" reports Perplexity ($\downarrow$), and "Avg Acc" reports average accuracy on zero-shot tasks ($\uparrow$).}
+\label{tab:main_results}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcccccccccc}
+\toprule
+ & \multicolumn{2}{c}{\textbf{LLaMA3-8B}} & \multicolumn{2}{c}{\textbf{LLaMA3-70B}} & \multicolumn{2}{c}{\textbf{Qwen3-8B}} & \multicolumn{2}{c}{\textbf{Qwen3-14B}} & \multicolumn{2}{c}{\textbf{Qwen3-32B}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11}
+\textbf{Method} & Wiki2 & Avg Acc & Wiki2 & Avg Acc & Wiki2 & Avg Acc & Wiki2 & Avg Acc & Wiki2 & Avg Acc \\
+\midrule
+Baseline (FP16) & 6.14 & 73.18 & 2.87 & 79.95 & 9.00 & 70.43 & 8.64 & 73.81 & 7.61 & 74.82 \\
+\midrule
+RTN & 354.37 & 32.03 & 3180.43 & 30.92 & 3750.93 & 30.73 & 2219.90 & 35.22 & 274.93 & 38.40 \\
+GPTQ & 282.29 & 33.60 & 1532.08 & 34.82 & 1633.38 & 35.54 & 368.24 & 39.91 & 59.31 & 57.62 \\
+QuaRot & 10.16 & 62.13 & 15.38 & 62.87 & 23.50 & 55.35 & 20.11 & 60.21 & 18.86 & 61.23 \\
+OSTQuant & 9.29 & 65.92 & 6.01 & 73.93 & 19.75 & 54.40 & 16.85 & 64.06 & 14.62 & 67.19 \\
+FlatQuant & 8.92 & 68.34 & OOM & OOM & 11.21 & 66.96 & 13.32 & 69.87 & OOM & OOM \\
+BRQ & 9.14 & 67.76 & - & - & 13.70 & 64.73 & - & - & - & - \\
+\textbf{TORQ (ours)} & \textbf{8.57} & \textbf{69.32} & \textbf{3.49} & \textbf{76.28} & \textbf{10.26} & \textbf{67.75} & \textbf{12.87} & \textbf{70.51} & \textbf{8.43} & \textbf{73.63} \\
+\bottomrule
+\end{tabular}
+}
+\end{table*}

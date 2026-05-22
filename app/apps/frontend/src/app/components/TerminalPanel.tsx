@@ -4,6 +4,18 @@ import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 
+// 过滤 xterm.js 自动回复的控制序列（焦点报告、OSC 颜色回复等）
+// 这些序列会被 xterm.js 自动发送，但如果发到后端再返回会导致重复显示
+const FOCUS_REPORT_PATTERN = /\u001b\[[IO]/g;
+const OSC_COLOR_REPLY_PATTERN =
+  /\u001b\](?:10|11);rgb:(?:[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}|[0-9a-fA-F]{4}\/[0-9a-fA-F]{4}\/[0-9a-fA-F]{4})(?:\u0007|\u001b\\)|\u001b\]4;\d+;rgb:(?:[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}|[0-9a-fA-F]{4}\/[0-9a-fA-F]{4}\/[0-9a-fA-F]{4})(?:\u0007|\u001b\\)/g;
+
+function stripTerminalResponsePayload(payload: string): string {
+  return payload
+    .replace(FOCUS_REPORT_PATTERN, '')
+    .replace(OSC_COLOR_REPLY_PATTERN, '');
+}
+
 interface Props {
   cwd: string;
 }
@@ -49,12 +61,16 @@ export function TerminalPanel({ cwd }: Props) {
     };
 
     ws.onopen = () => {
-      term.write('\r\n');
+      // 不发送额外的换行，避免重复显示
     };
 
     term.onData((data) => {
+      // 过滤 xterm.js 自动回复的控制序列
+      const sanitized = stripTerminalResponsePayload(data);
+      if (!sanitized) return;
+      
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'data', data }));
+        ws.send(JSON.stringify({ type: 'data', data: sanitized }));
       }
     });
 

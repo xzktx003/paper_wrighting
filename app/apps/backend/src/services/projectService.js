@@ -1,10 +1,36 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, readdir, stat } from 'fs/promises';
 import { join } from 'path';
 import YAML from 'yaml';
 import { DATA_DIR } from '../config/constants.js';
 
 export async function getProjectRoot(id) {
-  return join(DATA_DIR, id);
+  const directRoot = join(DATA_DIR, id);
+  try {
+    const directStat = await stat(directRoot);
+    if (directStat.isDirectory()) return directRoot;
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  let entries = [];
+  try {
+    entries = await readdir(DATA_DIR, { withFileTypes: true });
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidateRoot = join(DATA_DIR, entry.name);
+    try {
+      const meta = JSON.parse(await readFile(join(candidateRoot, 'project.json'), 'utf-8'));
+      if (meta?.id === id) return candidateRoot;
+    } catch {
+      // Ignore malformed or missing metadata while resolving by id.
+    }
+  }
+
+  return directRoot;
 }
 
 export async function loadProject(projectPath) {
@@ -20,14 +46,6 @@ export async function saveProject(projectPath, config) {
 
 export async function createProject(projectPath, config) {
   await mkdir(projectPath, { recursive: true });
-  await mkdir(join(projectPath, 'chapters'), { recursive: true });
-  await mkdir(join(projectPath, 'code/src'), { recursive: true });
-  await mkdir(join(projectPath, 'code/notebooks'), { recursive: true });
-  await mkdir(join(projectPath, 'code/results'), { recursive: true });
-  await mkdir(join(projectPath, 'code/figures'), { recursive: true });
-  await mkdir(join(projectPath, 'figures'), { recursive: true });
-  await mkdir(join(projectPath, 'skills'), { recursive: true });
-  await mkdir(join(projectPath, 'output'), { recursive: true });
   await saveProject(projectPath, config);
   await writeFile(join(projectPath, 'references.bib'), '', 'utf-8');
 }

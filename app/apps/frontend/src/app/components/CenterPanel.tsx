@@ -3,6 +3,7 @@ import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview } from './MarkdownPreview';
 import { LatexPreview } from './LatexPreview';
 import { TerminalPanel } from './TerminalPanel';
+import { getOpenPrismProjectId, isImagePath, isPdfPath, isPreviewableTextPath } from '../utils/previewAssets';
 
 interface OpenFile {
   filename: string;
@@ -29,6 +30,10 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   const [editorRatio, setEditorRatio] = useState(0.5);
   const editorAreaRef = useRef<HTMLDivElement>(null);
   const activeFile = openFiles?.[activeFileIndex];
+  const projectId = getOpenPrismProjectId(projectPath);
+  const activeIsImage = !!activeFile && isImagePath(activeFile.filename);
+  const activeIsPdf = !!activeFile && isPdfPath(activeFile.filename);
+  const activeIsText = !!activeFile && isPreviewableTextPath(activeFile.filename);
 
   const handleTerminalResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -113,29 +118,63 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
       {!terminalMaximized && (
         activeFile ? (
           <div ref={editorAreaRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ height: showPreview && activeFile.type === 'chapter' ? `${editorRatio * 100}%` : '100%', overflow: 'hidden' }}>
-              <MarkdownEditor
-                content={activeFile.content}
-                onChange={(c) => onFileChange(activeFileIndex, c)}
-              />
-            </div>
-            {showPreview && activeFile.type === 'chapter' && (
+            {activeIsImage ? (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--paper)', overflow: 'auto' }}>
+                {projectId ? (
+                  <img
+                    src={`/api/projects/${encodeURIComponent(projectId)}/blob?${new URLSearchParams({ path: activeFile.filename }).toString()}`}
+                    alt={activeFile.filename}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}
+                  />
+                ) : (
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>Image preview is available for project files.</div>
+                )}
+              </div>
+            ) : activeIsPdf ? (
+              <div style={{ flex: 1, minHeight: 0, background: 'var(--paper)', overflow: 'hidden' }}>
+                {projectId ? (
+                  <object
+                    data={`/api/projects/${encodeURIComponent(projectId)}/blob?${new URLSearchParams({ path: activeFile.filename }).toString()}`}
+                    type="application/pdf"
+                    style={{ width: '100%', height: '100%', border: 0 }}
+                  >
+                    <div style={{ padding: 24, color: 'var(--muted)', fontSize: 13 }}>PDF preview is not available in this browser.</div>
+                  </object>
+                ) : (
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>PDF preview is available for project files.</div>
+                )}
+              </div>
+            ) : !activeIsText ? (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--paper)', color: 'var(--muted)', fontSize: 13 }}>
+                No inline preview for {activeFile.filename}
+              </div>
+            ) : (
               <>
-                <div
-                  onMouseDown={handleEditorPreviewResize}
-                  style={{ height: '5px', cursor: 'row-resize', background: 'var(--border)', flexShrink: 0, position: 'relative', transition: 'background 0.15s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
-                >
-                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
+                <div style={{ height: showPreview && activeFile.type === 'chapter' ? `${editorRatio * 100}%` : '100%', overflow: 'hidden' }}>
+                  <MarkdownEditor
+                    content={activeFile.content}
+                    onChange={(c) => onFileChange(activeFileIndex, c)}
+                  />
                 </div>
-                <div style={{ flex: 1, overflow: 'auto', background: 'var(--paper)' }}>
-                  {activeFile.filename.endsWith('.tex') ? (
-                    <LatexPreview content={activeFile.content} />
-                  ) : (
-                    <MarkdownPreview content={activeFile.content} />
-                  )}
-                </div>
+                {showPreview && activeFile.type === 'chapter' && (
+                  <>
+                    <div
+                      onMouseDown={handleEditorPreviewResize}
+                      style={{ height: '5px', cursor: 'row-resize', background: 'var(--border)', flexShrink: 0, position: 'relative', transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
+                    >
+                      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
+                    </div>
+                    <div style={{ flex: 1, overflow: 'auto', background: 'var(--paper)' }}>
+                      {activeFile.filename.endsWith('.tex') ? (
+                        <LatexPreview content={activeFile.content} projectId={projectId} currentFile={activeFile.filename} />
+                      ) : (
+                        <MarkdownPreview content={activeFile.content} projectId={projectId} currentFile={activeFile.filename} />
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

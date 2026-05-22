@@ -840,10 +840,11 @@ import { readTextFile, listDir } from '../services/fileManager.js';
 import { executeScript } from '../services/codeExecutor.js';
 import { join } from 'path';
 
-const AI_TOOLS = [
+const TOOL_DEFINITIONS = [
   { name: 'read_chapter', description: 'Read a chapter file', input_schema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] } },
   { name: 'list_chapters', description: 'List all chapter files', input_schema: { type: 'object', properties: {} } },
   { name: 'propose_edit', description: 'Propose an edit to a chapter (returns diff for user confirmation)', input_schema: { type: 'object', properties: { filename: { type: 'string' }, new_content: { type: 'string' } }, required: ['filename', 'new_content'] } },
+  // Tools mode only: code/ operations are not exposed to Agent mode.
   { name: 'read_code', description: 'Read a file from code/ directory', input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
   { name: 'write_code', description: 'Write a file to code/ directory', input_schema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] } },
   { name: 'run_code', description: 'Execute a script in code/ directory', input_schema: { type: 'object', properties: { script: { type: 'string' }, args: { type: 'array', items: { type: 'string' } } }, required: ['script'] } },
@@ -883,7 +884,7 @@ export default async function aiRoutes(fastify) {
       const result = await chatWithTools({
         systemPrompt,
         messages,
-        tools: AI_TOOLS,
+        tools: getToolsForMode(conv.mode),
         onToolUse: async (name, input) => {
           return await executeTool(name, input, projectPath);
         },
@@ -2139,7 +2140,6 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
   const handleSubmit = () => {
     let context_scope: any = { type: scopeType };
     if (scopeType === 'chapter') context_scope.file = scopeFile;
-    if (scopeType === 'code') context_scope.path = 'code/';
     onSubmit({ name: name || `New ${scopeType}`, context_scope, active_skills: selectedSkills, mode });
   };
 
@@ -2161,7 +2161,6 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
             <option value="free">Free (no file binding)</option>
             <option value="global">Global (all chapters)</option>
             <option value="chapter">Chapter (specific)</option>
-            <option value="code">Code</option>
           </select>
         </label>
 
@@ -2253,7 +2252,6 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
           <div style={{ borderTop: '1px solid #e0e0e0', padding: '8px' }}>
             <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>
               {activeConv.context_scope.type === 'chapter' ? `Chapter: ${activeConv.context_scope.file}` :
-               activeConv.context_scope.type === 'code' ? 'Code' :
                activeConv.context_scope.type === 'global' ? 'Global' : 'Free'} | Mode: {activeConv.mode}
             </div>
             <textarea

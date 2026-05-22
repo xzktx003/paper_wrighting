@@ -88,9 +88,9 @@ OpenPrism is a local-first LaTeX + AI workspace for academic writing, optimized 
 
 ### 🤖 AI Assistant
 
-- **Chat mode**: read-only Q&A
-- **Agent mode**: generate diffs for confirmation
-- **Tools mode**: multi-step tools + multi-file edits
+- **Chat mode**: read-only Q&A, no tools or file changes
+- **Agent mode**: propose paper edits for confirmation, no direct writes or code execution
+- **Tools mode**: multi-step tools, cross-file work, and controlled `code/` operations
 - **Tasks**: polish, rewrite, restructure, translate, custom
 - **Autocomplete**: Option/Alt + / or Cmd/Ctrl + Space, Tab to accept
 

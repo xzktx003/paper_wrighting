@@ -1,13 +1,21 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { resolveProjectAssetUrl } from '../utils/previewAssets';
 
 interface Props {
   content: string;
+  projectId?: string | null;
+  currentFile?: string;
 }
 
-export function LatexPreview({ content }: Props) {
-  const rendered = useMemo(() => renderLatex(content), [content]);
+interface RenderOptions {
+  projectId?: string | null;
+  currentFile?: string;
+}
+
+export function LatexPreview({ content, projectId, currentFile = '' }: Props) {
+  const rendered = useMemo(() => renderLatex(content, { projectId, currentFile }), [content, projectId, currentFile]);
 
   return (
     <div
@@ -17,7 +25,7 @@ export function LatexPreview({ content }: Props) {
   );
 }
 
-function renderLatex(tex: string): string {
+export function renderLatex(tex: string, options: RenderOptions = {}): string {
   let text = tex;
 
   // Remove comments
@@ -43,11 +51,12 @@ function renderLatex(tex: string): string {
   text = text.replace(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/g, '<div style="margin:16px 32px;padding:12px;background:#f9f9f9;border-left:3px solid #1976d2"><strong>Abstract</strong><br/>$1</div>');
 
   // Handle environments: figure, table (simplified)
-  text = text.replace(/\\begin\{figure\}[\s\S]*?\\caption\{([^}]*)\}[\s\S]*?\\end\{figure\}/g, '<div style="margin:12px 0;padding:8px;border:1px dashed #ccc;text-align:center;color:#666">[Figure: $1]</div>');
+  text = text.replace(/\\begin\{figure\*?\}[\s\S]*?\\end\{figure\*?\}/g, (figure) => renderFigure(figure, options));
   text = text.replace(/\\begin\{table\}[\s\S]*?\\caption\{([^}]*)\}[\s\S]*?\\end\{table\}/g, '<div style="margin:12px 0;padding:8px;border:1px dashed #ccc;text-align:center;color:#666">[Table: $1]</div>');
 
   // Remove remaining figure/table environments without captions
   text = text.replace(/\\begin\{(figure|table)\*?\}(\[.*?\])?[\s\S]*?\\end\{\1\*?\}/g, '<div style="margin:8px 0;padding:8px;border:1px dashed #ccc;text-align:center;color:#888">[$1]</div>');
+  text = text.replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g, (_, imagePath) => renderImage(imagePath, '', options));
 
   // Handle itemize/enumerate
   text = text.replace(/\\begin\{(itemize|enumerate)\}/g, '<ul style="margin:8px 0;padding-left:24px">');
@@ -102,6 +111,26 @@ function renderLatex(tex: string): string {
   return text;
 }
 
+function renderFigure(figure: string, options: RenderOptions): string {
+  const imageMatch = figure.match(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/);
+  const captionMatch = figure.match(/\\caption\{([^}]*)\}/);
+  const imagePath = imageMatch?.[1]?.trim() || '';
+  const caption = captionMatch?.[1]?.trim() || '';
+  if (!imagePath) {
+    return `<div style="margin:12px 0;padding:8px;border:1px dashed #ccc;text-align:center;color:#666">[Figure: ${escapeHtml(caption || 'image')}]</div>`;
+  }
+  return renderImage(imagePath, caption, options);
+}
+
+function renderImage(imagePath: string, caption: string, options: RenderOptions): string {
+  const src = resolveProjectAssetUrl(options.projectId, options.currentFile || '', imagePath) || imagePath;
+  const safeCaption = escapeHtml(caption);
+  const captionHtml = safeCaption
+    ? `<figcaption style="margin-top:8px;color:#666;font-size:12px">Figure: ${safeCaption}</figcaption>`
+    : '';
+  return `<figure style="margin:14px 0;text-align:center"><img src="${escapeAttr(src)}" alt="${escapeAttr(caption || imagePath)}" style="max-width:100%;max-height:420px;object-fit:contain;border:1px solid #eee;border-radius:6px;background:#fff"/>${captionHtml}</figure>`;
+}
+
 function renderMathBlock(math: string): string {
   try {
     const cleaned = math.replace(/\\label\{[^}]*\}/g, '').replace(/&/g, '&amp;').trim();
@@ -123,4 +152,8 @@ function renderMathInline(math: string): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/"/g, '&quot;');
 }

@@ -9,6 +9,13 @@
 ## 2026-05-22 - Project delete failed when `project.json` was missing
 
 - Symptom: deleting project `c2b87dfc-af29-42ef-b088-0f28aa9d65c3` returned HTTP 500 with `ENOENT` while opening `papers/<id>/project.json`.
-- Root cause: the soft-delete route read `project.json` unconditionally before marking the project as trashed.
-- Fix: make project deletion tolerant of missing or invalid metadata by writing a minimal trashed metadata file when the project directory still exists, and treat already-removed project directories as successful no-ops.
+- Root cause: the soft-delete route read `project.json` unconditionally before marking the project as trashed. A follow-up issue also showed project IDs can differ from their directory names, for example `project.json.id=c2b87dfc...` under `papers/torq`, so deleting by ID was a no-op against a non-existent `papers/<id>` directory.
+- Fix: make project deletion tolerant of missing or invalid metadata, resolve project roots by scanning `project.json.id` when the direct directory does not exist, and treat already-removed project directories as successful no-ops.
 - Regression: added a Fastify route test and a Playwright delete-flow script. On this machine, browser launch is blocked by missing GTK/ATK system libraries, so the Playwright script falls back to Playwright APIRequest validation.
+
+- 2026-05-22: AI Assistant 工具路径必须通过 getProjectRoot(projectId) 解析，不能直接拼 DATA_DIR/id；torq 这类目录名与 project.json id 不一致的项目会否则报 ENOENT。
+
+- 2026-05-22: Terminal WS 不能假设系统有 `script` 命令；spawn 必须监听 `error`，OpenPrism cwd 也需用 getProjectRoot() 解析真实项目目录。
+- 2026-05-22: AI 对话的独立 Code scope 只有 UI 标记且与 Agent/Tools 语义混淆；已从新建对话入口和设计文档移除，Agent 限制为建议模式，代码读写/执行仅保留在 Tools 并增加 `code/` 路径边界校验。
+- 2026-05-22: 项目路由必须在新建项目和读取 `/api/projects/:id/tree` 时确保 `docs/` 存在；`fig/` 不应被强制创建，图片目录应由导入、模板或用户手动创建。
+- 2026-05-22: 移除项目文件树对 `fig/` 的强制自动创建绑定；新建项目和打开旧项目只补齐 `docs/`，`fig/` 仅在导入、模板或用户手动创建时出现。

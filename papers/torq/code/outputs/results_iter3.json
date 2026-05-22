@@ -1,0 +1,22 @@
+{
+  "iteration": 3,
+  "method": "Hadamard-Seeded Residual Rotation + Layer-Adaptive LR",
+  "timestamp": "2026-05-21T05:48:06.196387",
+  "model": "/data01/datasets/Qwen3-0.6B",
+  "baseline_ppl": 50.94306564331055,
+  "torq_ppl": 110.38088989257812,
+  "gap_to_bf16": 59.43782424926758,
+  "training_time_s": 1147.989024400711,
+  "config": {
+    "model_path": "/data01/datasets/Qwen3-0.6B",
+    "output_dir": "./outputs",
+    "device": "cuda",
+    "block_size": 32,
+    "seq_len": 128,
+    "calib_batch_size": 8,
+    "num_calib_samples": 32,
+    "max_activation_samples": 512,
+    "lr": 0.005,
+    "num_steps": 400
+  }
+}
