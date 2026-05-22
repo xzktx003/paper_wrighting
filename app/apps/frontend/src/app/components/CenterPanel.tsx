@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview } from './MarkdownPreview';
+import { LatexPreview } from './LatexPreview';
+import { TerminalPanel } from './TerminalPanel';
 
 interface OpenFile {
   filename: string;
@@ -17,11 +19,22 @@ interface Props {
   onTabClose: (index: number) => void;
   terminalVisible: boolean;
   onToggleTerminal: () => void;
+  projectPath?: string;
 }
 
-export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, terminalVisible, onToggleTerminal }: Props) {
+export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, terminalVisible, onToggleTerminal, projectPath }: Props) {
   const [showPreview, setShowPreview] = useState(true);
+  const [terminalHeight, setTerminalHeight] = useState(350);
   const activeFile = openFiles?.[activeFileIndex];
+
+  const handleTerminalResize = useCallback((e: React.MouseEvent) => {
+    const startY = e.clientY;
+    const startH = terminalHeight;
+    const onMove = (ev: MouseEvent) => setTerminalHeight(Math.max(150, Math.min(600, startH + (startY - ev.clientY))));
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [terminalHeight]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -65,7 +78,11 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
             <>
               <div style={{ height: '1px', background: '#e0e0e0' }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
-                <MarkdownPreview content={activeFile.content} />
+                {activeFile.filename.endsWith('.tex') ? (
+                  <LatexPreview content={activeFile.content} />
+                ) : (
+                  <MarkdownPreview content={activeFile.content} />
+                )}
               </div>
             </>
           )}
@@ -77,9 +94,12 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
       )}
 
       {terminalVisible && (
-        <div style={{ height: '250px', borderTop: '1px solid #e0e0e0', background: '#1e1e1e', color: '#d4d4d4', padding: '8px', fontFamily: 'monospace', fontSize: '13px' }}>
-          Terminal (connecting...)
-        </div>
+        <>
+          <div onMouseDown={handleTerminalResize} style={{ height: '4px', cursor: 'row-resize', background: '#e0e0e0', flexShrink: 0 }} />
+          <div style={{ height: terminalHeight, flexShrink: 0 }}>
+            <TerminalPanel cwd={projectPath || '/'} />
+          </div>
+        </>
       )}
     </div>
   );

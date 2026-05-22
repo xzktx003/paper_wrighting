@@ -12,7 +12,7 @@ function getConvPath(projectId, convId) {
   return join(getProjectDir(projectId), `${convId}.json`);
 }
 
-export async function createConversation(projectId, { name, context_scope, active_skills, mode }) {
+export async function createConversation(projectId, { name, context_scope, active_skills, mode, model }) {
   const id = randomUUID().slice(0, 8);
   const conv = {
     id,
@@ -20,6 +20,7 @@ export async function createConversation(projectId, { name, context_scope, activ
     context_scope: context_scope || { type: 'free' },
     active_skills: active_skills || [],
     mode: mode || 'chat',
+    model: model || null,
     history: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

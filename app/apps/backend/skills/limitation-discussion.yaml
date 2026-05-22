@@ -1,0 +1,17 @@
+name: limitation-discussion
+display_name: "局限性讨论"
+description: "帮助诚实而策略性地讨论研究局限性"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助撰写Limitations部分：
+  1. 诚实承认方法的局限性
+  2. 区分fundamental limitations和practical limitations
+  3. 解释为什么这些局限性不影响核心贡献
+  4. 将局限性转化为future work的方向
+  5. 避免过度自我批评
+  6. 主动提出审稿人可能质疑的点
+  7. 保持诚实但积极的语气
+
+parameters: []

@@ -1,0 +1,17 @@
+name: introduction-writer
+display_name: "Introduction撰写"
+description: "帮助撰写引人入胜的Introduction章节"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助撰写高质量的Introduction：
+  1. 以宏观背景开篇，逐步聚焦到具体问题
+  2. 清晰定义研究问题和动机
+  3. 简要概述已有方法的不足
+  4. 明确阐述本文的核心贡献(contributions)
+  5. 使用"漏斗式"结构：从广到窄
+  6. 在最后一段概述论文结构
+  确保Introduction能让读者快速理解：为什么这个问题重要？现有方法有什么不足？本文如何解决？
+
+parameters: []

@@ -1,0 +1,17 @@
+name: comparison-writer
+display_name: "方法对比分析"
+description: "帮助撰写与baseline方法的对比分析"
+type: analysis
+trigger: manual
+
+prompt: |
+  帮助撰写方法对比分析：
+  1. 公平选择baseline方法（包括最新SOTA）
+  2. 从多个维度对比（性能、效率、复杂度）
+  3. 分析在不同场景下的优劣
+  4. 解释性能差异的原因
+  5. 使用统计检验验证差异显著性
+  6. 讨论计算资源和时间成本
+  7. 避免cherry-picking结果
+
+parameters: []

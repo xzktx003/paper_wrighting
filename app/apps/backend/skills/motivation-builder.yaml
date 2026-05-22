@@ -1,0 +1,16 @@
+name: motivation-builder
+display_name: "研究动机构建"
+description: "帮助构建有说服力的研究动机"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助构建研究动机：
+  1. 从实际应用场景出发说明问题的重要性
+  2. 用数据/统计说明问题的规模和影响
+  3. 展示现有方法的具体失败案例
+  4. 通过motivating example直观展示问题
+  5. 建立从问题到解决方案的逻辑桥梁
+  6. 让读者产生"这确实需要解决"的认同感
+
+parameters: []

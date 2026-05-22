@@ -16,8 +16,11 @@
     "tunnel:ngrok": "npm run build && cross-env OPENPRISM_TUNNEL=ngrok node apps/backend/src/index.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "playwright": "^1.60.0",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1"

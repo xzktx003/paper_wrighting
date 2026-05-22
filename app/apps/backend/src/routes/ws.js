@@ -3,9 +3,10 @@ import { watchDirectory, unwatchDirectory } from '../services/fileManager.js';
 const clients = new Set();
 
 export function registerWsRoutes(fastify) {
-  fastify.get('/api/ws/watch', { websocket: true }, (socket, request) => {
+  fastify.get('/api/ws/watch', { websocket: true }, (connection, request) => {
+    const ws = connection.socket;
     const projectPath = request.query.projectPath;
-    clients.add(socket);
+    clients.add(ws);
 
     if (projectPath) {
       watchDirectory(projectPath, (event) => {
@@ -16,8 +17,8 @@ export function registerWsRoutes(fastify) {
       });
     }
 
-    socket.on('close', () => {
-      clients.delete(socket);
+    ws.on('close', () => {
+      clients.delete(ws);
       if (clients.size === 0 && projectPath) {
         unwatchDirectory(projectPath);
       }

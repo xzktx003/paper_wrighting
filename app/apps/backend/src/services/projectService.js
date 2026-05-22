@@ -1,6 +1,11 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import YAML from 'yaml';
+import { DATA_DIR } from '../config/constants.js';
+
+export async function getProjectRoot(id) {
+  return join(DATA_DIR, id);
+}
 
 export async function loadProject(projectPath) {
   const configPath = join(projectPath, 'paper.yaml');

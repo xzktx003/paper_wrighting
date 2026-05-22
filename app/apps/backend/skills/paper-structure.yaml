@@ -1,0 +1,17 @@
+name: paper-structure
+display_name: "论文结构规划"
+description: "帮助规划和优化论文的整体结构"
+type: analysis
+trigger: manual
+
+prompt: |
+  帮助规划论文结构：
+  1. 根据会议/期刊要求确定页数限制
+  2. 合理分配各章节篇幅
+  3. 确保逻辑流畅：问题→方法→实验→结论
+  4. 建议哪些内容放入正文vs附录
+  5. 确保每个章节都有明确的目的
+  6. 检查章节间的逻辑依赖关系
+  7. 建议图表的最佳放置位置
+
+parameters: []

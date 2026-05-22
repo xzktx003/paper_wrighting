@@ -4,6 +4,9 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { ensureDir } from './utils/fsUtils.js';
 import { DATA_DIR, PORT } from './config/constants.js';
+import { loadAppConfig, saveAppConfig } from './config/appConfig.js';
+import { initClaude } from './services/claudeService.js';
+import { loadSkills, listSkills } from './services/skillEngine.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
 import { registerProjectRoutes } from './routes/projects.js';
@@ -25,6 +28,17 @@ import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 const fastify = Fastify({ logger: true });
+
+// Load global config and initialize services
+const appConfig = await loadAppConfig();
+if (appConfig.claude_api_key) {
+  initClaude(appConfig.claude_api_key, {
+    baseURL: appConfig.claude_base_url,
+    caCertPath: appConfig.claude_ca_cert,
+    model: appConfig.claude_model,
+  });
+}
+await loadSkills(null);
 
 await fastify.register(cors, { origin: true });
 await fastify.register(multipart, {
@@ -50,6 +64,21 @@ registerTerminalRoutes(fastify);
 registerExportRoutes(fastify);
 registerWsRoutes(fastify);
 registerTransferRoutes(fastify);
+
+// Config endpoints
+fastify.get('/api/config', async () => appConfig);
+fastify.put('/api/config', async (request) => {
+  Object.assign(appConfig, request.body);
+  await saveAppConfig(appConfig);
+  if (request.body.claude_api_key || request.body.claude_base_url) {
+    initClaude(appConfig.claude_api_key, {
+      baseURL: appConfig.claude_base_url,
+      caCertPath: appConfig.claude_ca_cert,
+      model: appConfig.claude_model,
+    });
+  }
+  return { ok: true };
+});
 
 // Serve frontend static files in production mode
 const __filename = fileURLToPath(import.meta.url);

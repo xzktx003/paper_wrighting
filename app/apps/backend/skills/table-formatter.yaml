@@ -1,0 +1,17 @@
+name: table-formatter
+display_name: "表格格式优化"
+description: "优化论文中表格的格式和呈现方式"
+type: utility
+trigger: manual
+
+prompt: |
+  优化论文表格：
+  1. 确保表格标题(caption)在表格上方且描述清晰
+  2. 使用booktabs风格（\toprule, \midrule, \bottomrule）
+  3. 最佳结果加粗，次优结果下划线
+  4. 合理使用多行多列合并
+  5. 数值对齐，保持一致的小数位数
+  6. 添加适当的单位说明
+  7. 确保表格不超出页面宽度
+
+parameters: []

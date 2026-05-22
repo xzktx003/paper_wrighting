@@ -1,14 +1,34 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { readFileSync } from 'fs';
+import https from 'https';
 
 let client = null;
 
-export function initClaude(apiKey) {
-  client = new Anthropic({ apiKey });
+export function initClaude(apiKey, { baseURL, caCertPath, model } = {}) {
+  const opts = { apiKey };
+  if (baseURL) {
+    opts.baseURL = baseURL;
+  }
+  if (caCertPath) {
+    try {
+      const ca = readFileSync(caCertPath);
+      opts.httpAgent = new https.Agent({ ca, rejectUnauthorized: true });
+    } catch (e) {
+      console.warn('Failed to load CA cert:', e.message);
+    }
+  }
+  client = new Anthropic(opts);
+  if (model) client._defaultModel = model;
 }
 
-export async function chatCompletion({ systemPrompt, messages, tools, stream }) {
+function getModel() {
+  return client?._defaultModel || 'claude-sonnet-4-20250514';
+}
+
+export async function chatCompletion({ systemPrompt, messages, tools, stream, model }) {
+  if (!client) throw new Error('Claude not initialized. Set API key in config.');
   const params = {
-    model: 'claude-sonnet-4-20250514',
+    model: model || getModel(),
     max_tokens: 8192,
     system: systemPrompt,
     messages,
@@ -22,11 +42,13 @@ export async function chatCompletion({ systemPrompt, messages, tools, stream }) 
   return client.messages.create(params);
 }
 
-export async function chatWithTools({ systemPrompt, messages, tools, onToolUse }) {
+export async function chatWithTools({ systemPrompt, messages, tools, onToolUse, model }) {
+  if (!client) throw new Error('Claude not initialized. Set API key in config.');
   let currentMessages = [...messages];
+  const useModel = model || getModel();
   while (true) {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: useModel,
       max_tokens: 8192,
       system: systemPrompt,
       messages: currentMessages,

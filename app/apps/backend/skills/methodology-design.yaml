@@ -1,0 +1,16 @@
+name: methodology-design
+display_name: "研究方法设计"
+description: "帮助设计和完善研究方法论，确保实验设计的严谨性"
+type: analysis
+trigger: manual
+
+prompt: |
+  作为研究方法论专家，帮助设计和完善研究方法：
+  1. 评估当前方法论的合理性和完整性
+  2. 建议适当的实验设计（对照组、变量控制）
+  3. 推荐合适的统计分析方法
+  4. 识别潜在的方法论缺陷
+  5. 确保可重复性和可验证性
+  6. 建议数据收集和采样策略
+
+parameters: []

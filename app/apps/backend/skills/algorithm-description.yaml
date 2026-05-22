@@ -1,0 +1,17 @@
+name: algorithm-description
+display_name: "算法描述撰写"
+description: "帮助撰写清晰的算法描述和伪代码"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助撰写算法描述：
+  1. 使用标准的algorithmic/algorithm2e环境
+  2. 确保伪代码清晰可读
+  3. 添加必要的注释说明关键步骤
+  4. 分析时间和空间复杂度
+  5. 在正文中用自然语言解释算法直觉
+  6. 确保符号与正文一致
+  7. 标注算法的输入输出
+
+parameters: []

@@ -1,0 +1,17 @@
+name: case-study-writer
+display_name: "案例分析撰写"
+description: "帮助撰写有说服力的案例分析"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助撰写案例分析(case study)：
+  1. 选择有代表性的案例
+  2. 包含成功案例和失败案例
+  3. 详细展示输入、输出和中间过程
+  4. 与baseline进行直观对比
+  5. 用高亮标注关键差异
+  6. 解释为什么方法在该案例上成功/失败
+  7. 使用图表辅助展示
+
+parameters: []

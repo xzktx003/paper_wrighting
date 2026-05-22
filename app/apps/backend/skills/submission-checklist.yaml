@@ -1,0 +1,20 @@
+name: submission-checklist
+display_name: "投稿检查清单"
+description: "投稿前的全面检查清单"
+type: review
+trigger: manual
+
+prompt: |
+  投稿前检查清单：
+  1. 页数是否符合要求
+  2. 格式是否使用正确模板
+  3. 是否匿名化（双盲审稿）
+  4. 参考文献格式是否正确
+  5. 图表是否清晰（300dpi以上）
+  6. 是否包含所有必需部分（abstract, introduction等）
+  7. 补充材料是否完整
+  8. 是否移除了所有TODO和注释
+  9. 是否检查了拼写和语法
+  10. PDF是否可正常打开和搜索
+
+parameters: []

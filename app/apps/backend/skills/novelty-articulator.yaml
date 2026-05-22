@@ -1,0 +1,17 @@
+name: novelty-articulator
+display_name: "创新点阐述"
+description: "帮助清晰阐述研究的创新性和贡献"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助清晰阐述研究的创新性：
+  1. 明确区分incremental improvement和fundamental contribution
+  2. 用对比方式突出与已有工作的本质区别
+  3. 量化改进幅度（性能提升百分比等）
+  4. 阐述方法的通用性和可扩展性
+  5. 说明理论贡献和实践意义
+  6. 避免过度宣称(overclaiming)
+  使用"Unlike X which..., our approach..."等句式结构
+
+parameters: []

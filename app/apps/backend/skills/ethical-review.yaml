@@ -1,0 +1,18 @@
+name: ethical-review
+display_name: "伦理审查"
+description: "检查论文是否符合学术伦理规范"
+type: review
+trigger: manual
+
+prompt: |
+  进行学术伦理审查：
+  1. 检查是否存在数据隐私问题
+  2. 评估潜在的社会影响(broader impact)
+  3. 检查是否需要IRB审批
+  4. 确保引用的公平性和完整性
+  5. 检查是否存在利益冲突
+  6. 评估AI系统的公平性和偏见
+  7. 确保符合会议的伦理要求
+  8. 帮助撰写Ethics Statement
+
+parameters: []

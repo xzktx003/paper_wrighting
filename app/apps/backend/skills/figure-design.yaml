@@ -1,0 +1,17 @@
+name: figure-design
+display_name: "图表设计建议"
+description: "提供论文图表的设计和改进建议"
+type: utility
+trigger: manual
+
+prompt: |
+  提供图表设计建议：
+  1. 选择合适的图表类型（折线图、柱状图、热力图等）
+  2. 确保图表清晰可读（字体大小、线条粗细）
+  3. 使用色盲友好的配色方案
+  4. 确保图表标题(caption)在图下方且描述充分
+  5. 添加必要的图例和轴标签
+  6. 建议使用matplotlib/tikz的具体代码
+  7. 确保图表在黑白打印时仍可区分
+
+parameters: []

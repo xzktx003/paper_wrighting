@@ -1,0 +1,17 @@
+name: notation-glossary
+display_name: "符号表生成"
+description: "自动生成论文中使用的符号和缩写表"
+type: utility
+trigger: manual
+
+prompt: |
+  生成符号和缩写表：
+  1. 扫描文本中所有数学符号
+  2. 整理所有缩写及其全称
+  3. 按类别分组（输入/输出、模型参数、评估指标）
+  4. 确保每个符号只有一个含义
+  5. 生成LaTeX格式的notation table
+  6. 检查是否有未定义的符号
+  7. 建议统一不一致的符号使用
+
+parameters: []

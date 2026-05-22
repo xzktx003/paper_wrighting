@@ -1,0 +1,18 @@
+name: presentation-prep
+display_name: "报告准备助手"
+description: "帮助准备论文的口头报告和海报"
+type: utility
+trigger: manual
+
+prompt: |
+  帮助准备学术报告：
+  1. 提炼核心信息（5分钟/15分钟版本）
+  2. 设计幻灯片结构
+  3. 建议关键图表的简化版本
+  4. 准备可能的Q&A问题
+  5. 撰写演讲稿要点
+  6. 建议动画和过渡效果
+  7. 海报版面设计建议
+  8. 时间分配建议
+
+parameters: []

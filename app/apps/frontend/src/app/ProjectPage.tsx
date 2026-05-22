@@ -31,9 +31,9 @@ interface LLMSettings {
 }
 
 const DEFAULT_LLM: LLMSettings = {
-  llmEndpoint: 'https://api.openai.com/v1/chat/completions',
+  llmEndpoint: '',
   llmApiKey: '',
-  llmModel: 'gpt-4o-mini',
+  llmModel: '',
 };
 
 function loadLLMSettings(): LLMSettings {
@@ -51,12 +51,31 @@ function loadLLMSettings(): LLMSettings {
   }
 }
 
-function saveLLMSettings(s: LLMSettings) {
+async function loadLLMSettingsFromBackend(): Promise<LLMSettings> {
   try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    const prev = raw ? JSON.parse(raw) : {};
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...prev, ...s }));
-  } catch {}
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    return {
+      llmEndpoint: cfg.claude_base_url || '',
+      llmApiKey: cfg.claude_api_key || '',
+      llmModel: cfg.claude_model || '',
+    };
+  } catch {
+    return loadLLMSettings();
+  }
+}
+
+async function saveLLMSettingsToBackend(s: LLMSettings) {
+  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  await fetch('/api/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      claude_base_url: s.llmEndpoint,
+      claude_api_key: s.llmApiKey,
+      claude_model: s.llmModel,
+    }),
+  });
 }
 
 function formatRelativeTime(iso: string, t: (k: string, o?: Record<string, unknown>) => string): string {
@@ -99,7 +118,8 @@ export default function ProjectPage() {
 
   // Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsForm, setSettingsForm] = useState<LLMSettings>(loadLLMSettings);
+  const [settingsForm, setSettingsForm] = useState<LLMSettings>(DEFAULT_LLM);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
   const [galleryCat, setGalleryCat] = useState('all');
@@ -130,6 +150,12 @@ export default function ProjectPage() {
     const res = await listProjects();
     setProjects(res.projects || []);
   }, []);
+
+  useEffect(() => {
+    if (settingsOpen && !settingsLoaded) {
+      loadLLMSettingsFromBackend().then((s) => { setSettingsForm(s); setSettingsLoaded(true); });
+    }
+  }, [settingsOpen, settingsLoaded]);
 
   useEffect(() => {
     loadProjects().catch((err) => setStatus(t('加载项目失败: {{error}}', { error: String(err) })));
@@ -950,17 +976,17 @@ export default function ProjectPage() {
             </div>
             <div className="modal-body">
               <div className="field">
-                <label>{t('LLM Endpoint')}</label>
+                <label>{t('API Base URL')}</label>
                 <input
                   className="input"
                   type="text"
-                  placeholder="https://api.openai.com/v1/chat/completions"
+                  placeholder="https://api.anthropic.com"
                   value={settingsForm.llmEndpoint}
                   onChange={(e) => setSettingsForm((p) => ({ ...p, llmEndpoint: e.target.value }))}
                 />
               </div>
               <div className="field">
-                <label>{t('LLM API Key')}</label>
+                <label>{t('API Key')}</label>
                 <input
                   className="input"
                   type="password"
@@ -970,22 +996,22 @@ export default function ProjectPage() {
                 />
               </div>
               <div className="field">
-                <label>{t('LLM Model')}</label>
+                <label>{t('Model')}</label>
                 <input
                   className="input"
                   type="text"
-                  placeholder="gpt-4o"
+                  placeholder="claude-sonnet-4.6"
                   value={settingsForm.llmModel}
                   onChange={(e) => setSettingsForm((p) => ({ ...p, llmModel: e.target.value }))}
                 />
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                {t('未配置 API Key 时将使用后端环境变量。')}
+                {t('保存后立即生效，AI 对话将使用新配置。')}
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn ghost" onClick={() => { setSettingsForm(loadLLMSettings()); setSettingsOpen(false); }}>{t('取消')}</button>
-              <button className="btn" onClick={() => { saveLLMSettings(settingsForm); setSettingsOpen(false); }}>{t('保存')}</button>
+              <button className="btn ghost" onClick={() => { setSettingsLoaded(false); setSettingsOpen(false); }}>{t('取消')}</button>
+              <button className="btn" onClick={() => { saveLLMSettingsToBackend(settingsForm); setSettingsOpen(false); }}>{t('保存')}</button>
             </div>
           </div>
         </div>

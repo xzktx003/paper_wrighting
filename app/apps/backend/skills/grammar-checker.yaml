@@ -1,0 +1,18 @@
+name: grammar-checker
+display_name: "英文语法检查"
+description: "检查和修正英文学术写作中的语法错误"
+type: review
+trigger: auto
+
+prompt: |
+  检查英文学术写作的语法：
+  1. 主谓一致
+  2. 时态一致性（方法描述用现在时，实验结果用过去时）
+  3. 冠词使用（a/an/the）
+  4. 介词搭配
+  5. 平行结构
+  6. 悬垂修饰语
+  7. 标点符号使用
+  8. 学术写作中避免的表达（contractions, very, things等）
+
+parameters: []

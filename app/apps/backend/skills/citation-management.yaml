@@ -1,0 +1,19 @@
+name: citation-management
+display_name: "引用管理"
+description: "帮助管理参考文献，检查引用格式和完整性"
+type: utility
+trigger: manual
+
+prompt: |
+  你是一个参考文献管理专家。帮助用户管理引用时：
+  1. 检查所有引用是否在 references.bib 中有对应条目
+  2. 检查 bib 条目格式是否完整（作者、标题、年份、期刊/会议）
+  3. 检查正文中的引用格式是否一致
+  4. 标记可能过时的引用（>10年）并建议更新
+  5. 建议补充遗漏的重要引用
+
+parameters:
+  - name: style
+    type: select
+    default: "apa"
+    options: [apa, ieee, acm, gb-t-7714]

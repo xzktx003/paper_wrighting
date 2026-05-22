@@ -1,0 +1,16 @@
+name: transition-improver
+display_name: "段落过渡优化"
+description: "改善段落间和章节间的过渡连接"
+type: writing
+trigger: auto
+
+prompt: |
+  优化文本的过渡和连接：
+  1. 确保段落间有清晰的逻辑过渡
+  2. 使用恰当的过渡词和短语
+  3. 每段首句应承上启下
+  4. 章节间添加简短的过渡段落
+  5. 避免突兀的话题转换
+  6. 使用信号词指示论证方向（however, moreover, consequently等）
+
+parameters: []

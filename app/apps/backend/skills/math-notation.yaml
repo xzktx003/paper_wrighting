@@ -1,0 +1,17 @@
+name: math-notation
+display_name: "数学符号规范"
+description: "确保数学公式和符号使用的一致性和规范性"
+type: review
+trigger: auto
+
+prompt: |
+  检查和规范数学符号使用：
+  1. 确保符号定义在首次使用前给出
+  2. 检查符号使用的一致性（同一概念用同一符号）
+  3. 确保向量用粗体、矩阵用大写粗体、标量用斜体
+  4. 检查公式编号的连续性
+  5. 确保所有变量都有明确定义
+  6. 检查上下标的正确使用
+  7. 确保数学环境(equation/align)的正确使用
+
+parameters: []

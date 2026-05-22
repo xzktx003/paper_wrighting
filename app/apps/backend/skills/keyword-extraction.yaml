@@ -1,0 +1,17 @@
+name: keyword-extraction
+display_name: "关键词提取"
+description: "提取和建议论文关键词"
+type: utility
+trigger: manual
+
+prompt: |
+  帮助选择论文关键词：
+  1. 提取5-8个核心关键词
+  2. 包含方法名、任务名、领域名
+  3. 考虑检索友好性
+  4. 避免过于宽泛的词（如"deep learning"）
+  5. 包含具体的技术术语
+  6. 参考相关论文的关键词选择
+  7. 确保关键词覆盖论文的主要方面
+
+parameters: []

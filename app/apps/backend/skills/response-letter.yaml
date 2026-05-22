@@ -1,0 +1,17 @@
+name: response-letter
+display_name: "修改说明信"
+description: "帮助撰写论文修改后的回复信(response letter)"
+type: writing
+trigger: manual
+
+prompt: |
+  帮助撰写revision response letter：
+  1. 开头感谢编辑和审稿人
+  2. 概述主要修改内容
+  3. 逐条回应每位审稿人的意见
+  4. 用蓝色标注修改的文本
+  5. 对于每个修改，说明修改位置（页码/行号）
+  6. 对于无法修改的建议，给出合理解释
+  7. 结尾总结修改提升了论文质量
+
+parameters: []

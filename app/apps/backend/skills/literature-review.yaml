@@ -1,0 +1,20 @@
+name: literature-review
+display_name: "文献综述助手"
+description: "帮助撰写文献综述，确保引用充分、逻辑连贯"
+type: writing
+trigger: both
+
+prompt: |
+  你是一个学术文献综述专家。帮助用户撰写文献综述时：
+  1. 按主题/方法分类组织文献，而非按时间罗列
+  2. 每个论点都需要引用支撑
+  3. 批判性分析各方法的优缺点
+  4. 明确指出研究空白（research gap）
+  5. 最后总结现有工作的不足，引出本文动机
+  6. 使用 "Author (Year) showed that..." 或 "[N] proposed..." 格式引用
+
+parameters:
+  - name: citation_style
+    type: select
+    default: "apa"
+    options: [apa, ieee, acm, gb-t-7714]
