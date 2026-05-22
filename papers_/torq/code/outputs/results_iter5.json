@@ -1,0 +1,23 @@
+{
+  "iteration": 5,
+  "method": "Outlier-Aware Channel Reordering + SmoothTORQ",
+  "timestamp": "2026-05-21T07:19:54.120861",
+  "model": "/data01/datasets/Qwen3-0.6B",
+  "baseline_ppl": 50.94306564331055,
+  "torq_ppl": 71.52725982666016,
+  "gap_to_bf16": 20.58419418334961,
+  "training_time_s": 1239.4583041667938,
+  "config": {
+    "model_path": "/data01/datasets/Qwen3-0.6B",
+    "output_dir": "./outputs",
+    "device": "cuda",
+    "block_size": 32,
+    "seq_len": 128,
+    "calib_batch_size": 8,
+    "num_calib_samples": 32,
+    "max_activation_samples": 512,
+    "lr": 0.005,
+    "scale_lr_mult": 3.0,
+    "num_steps": 400
+  }
+}

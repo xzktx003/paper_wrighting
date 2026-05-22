@@ -1,0 +1,23 @@
+{
+  "iteration": 4,
+  "method": "SmoothTORQ (Learned Scaling + Hadamard Residual Rotation)",
+  "timestamp": "2026-05-21T06:33:51.441114",
+  "model": "/data01/datasets/Qwen3-0.6B",
+  "baseline_ppl": 50.94306564331055,
+  "torq_ppl": 73.35243225097656,
+  "gap_to_bf16": 22.409366607666016,
+  "training_time_s": 1218.456110239029,
+  "config": {
+    "model_path": "/data01/datasets/Qwen3-0.6B",
+    "output_dir": "./outputs",
+    "device": "cuda",
+    "block_size": 32,
+    "seq_len": 128,
+    "calib_batch_size": 8,
+    "num_calib_samples": 32,
+    "max_activation_samples": 512,
+    "lr": 0.005,
+    "scale_lr_mult": 3.0,
+    "num_steps": 400
+  }
+}

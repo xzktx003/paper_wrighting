@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-05-21T03:29:53.323122",
+  "model": "/data01/datasets/Qwen3-0.6B",
+  "block_size": 32,
+  "baseline_ppl": 20.760318756103516,
+  "rtn_ppl": 39.04058837890625,
+  "torq_ppl": 55.51475143432617,
+  "improvement_over_rtn": -16.474163055419922,
+  "gap_to_bf16": 34.754432678222656,
+  "training_time_s": 1295.3160922527313,
+  "config": {
+    "lr_inter": 0.005,
+    "lr_intra": 0.005,
+    "num_steps_inter": 300,
+    "num_steps_intra": 300,
+    "num_calib_samples": 32,
+    "max_activation_samples": 512,
+    "seq_len": 2048
+  }
+}

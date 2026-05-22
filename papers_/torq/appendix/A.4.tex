@@ -1,0 +1,42 @@
+\subsection*{Appendix A.4: Exact Solver for Optimal Rotation Angle}
+\label{app:exact_solver}
+
+For a given column pair $(p, q)$, our objective is to find a scalar angle $\theta^\star \in [0, 2\pi)$ that minimizes the codebook equilibrium loss $\mathcal{L}_{\text{code}}(\theta)$. Since the quantization operator $Q_{\text{mxFP4}}$ has discrete step-like characteristics, the loss function $\mathcal{L}_{\text{code}}(\theta)$ exhibits a \textbf{Piecewise Constant} property with respect to $\theta$. This allows us to avoid gradient descent and instead obtain the global optimal solution by enumerating a finite set of "critical angles."
+
+\textbf{1. Critical Angle Set Construction}
+
+Consider the normalized activation matrix $\mathbf{X}_{\text{norm}} = \mathbf{S}^{-1}\mathbf{X}$. Let the vectors for the selected columns be $\mathbf{u} = \mathbf{X}_{\text{norm}[:, p]}$ and $\mathbf{v} = \mathbf{X}_{\text{norm}[:, q]}$. For each sample $b \in \{1, \dots, B\}$, we define its 2D polar coordinates:
+\begin{equation}
+r_b = \sqrt{u_b^2 + v_b^2}, \quad \varphi_b = \mathrm{atan2}(v_b, u_b) \in (-\pi, \pi]
+\end{equation}
+Under a Givens rotation $\mathbf{G}_{(p,q)}(\theta)$, the magnitude of the projected component on the first axis becomes:
+\begin{equation}
+x^{(1)}_b(\theta) = r_b |\cos(\varphi_b - \theta)|
+\end{equation}
+The quantization state of sample $b$ changes only when its projected magnitude crosses a decision boundary $d_j \in \{d_1, \dots, d_{J-1}\}$ of the MXFP4 format. The condition for crossing boundary $d_j$ is:
+\begin{equation}
+r_b |\cos(\varphi_b - \theta)| = d_j
+\end{equation}
+If $r_b \ge d_j$, there exist solutions. Let $\beta_{b,j} = d_j/r_b \in (0, 1]$ and $\alpha_{b,j} = \arccos(\beta_{b,j})$. The critical angles are given by:
+\begin{equation}
+\theta = \varphi_b \mp \alpha_{b,j} + 2\pi k
+\end{equation}
+By folding these solutions into the interval $[0, 2\pi)$, we obtain the set of critical angles $\mathcal{T}_{b,j}^{(1)}$ for the first axis. Similarly, for the second axis, using the phase shift $\varphi_b - \pi/2$, we obtain $\mathcal{T}_{b,j}^{(2)}$. The complete set of critical angles is:
+\begin{equation}
+\mathcal{T} = \bigcup_{b,j} \left( \mathcal{T}_{b,j}^{(1)} \cup \mathcal{T}_{b,j}^{(2)} \right)
+\end{equation}
+
+\textbf{2. Optimal Search via Finite Enumeration}
+
+Sort the unique angles in $\mathcal{T}$ as $0 \le \tau_1 < \tau_2 < \dots < \tau_M < 2\pi$.
+\textbf{Key Property:} Within any open interval $(\tau_m, \tau_{m+1})$, the quantization bin assignment for all samples remains constant, implying the loss function $\mathcal{L}_{\text{code}}$ is constant.
+
+Therefore, we only need to evaluate the loss at the midpoint of each interval:
+\begin{equation}
+\tilde{\theta}_m = \frac{\tau_m + \tau_{m+1}}{2}, \quad m=1, \dots, M-1
+\end{equation}
+(Note: Include intervals wrapping around $2\pi$ as needed). The global optimal angle is:
+\begin{equation}
+\theta^\star = \mathop{\arg\min}_{\tilde{\theta} \in \{\tilde{\theta}_1, \dots, \tilde{\theta}_M\}} \mathcal{L}_{\text{code}}(\tilde{\theta})
+\end{equation}
+This approach guarantees finding the \textbf{global optimal} rotation angle for the column pair in $\mathcal{O}(|\mathcal{T}|)$ time. In practice, sampling a subset of blocks to estimate $\mathcal{T}$ significantly reduces computational cost while maintaining high accuracy.
