@@ -55,6 +55,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
 
   const typeColors: Record<string, string> = {
     writing: '#1976d2',
+    research: '#7b1fa2',
     review: '#e65100',
     analysis: '#2e7d32',
     utility: '#6a1b9a',
@@ -95,6 +96,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
             <select value={newSkill.type} onChange={e => setNewSkill(p => ({ ...p, type: e.target.value }))}
               style={{ flex: 1, padding: '3px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px' }}>
               <option value="writing">writing</option>
+              <option value="research">research</option>
               <option value="review">review</option>
               <option value="analysis">analysis</option>
               <option value="utility">utility</option>
@@ -118,7 +120,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
       )}
 
       <div style={{ padding: '4px 8px', display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-        {['all', 'writing', 'review', 'analysis', 'methodology', 'argumentation', 'utility', 'code'].map(t => (
+        {['all', 'writing', 'research', 'review', 'analysis', 'methodology', 'argumentation', 'utility', 'code'].map(t => (
           <button
             key={t}
             onClick={() => setFilter(t)}

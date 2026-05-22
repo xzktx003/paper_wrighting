@@ -7,8 +7,7 @@ import crypto from 'crypto';
 import { DATA_DIR, TEMPLATE_DIR } from '../config/constants.js';
 import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../utils/fsUtils.js';
 import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
-import { isTextFile, extractDocumentBody, mergeTemplateBody } from '../utils/texUtils.js';
-import { readTemplateManifest, copyTemplateIntoProject } from '../services/templateService.js';
+import { isTextFile } from '../utils/texUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
@@ -203,8 +202,32 @@ export function registerProjectRoutes(fastify) {
     const { id } = req.params;
     const projectRoot = await getProjectRoot(id);
     const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, trashed: true, trashedAt: new Date().toISOString() };
+    let meta;
+    try {
+      await fs.access(projectRoot);
+      meta = await readJson(metaPath);
+    } catch (err) {
+      if (err.code === 'ENOENT' || err instanceof SyntaxError) {
+        try {
+          const stat = await fs.stat(projectRoot);
+          if (!stat.isDirectory()) return { ok: true };
+        } catch (statErr) {
+          if (statErr.code === 'ENOENT') return { ok: true };
+          throw statErr;
+        }
+        meta = { id, name: id, createdAt: new Date().toISOString() };
+      } else {
+        throw err;
+      }
+    }
+    const next = {
+      ...meta,
+      id: meta.id || id,
+      name: meta.name || id,
+      trashed: true,
+      trashedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     await writeJson(metaPath, next);
     return { ok: true };
   });
@@ -364,40 +387,6 @@ export function registerProjectRoutes(fastify) {
       }
     }
     return { files };
-  });
-
-  fastify.post('/api/projects/:id/convert-template', async (req) => {
-    const { id } = req.params;
-    const { targetTemplate, mainFile = 'main.tex' } = req.body || {};
-    if (!targetTemplate) return { ok: false, error: 'Missing targetTemplate' };
-    const { templates } = await readTemplateManifest();
-    const template = templates.find((item) => item.id === targetTemplate);
-    if (!template) return { ok: false, error: 'Unknown template' };
-
-    try {
-      const projectRoot = await getProjectRoot(id);
-      const currentMainPath = safeJoin(projectRoot, mainFile);
-      const templateRoot = path.join(TEMPLATE_DIR, template.id);
-      const templateMain = template.mainFile || 'main.tex';
-      const templateMainPath = path.join(templateRoot, templateMain);
-
-      let currentTex = '';
-      try {
-        currentTex = await fs.readFile(currentMainPath, 'utf8');
-      } catch {
-        currentTex = '';
-      }
-
-      const templateTex = await fs.readFile(templateMainPath, 'utf8');
-      const body = extractDocumentBody(currentTex);
-      const merged = mergeTemplateBody(templateTex, body);
-      const changedFiles = await copyTemplateIntoProject(templateRoot, projectRoot);
-      await fs.writeFile(safeJoin(projectRoot, templateMain), merged, 'utf8');
-      changedFiles.push(templateMain);
-      return { ok: true, mainFile: templateMain, changedFiles };
-    } catch (err) {
-      return { ok: false, error: `Template convert failed: ${String(err)}` };
-    }
   });
 
   fastify.post('/api/projects/:id/template', async (req) => {

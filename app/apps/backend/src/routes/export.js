@@ -1,22 +1,23 @@
-import { mergeChapters, exportToLatex, exportToPdf } from '../services/exportService.js';
+import { markdownToLatex, latexToMarkdown, latexToPdf, markdownToPdf } from '../services/exportService.js';
 
 export function registerExportRoutes(fastify) {
-  fastify.post('/api/export/merge', async (request) => {
-    const { projectPath } = request.body;
-    const merged = await mergeChapters(projectPath);
-    return { content: merged };
+  fastify.post('/api/export/md-to-latex', async (request) => {
+    const { projectPath, inputFile } = request.body;
+    return await markdownToLatex(projectPath, inputFile);
   });
 
-  fastify.post('/api/export/latex', async (request) => {
-    const { projectPath, template } = request.body;
-    const result = await exportToLatex(projectPath, template);
-    return result;
+  fastify.post('/api/export/latex-to-md', async (request) => {
+    const { projectPath, inputFile } = request.body;
+    return await latexToMarkdown(projectPath, inputFile);
   });
 
-  fastify.post('/api/export/pdf', async (request) => {
-    const { projectPath, engine } = request.body;
-    await exportToLatex(projectPath);
-    const result = await exportToPdf(projectPath, engine);
-    return result;
+  fastify.post('/api/export/latex-to-pdf', async (request) => {
+    const { projectPath, inputFile, engine } = request.body;
+    return await latexToPdf(projectPath, inputFile, engine);
+  });
+
+  fastify.post('/api/export/md-to-pdf', async (request) => {
+    const { projectPath, inputFile, engine } = request.body;
+    return await markdownToPdf(projectPath, inputFile, engine);
   });
 }

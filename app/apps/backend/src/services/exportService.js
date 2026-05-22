@@ -1,5 +1,5 @@
-import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import { spawn } from 'child_process';
 import YAML from 'yaml';
 
@@ -16,47 +16,69 @@ export async function mergeChapters(projectPath) {
   return parts.join('\n\n---\n\n');
 }
 
-export async function exportToLatex(projectPath, template) {
-  const merged = await mergeChapters(projectPath);
-  const mergedPath = join(projectPath, 'output', 'merged.md');
-  await writeFile(mergedPath, merged, 'utf-8');
-
-  const outputTex = join(projectPath, 'output', 'paper.tex');
-  const args = [mergedPath, '-o', outputTex, '--standalone'];
-  if (template) {
-    args.push('--template', template);
-  }
-
+function runCommand(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('pandoc', args, { cwd: projectPath });
+    const proc = spawn(cmd, args, opts);
+    let stdout = '';
     let stderr = '';
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.stdout?.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr?.on('data', (d) => { stderr += d.toString(); });
     proc.on('close', (code) => {
-      if (code === 0) resolve({ texPath: outputTex });
-      else reject(new Error(`Pandoc failed: ${stderr}`));
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(`${cmd} exited with code ${code}: ${stderr}`));
     });
     proc.on('error', reject);
   });
 }
 
-export async function exportToPdf(projectPath, engine = 'xelatex') {
-  const texPath = join(projectPath, 'output', 'paper.tex');
+async function ensureOutputDir(projectPath) {
   const outputDir = join(projectPath, 'output');
+  await mkdir(outputDir, { recursive: true });
+  return outputDir;
+}
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn(engine, [
-      '-interaction=nonstopmode',
-      `-output-directory=${outputDir}`,
-      texPath
-    ], { cwd: projectPath });
+export async function markdownToLatex(projectPath, inputFile) {
+  const outputDir = await ensureOutputDir(projectPath);
+  let srcPath;
 
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
-    proc.on('close', (code) => {
-      resolve({ code, stdout, stderr, pdfPath: join(outputDir, 'paper.pdf') });
-    });
-    proc.on('error', reject);
-  });
+  if (inputFile) {
+    srcPath = join(projectPath, inputFile);
+  } else {
+    const merged = await mergeChapters(projectPath);
+    srcPath = join(outputDir, 'merged.md');
+    await writeFile(srcPath, merged, 'utf-8');
+  }
+
+  const outputTex = join(outputDir, 'paper.tex');
+  await runCommand('pandoc', [srcPath, '-o', outputTex, '--standalone'], { cwd: projectPath });
+  return { texPath: outputTex, relativePath: 'output/paper.tex' };
+}
+
+export async function latexToMarkdown(projectPath, inputFile) {
+  const outputDir = await ensureOutputDir(projectPath);
+  const srcPath = inputFile ? join(projectPath, inputFile) : join(outputDir, 'paper.tex');
+  const outputMd = join(outputDir, 'paper.md');
+
+  await runCommand('pandoc', [srcPath, '-o', outputMd, '--wrap=none'], { cwd: projectPath });
+  return { mdPath: outputMd, relativePath: 'output/paper.md' };
+}
+
+export async function latexToPdf(projectPath, inputFile, engine = 'xelatex') {
+  const outputDir = await ensureOutputDir(projectPath);
+  const srcPath = inputFile ? join(projectPath, inputFile) : join(outputDir, 'paper.tex');
+
+  await runCommand(engine, [
+    '-interaction=nonstopmode',
+    `-output-directory=${outputDir}`,
+    srcPath
+  ], { cwd: projectPath });
+
+  const baseName = inputFile ? inputFile.replace(/\.tex$/, '.pdf').split('/').pop() : 'paper.pdf';
+  return { pdfPath: join(outputDir, baseName), relativePath: `output/${baseName}` };
+}
+
+export async function markdownToPdf(projectPath, inputFile, engine = 'xelatex') {
+  const { texPath } = await markdownToLatex(projectPath, inputFile);
+  const result = await latexToPdf(projectPath, 'output/paper.tex', engine);
+  return result;
 }
