@@ -1,0 +1,22 @@
+{
+  "iteration": 2,
+  "method": "Hybrid Analytical-Learned (Givens inter + STE intra)",
+  "timestamp": "2026-05-21T05:26:05.522385",
+  "model": "/data01/datasets/Qwen3-0.6B",
+  "baseline_ppl": 50.94306564331055,
+  "torq_ppl": 152.9209442138672,
+  "gap_to_bf16": 101.97787857055664,
+  "training_time_s": 567.4443354606628,
+  "config": {
+    "model_path": "/data01/datasets/Qwen3-0.6B",
+    "output_dir": "./outputs",
+    "device": "cuda",
+    "block_size": 32,
+    "seq_len": 128,
+    "calib_batch_size": 8,
+    "num_calib_samples": 32,
+    "max_activation_samples": 512,
+    "lr": 0.005,
+    "num_steps": 300
+  }
+}

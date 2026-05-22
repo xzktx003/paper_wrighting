@@ -1,0 +1,17 @@
+\begin{table}[h]
+\centering
+\caption{Performance on complex reasoning tasks (Qwen3-8B).}
+\label{tab:hard_tasks}
+\resizebox{0.5\textwidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Method} & \textbf{MMLU} & \textbf{GSM8K} & \textbf{HumanEval} & \textbf{MathQA} \\
+\midrule
+Baseline & 74.71 & 88.25 & 64.63 & 49.65 \\
+GPTQ & 50.29 & 67.37 & 30.84 & 36.92 \\
+QuaRot & 68.88 & 79.30 & 53.37 & 41.12 \\
+\textbf{TORQ (ours)} & \textbf{70.82} & \textbf{86.82} & \textbf{61.15} & \textbf{47.94} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}

@@ -1,0 +1,21 @@
+\begin{table*}[h!]
+\centering
+\caption{Performance comparison on \textbf{LLaMA3-70B}.}
+\label{tab:llama3_70b_full}
+% \resizebox{\textwidth}{!}{
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Method} & \textbf{Wiki2} & \textbf{ARC-C} & \textbf{ARC-E} & \textbf{Hella} & \textbf{LAMBADA} & \textbf{PIQA} & \textbf{WinG} \\
+\midrule
+Baseline (FP16) & 2.87 & 64.25 & 85.94 & 84.93 & 79.37 & 84.44 & 80.74 \\
+\midrule
+RTN & 3180.43 & 25.09 & 31.44 & 26.73 & 1.57 & 51.96 & 48.70 \\
+GPTQ & 1532.08 & 27.82 & 39.72 & 28.98 & 3.45 & 58.60 & 50.36 \\
+QuaRot & 15.38 & 41.19 & 66.33 & 71.54 & 60.47 & 74.30 & 63.41 \\
+OSTQuant & 6.01 & 58.29 & 79.39 & 80.25 & 72.90 & 78.73 & 74.01 \\
+% FlatQuant & 5.81 & 58.95 & 81.47 & 80.87 & 74.99 & 80.95 & 76.24 \\
+\textbf{TORQ (ours)} & \textbf{3.49} & \textbf{60.47} & \textbf{82.17} & \textbf{81.59} & \textbf{75.63} & \textbf{80.89} & \textbf{76.91} \\
+\bottomrule
+\end{tabular}
+% }
+\end{table*}

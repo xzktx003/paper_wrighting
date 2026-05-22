@@ -1,0 +1,48 @@
+\subsection*{Appendix A.7: Complexity Analysis}
+\label{app:complexity_analysis}
+
+\textbf{1. Offline Calibration Phase}
+
+The calibration process involves constructing rotation matrices using a small set of calibration data (typically $T=128$ samples).
+
+\textbf{Inter-block Rotation Construction:}
+\begin{itemize}
+    \item Covariance Estimation: Computing covariance matrices for all $K$ positions requires $\mathcal{O}(T B^2 K)$.
+    \item Givens Iterations (Algorithm 1): Each position requires $\mathcal{O}(B^3)$ for convergence. Total for $K$ positions: $\mathcal{O}(B^3 K)$.
+    \item \textbf{Total Inter-block Complexity:} $\mathcal{O}(T B^2 K + B^3 K)$.
+\end{itemize}
+
+\textbf{Intra-block Rotation Construction:}
+\begin{itemize}
+    \item S-step: Updating scaling factors requires scanning all data: $\mathcal{O}(TBK)$.
+    \item R-step: In the worst case (full pairwise updates), it scales with $\mathcal{O}(TK^3)$. However, our heuristic column selection significantly reduces the constant factor.
+    \item \textbf{Total Intra-block Complexity:} $\mathcal{O}(MaxIter \cdot (TBK + TK^3))$.
+\end{itemize}
+
+Given typical values ($T=128, B=32, K=32, MaxIter=10$), the total calibration cost is computationally efficient and completes within seconds to minutes on a single GPU.
+
+\textbf{2. Online Inference Phase}
+
+\textbf{Forward Rotation:}
+Applying the rotations requires standard matrix multiplications:
+\begin{itemize}
+    \item Inter-block: $\mathcal{O}(B^2 K)$ (Block-diagonal multiplication).
+    \item Intra-block: $\mathcal{O}(B K^2)$.
+\end{itemize}
+
+\textbf{Inverse Transformation (Zero Overhead):}
+Crucially, the inverse transformations ($\mathbf{R}_{\text{intra}}^\top$ and $\mathbf{R}_{\text{inter}}^\top$) are fused into the weights of the subsequent linear layer offline (as described in Appendix A.3). Therefore, \textbf{no extra FLOPs} are incurred for the inverse step during online inference.
+
+\textbf{3. Practical Deployment Suggestions}
+
+\begin{itemize}
+    \item \textbf{Memory Overhead:} Storing the rotation matrices requires $B^2$ parameters for inter-block (per position, actually decomposed into block-diagonal) and $K^2$ parameters for intra-block. For a configuration of $B=128, K=32$, this amounts to approximately 17k parameters, which is negligible compared to LLM weights.
+    \item \textbf{Numerical Stability:} In Algorithm 1, we add a small perturbation $\delta \mathbf{I}$ (e.g., $\delta=10^{-8}$) to the covariance matrix to prevent singularity. In the S-step, we ensure scaling factors are non-zero.
+    \item \textbf{Parallelization:}
+    \begin{itemize}
+        \item Inter-block rotations for different positions $k$ are independent and can be parallelized.
+        \item Intra-block Givens rotations for disjoint column pairs are parallelizable.
+        \item MXFP4 quantization is naturally parallel across blocks.
+    \end{itemize}
+    \item \textbf{Integration:} TORQ operates as an independent PTQ preprocessing module compatible with mainstream frameworks like PyTorch and TensorFlow, and can be easily integrated into existing quantization pipelines (e.g., GPTQ, AWQ).
+\end{itemize}

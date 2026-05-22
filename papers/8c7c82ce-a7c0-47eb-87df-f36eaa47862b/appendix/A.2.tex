@@ -1,0 +1,25 @@
+\subsection*{Appendix A.2: Convexity Analysis of the MXFP4 Quantization Error Model}
+\label{app:convexity_analysis}
+
+For 4-bit MXFP4 (e2m1) block floating-point quantization, the Mean Squared Error (MSE) of block $b$ is jointly determined by the \textbf{Distribution Shape} and \textbf{Dynamic Range Coverage}. According to asymptotic quantization theory \cite{zamir}, its lower bound is given by:
+\begin{equation}
+D_b \geq \underbrace{\frac{\Delta_{\min}^2}{12} \cdot K}_{\text{Granularity Error}} \cdot \underbrace{\exp\left( 2 \cdot \mathrm{Var}(\log_2 |\mathbf{a}_b|) \right)}_{\text{Shape Factor}} \cdot \underbrace{\exp\left( D_{\text{KL}}(f_U \| \mathcal{U}_{[L,U]}) \right)}_{\text{Matching Factor}}
+\end{equation}
+where:
+\begin{itemize}
+    \item $\Delta_{\min} = 2^{e_{\min}-1}$ is the minimum quantization step size.
+    \item $\mathbf{a}_b = \mathbf{z}_b / s_b$ is the normalized activation vector.
+    \item $f_U$ is the probability density function of the logarithmic magnitude $u = \log_2 |\mathbf{a}|$.
+    \item $\mathcal{U}_{[L,U]}$ denotes the uniform distribution over the interval $[L, U]$, where $L=e_{\min}$ and $U=e_{\max} + \log_2 1.5$.
+\end{itemize}
+
+The total quantization error is defined as $D_{\text{total}} = \sum_{b=1}^B D_b$. Our objective is to minimize $D_{\text{total}}$ via orthogonal transformations:
+\begin{equation}
+\min_{\mathbf{R}_{\text{inter}}, \mathbf{R}_{\text{intra}}} \mathbb{E}\left[ \|\mathbf{x} - \hat{\mathbf{x}}\|_2^2 \right]
+\end{equation}
+Subject to the following constraints:
+\begin{enumerate}
+    \item Orthogonality: $\mathbf{R}_{\text{inter}} \in \mathcal{O}(B)$ and $\mathbf{R}_{\text{intra}} \in \mathcal{O}(K)$.
+    \item Training-free: No model fine-tuning is required.
+    \item Data-efficiency: Low calibration data requirement.
+\end{enumerate}
