@@ -46,9 +46,5 @@ const latexMode = {
 };
 
 export function latex() {
-  return StreamLanguage.define(latexMode, {
-    languageData: {
-      commentTokens: { line: '%' }
-    }
-  });
+  return StreamLanguage.define(latexMode);
 }

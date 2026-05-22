@@ -3,6 +3,7 @@ import { useProject, ProjectConfig } from '../hooks/useProject';
 import { useConversations } from '../hooks/useConversations';
 import { readChapter, writeChapter, readCodeFile } from '../api/projectApi';
 import { listSkills, reloadSkills, SkillInfo } from '../api/skillApi';
+import { isImagePath, isPdfPath, isPreviewableTextPath } from '../utils/previewAssets';
 
 interface OpenFile {
   filename: string;
@@ -27,7 +28,7 @@ interface AppState {
   convLoading: boolean;
   refreshConversations: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
-  createConversation: (data: any) => Promise<void>;
+  createConversation: (data: any) => Promise<unknown>;
   removeConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, newName: string) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
@@ -77,6 +78,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
         editor_mode: 'latex',
         chapters,
         global_skills: [],
+        files: items.filter((item): item is { path: string; type: 'file' | 'dir' } => item.type === 'file' || item.type === 'dir'),
       };
 
       setProject({ path: `__openprism__:${id}`, config, loading: false, error: null });
@@ -125,7 +127,9 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     let content = '';
     try {
       const opId = getOpenPrismId();
-      if (opId) {
+      if (opId && (isImagePath(file.path) || isPdfPath(file.path))) {
+        content = '';
+      } else if (opId && isPreviewableTextPath(file.path)) {
         const res = await fetch(`/api/projects/${opId}/file?path=${encodeURIComponent(file.path)}`);
         const data = await res.json();
         content = data.content || '';

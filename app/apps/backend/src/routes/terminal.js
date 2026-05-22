@@ -1,47 +1,53 @@
-import { spawn } from 'child_process';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 import path from 'path';
 import { existsSync } from 'fs';
-import { DATA_DIR } from '../config/constants.js';
+import { getProjectRoot } from '../services/projectService.js';
+
+// node-pty 是原生模块，需从项目根 node_modules 加载
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootRequire = createRequire(path.join(__dirname, '..', '..', '..', '..', 'node_modules', 'noop.txt'));
+const pty = rootRequire('node-pty');
 
 const terminals = new Map();
 let nextId = 1;
 
-function resolveCwd(cwd) {
+async function resolveCwd(cwd) {
   if (cwd && cwd.startsWith('__openprism__:')) {
     const id = cwd.replace('__openprism__:', '');
-    return path.join(DATA_DIR, id);
+    return await getProjectRoot(id);
   }
   if (cwd && existsSync(cwd)) return cwd;
   return process.env.HOME;
 }
 
 export function registerTerminalRoutes(fastify) {
-  fastify.get('/api/terminal/ws', { websocket: true }, (connection, request) => {
+  fastify.get('/api/terminal/ws', { websocket: true }, async (connection, request) => {
     const ws = connection.socket;
-    const cwd = resolveCwd(request.query.cwd);
+    const cwd = await resolveCwd(request.query.cwd);
     const cols = parseInt(request.query.cols) || 80;
     const rows = parseInt(request.query.rows) || 24;
     const shell = process.env.SHELL || '/bin/bash';
 
     const id = String(nextId++);
-    const proc = spawn('script', ['-qc', shell, '/dev/null'], {
+    const ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols,
+      rows,
       cwd,
-      env: { ...process.env, TERM: 'xterm-256color', COLUMNS: String(cols), LINES: String(rows) },
+      env: process.env,
     });
 
-    terminals.set(id, proc);
+    terminals.set(id, ptyProcess);
     ws.send(JSON.stringify({ type: 'id', id }));
 
-    proc.stdout.on('data', (data) => {
-      try { ws.send(JSON.stringify({ type: 'data', data: data.toString() })); } catch (e) {}
+    ptyProcess.onData((data) => {
+      try { ws.send(JSON.stringify({ type: 'data', data })); } catch (e) {}
     });
 
-    proc.stderr.on('data', (data) => {
-      try { ws.send(JSON.stringify({ type: 'data', data: data.toString() })); } catch (e) {}
-    });
-
-    proc.on('exit', (code) => {
-      try { ws.send(JSON.stringify({ type: 'exit', code })); } catch (e) {}
+    ptyProcess.onExit(({ exitCode }) => {
+      try { ws.send(JSON.stringify({ type: 'exit', code: exitCode })); } catch (e) {}
       terminals.delete(id);
       ws.close();
     });
@@ -50,17 +56,17 @@ export function registerTerminalRoutes(fastify) {
       try {
         const parsed = JSON.parse(msg.toString());
         if (parsed.type === 'data') {
-          proc.stdin.write(parsed.data);
+          ptyProcess.write(parsed.data);
         } else if (parsed.type === 'resize') {
-          // Cannot resize without PTY, but accept the message
+          ptyProcess.resize(parsed.cols, parsed.rows);
         }
       } catch (e) {
-        proc.stdin.write(msg.toString());
+        ptyProcess.write(msg.toString());
       }
     });
 
     ws.on('close', () => {
-      proc.kill();
+      ptyProcess.kill();
       terminals.delete(id);
     });
   });

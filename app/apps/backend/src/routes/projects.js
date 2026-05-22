@@ -12,6 +12,15 @@ import { getProjectRoot } from '../services/projectService.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
 
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf', '.eps'];
+const PROJECT_SUPPORT_DIRS = ['docs'];
+
+async function ensureProjectSupportDirs(projectRoot) {
+  for (const dir of PROJECT_SUPPORT_DIRS) {
+    await ensureDir(path.join(projectRoot, dir));
+  }
+}
+
 export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects', async () => {
     await ensureDir(DATA_DIR);
@@ -24,6 +33,7 @@ export function registerProjectRoutes(fastify) {
         const meta = await readJson(metaPath);
         projects.push({
           ...meta,
+          dirName: entry.name,
           updatedAt: meta.updatedAt || meta.createdAt,
           tags: meta.tags || [],
           archived: meta.archived || false,
@@ -43,6 +53,7 @@ export function registerProjectRoutes(fastify) {
     const id = crypto.randomUUID();
     const projectRoot = path.join(DATA_DIR, id);
     await ensureDir(projectRoot);
+    await ensureProjectSupportDirs(projectRoot);
     const meta = { id, name, createdAt: new Date().toISOString() };
     await writeJson(path.join(projectRoot, 'project.json'), meta);
     if (template) {
@@ -281,6 +292,7 @@ export function registerProjectRoutes(fastify) {
   fastify.get('/api/projects/:id/tree', async (req) => {
     const { id } = req.params;
     const projectRoot = await getProjectRoot(id);
+    await ensureProjectSupportDirs(projectRoot);
     const items = await listFilesRecursive(projectRoot);
     let fileOrder = {};
     try {
@@ -321,13 +333,32 @@ export function registerProjectRoutes(fastify) {
     const { path: filePath } = req.query;
     if (!filePath) return reply.code(400).send('Missing path');
     const projectRoot = await getProjectRoot(id);
-    const abs = safeJoin(projectRoot, filePath);
-    const buffer = await fs.readFile(abs);
-    const ext = path.extname(filePath).toLowerCase();
+    let resolvedPath = filePath;
+    let abs = safeJoin(projectRoot, filePath);
+    let buffer;
+    try {
+      buffer = await fs.readFile(abs);
+    } catch (err) {
+      if (err.code !== 'ENOENT' || path.extname(filePath)) throw err;
+      for (const ext of IMAGE_EXTENSIONS) {
+        try {
+          resolvedPath = `${filePath}${ext}`;
+          abs = safeJoin(projectRoot, resolvedPath);
+          buffer = await fs.readFile(abs);
+          break;
+        } catch (candidateErr) {
+          if (candidateErr.code !== 'ENOENT') throw candidateErr;
+        }
+      }
+      if (!buffer) throw err;
+    }
+    const ext = path.extname(resolvedPath).toLowerCase();
     const contentTypes = {
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
       '.svg': 'image/svg+xml',
       '.pdf': 'application/pdf',
       '.eps': 'application/postscript'
@@ -369,6 +400,42 @@ export function registerProjectRoutes(fastify) {
       await writeJson(metaPath, meta);
     } catch { /* ignore */ }
     return { ok: true };
+  });
+
+  fastify.post('/api/projects/:id/file', async (req) => {
+    const { id } = req.params;
+    const { path: filePath, type = 'file', content = '' } = req.body || {};
+    if (!filePath) return { ok: false, error: 'Missing file path' };
+    if (!['file', 'folder', 'dir'].includes(type)) {
+      return { ok: false, error: 'Invalid create type' };
+    }
+    const projectRoot = await getProjectRoot(id);
+    let abs;
+    try {
+      abs = safeJoin(projectRoot, filePath);
+    } catch {
+      return { ok: false, error: 'Invalid file path' };
+    }
+    try {
+      await fs.access(abs);
+      return { ok: false, error: 'Destination already exists.' };
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    if (type === 'folder' || type === 'dir') {
+      await ensureDir(abs);
+    } else {
+      await ensureDir(path.dirname(abs));
+      await fs.writeFile(abs, content ?? '', 'utf8');
+    }
+    try {
+      const metaPath = path.join(projectRoot, 'project.json');
+      const meta = await readJson(metaPath);
+      meta.updatedAt = new Date().toISOString();
+      await writeJson(metaPath, meta);
+    } catch { /* ignore */ }
+    return { ok: true, path: filePath, type: type === 'folder' ? 'dir' : type };
   });
 
   fastify.get('/api/projects/:id/files', async (req) => {
@@ -416,8 +483,40 @@ export function registerProjectRoutes(fastify) {
     const projectRoot = await getProjectRoot(id);
     const absFrom = safeJoin(projectRoot, from);
     const absTo = safeJoin(projectRoot, to);
+    const sourceStat = await fs.stat(absFrom);
+    if (sourceStat.isDirectory() && isInsidePath(absTo, absFrom)) {
+      return { ok: false, error: 'Cannot move a folder into itself.' };
+    }
+    try {
+      await fs.access(absTo);
+      return { ok: false, error: 'Destination already exists.' };
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
     await ensureDir(path.dirname(absTo));
     await fs.rename(absFrom, absTo);
+    return { ok: true };
+  });
+
+  fastify.post('/api/projects/:id/copy-file', async (req) => {
+    const { id } = req.params;
+    const { from, to } = req.body || {};
+    if (!from || !to) return { ok: false, error: 'Missing source or destination.' };
+    const projectRoot = await getProjectRoot(id);
+    const absFrom = safeJoin(projectRoot, from);
+    const absTo = safeJoin(projectRoot, to);
+    const sourceStat = await fs.stat(absFrom);
+    if (sourceStat.isDirectory() && isInsidePath(absTo, absFrom)) {
+      return { ok: false, error: 'Cannot copy a folder into itself.' };
+    }
+    try {
+      await fs.access(absTo);
+      return { ok: false, error: 'Destination already exists.' };
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    await ensureDir(path.dirname(absTo));
+    await fs.cp(absFrom, absTo, { recursive: true, errorOnExist: true, force: false });
     return { ok: true };
   });
 
@@ -443,4 +542,9 @@ export function registerProjectRoutes(fastify) {
     }
     return { ok: true };
   });
+}
+
+function isInsidePath(candidatePath, parentPath) {
+  const relative = path.relative(parentPath, candidatePath);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 }

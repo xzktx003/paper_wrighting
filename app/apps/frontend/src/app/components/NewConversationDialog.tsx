@@ -33,7 +33,6 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
   const handleSubmit = () => {
     let context_scope: any = { type: scopeType };
     if (scopeType === 'chapter') context_scope.file = scopeFile;
-    if (scopeType === 'code') context_scope.path = 'code/';
     onSubmit({ name: name || `New ${scopeType}`, context_scope, active_skills: selectedSkills, mode, model: model || undefined });
   };
 
@@ -67,7 +66,6 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
             <option value="free">Free (no file binding)</option>
             <option value="global">Global (all chapters)</option>
             <option value="chapter">Chapter (specific)</option>
-            <option value="code">Code</option>
           </select>
         </label>
 

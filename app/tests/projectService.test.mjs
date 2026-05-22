@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { loadProject, saveProject, createProject, addChapter, reorderChapters } from '../apps/backend/src/services/projectService.js';
+import { loadProject, saveProject, createProject, addChapter, reorderChapters, getProjectRoot } from '../apps/backend/src/services/projectService.js';
 
 describe('Project Service', () => {
   let testDir;
@@ -58,5 +58,10 @@ describe('Project Service', () => {
 
   it('loadProject throws for non-existent path', async () => {
     await expect(loadProject('/tmp/non-existent-project-xyz')).rejects.toThrow();
+  });
+
+  it('getProjectRoot resolves OpenPrism metadata id when directory name differs', async () => {
+    const root = await getProjectRoot('c2b87dfc-af29-42ef-b088-0f28aa9d65c3');
+    expect(root.endsWith('/papers/torq')).toBe(true);
   });
 });

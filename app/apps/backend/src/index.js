@@ -5,7 +5,7 @@ import websocket from '@fastify/websocket';
 import { ensureDir } from './utils/fsUtils.js';
 import { DATA_DIR, PORT } from './config/constants.js';
 import { loadAppConfig, saveAppConfig } from './config/appConfig.js';
-import { initClaude } from './services/claudeService.js';
+import { initLLM } from './services/llmService.js';
 import { loadSkills, listSkills } from './services/skillEngine.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerArxivRoutes } from './routes/arxiv.js';
@@ -31,13 +31,7 @@ const fastify = Fastify({ logger: true });
 
 // Load global config and initialize services
 const appConfig = await loadAppConfig();
-if (appConfig.claude_api_key) {
-  initClaude(appConfig.claude_api_key, {
-    baseURL: appConfig.claude_base_url,
-    caCertPath: appConfig.claude_ca_cert,
-    model: appConfig.claude_model,
-  });
-}
+await initLLM(appConfig);
 await loadSkills(null);
 
 await fastify.register(cors, { origin: true });
@@ -70,12 +64,9 @@ fastify.get('/api/config', async () => appConfig);
 fastify.put('/api/config', async (request) => {
   Object.assign(appConfig, request.body);
   await saveAppConfig(appConfig);
-  if (request.body.claude_api_key || request.body.claude_base_url) {
-    initClaude(appConfig.claude_api_key, {
-      baseURL: appConfig.claude_base_url,
-      caCertPath: appConfig.claude_ca_cert,
-      model: appConfig.claude_model,
-    });
+  // Re-init LLM provider if any config changed
+  if (request.body.claude_api_key || request.body.claude_base_url || request.body.llm_provider || request.body.llm_api_key || request.body.llm_base_url || request.body.llm_model) {
+    await initLLM(appConfig);
   }
   return { ok: true };
 });

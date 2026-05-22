@@ -252,7 +252,6 @@ type ContextScope =
 |-------|----------|----------|---------|
 | global | 所有章节 + references.bib | 任意章节 | 全文审阅、一致性检查 |
 | chapter | 当前章节 + references.bib | 当前章节 | 聚焦写作 |
-| code | code/ 目录 + 可选读取 chapters/ | code/ 下文件 | 写代码、跑实验 |
 | free | 无自动加载 | 无 | 头脑风暴、自由讨论 |
 
 ### 5. AI 集成
@@ -266,9 +265,9 @@ OpenPrism 使用 LangChain + OpenAI-compatible API。改造为直接使用 `@ant
 
 **三种交互模式（保留 OpenPrism 设计）：**
 
-1. **Chat 模式** — 纯对话，不修改文档。用于讨论思路、问问题、头脑风暴
-2. **Agent 模式** — AI 生成修改建议（diff），展示给用户确认后应用
-3. **Tools 模式** — AI 可调用多个工具，执行复杂多步任务
+1. **Chat 模式** — 纯对话，不调用工具、不修改文档。用于讨论思路、问问题、头脑风暴
+2. **Agent 模式** — AI 可读取章节/引用并通过 `propose_edit` 生成修改建议，展示给用户确认后应用；不直接写文件、不运行代码
+3. **Tools 模式** — AI 可调用多个工具，执行复杂多步任务；代码读写/运行能力仅归入 Tools，不再作为独立 Code agent 入口
 
 **AI 工具列表：**
 
@@ -279,11 +278,10 @@ const tools = [
   { name: 'list_chapters', description: '列出所有章节' },
   { name: 'propose_edit', description: '提出对章节的修改（diff 形式，需用户确认）' },
 
-  // 代码操作
+  // Tools 模式专用代码操作（不暴露给 Agent 模式）
   { name: 'read_code', description: '读取 code/ 下的文件' },
-  { name: 'write_code', description: '写入/修改 code/ 下的文件' },
-  { name: 'run_code', description: '执行代码脚本，返回 stdout/stderr' },
-  { name: 'list_results', description: '列出实验结果文件' },
+  { name: 'write_code', description: '写入/修改 code/ 下的文件（路径限制在 code/ 内）' },
+  { name: 'run_code', description: '执行 code/ 下脚本，返回 stdout/stderr' },
 
   // 研究工具
   { name: 'search_arxiv', description: '搜索 arXiv 论文' },
@@ -304,15 +302,15 @@ const tools = [
 - 支持 Python、R、Julia、Shell
 
 **执行：**
-- AI 通过 `run_code` 工具执行脚本
+- Tools 模式通过 `run_code` 工具执行脚本
 - 后端通过 `child_process.spawn` 执行，限制超时（默认 5 分钟）
 - stdout/stderr 实时流式返回到对话窗口
 - 生成的文件（图表、数据）自动出现在项目树中
 
 **工作流（用户驱动）：**
-1. 用户在"代码"对话窗口中指示 AI："根据 methodology 章节的描述，帮我实现模型代码"
+1. 用户在 Tools 模式对话中指示 AI："根据 methodology 章节的描述，帮我实现模型代码"
 2. AI 读取 methodology 章节 → 生成代码 → 写入 `code/src/`
-3. 用户确认后，指示 AI 运行代码
+3. 用户检查修改结果后，指示 AI 运行代码
 4. AI 执行代码，返回结果
 5. 用户可以让 AI 根据结果生成图表、或将结果写入 experiments 章节
 

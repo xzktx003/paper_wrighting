@@ -9,6 +9,7 @@ export interface ProjectConfig {
   chapters: { file: string; skills: string[] }[];
   global_skills: string[];
   code?: { language: string; entry: string };
+  files?: { path: string; type: 'file' | 'dir' }[];
 }
 
 export interface ProjectState {

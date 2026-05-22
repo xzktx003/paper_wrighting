@@ -46,7 +46,8 @@ export async function chatWithTools({ systemPrompt, messages, tools, onToolUse, 
   if (!client) throw new Error('Claude not initialized. Set API key in config.');
   let currentMessages = [...messages];
   const useModel = model || getModel();
-  while (true) {
+  const maxToolRounds = Number(process.env.OPENPRISM_MAX_TOOL_ROUNDS || 6);
+  for (let round = 0; round < maxToolRounds; round += 1) {
     const response = await client.messages.create({
       model: useModel,
       max_tokens: 8192,
@@ -58,7 +59,12 @@ export async function chatWithTools({ systemPrompt, messages, tools, onToolUse, 
       const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
       const toolResults = [];
       for (const block of toolUseBlocks) {
-        const result = await onToolUse(block.name, block.input);
+        let result;
+        try {
+          result = await onToolUse(block.name, block.input);
+        } catch (err) {
+          result = `Tool error (${block.name}): ${err.message || String(err)}`;
+        }
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
       }
       currentMessages.push({ role: 'assistant', content: response.content });
@@ -67,4 +73,10 @@ export async function chatWithTools({ systemPrompt, messages, tools, onToolUse, 
       return { response, messages: currentMessages };
     }
   }
+  return {
+    response: {
+      content: [{ type: 'text', text: `Stopped after ${maxToolRounds} tool rounds. Please ask a more specific question.` }],
+    },
+    messages: currentMessages,
+  };
 }

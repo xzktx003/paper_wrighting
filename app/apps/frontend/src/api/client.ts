@@ -1,6 +1,7 @@
 export interface ProjectMeta {
   id: string;
   name: string;
+  dirName?: string;
   createdAt: string;
   updatedAt: string;
   tags: string[];
