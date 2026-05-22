@@ -4,8 +4,10 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirro
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { syntaxHighlighting, defaultHighlightStyle, foldGutter, foldKeymap } from '@codemirror/language';
 import { searchKeymap } from '@codemirror/search';
+import { autocompletion, completionKeymap, CompletionContext } from '@codemirror/autocomplete';
+import { latexCompletions, bibtexCompletion } from './latexCompletions';
 
 interface Props {
   content: string;
@@ -49,9 +51,30 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
           lineNumbers(),
           highlightActiveLine(),
           history(),
+          foldGutter(),
           syntaxHighlighting(defaultHighlightStyle),
           markdown({ base: markdownLanguage, codeLanguages: languages }),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+          autocompletion({
+            override: [
+              // BibTeX citation search (@)
+              bibtexCompletion,
+              // LaTeX command completion (\)
+              (context: CompletionContext) => {
+                const word = context.matchBefore(/\\[a-zA-Z]+/);
+                if (word) {
+                  const typed = word.text.slice(1);
+                  const matches = latexCompletions.filter(c => 
+                    c.label.toLowerCase().startsWith(typed.toLowerCase())
+                  ).slice(0, 10);
+                  if (matches.length > 0) {
+                    return { from: word.from, options: matches };
+                  }
+                }
+                return null;
+              },
+            ],
+          }),
+          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, ...completionKeymap]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
@@ -72,6 +95,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
             '&': { height: '100%' },
             '.cm-scroller': { overflow: 'auto' },
             '.cm-content': { fontFamily: 'monospace', fontSize: '14px' },
+            '.cm-foldGutter': { width: '16px' },
+            '.cm-lineNumbers .cm-gutterElement': { padding: '0 4px' },
           }),
         ],
       });

@@ -2,11 +2,43 @@ import crypto from 'crypto';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 import { ensureDir } from '../utils/fsUtils.js';
 import { safeJoin } from '../utils/pathUtils.js';
 import { getProjectRoot } from './projectService.js';
 
 const SUPPORTED_ENGINES = ['pdflatex', 'xelatex', 'lualatex', 'latexmk', 'tectonic'];
+
+// Extra PATH and LD_LIBRARY_PATH entries for user-installed tools
+const USER_HOME = process.env.HOME || '/data01/home/xuzk';
+const EXTRA_PATHS = [`${USER_HOME}/bin`, '/usr/local/bin'].filter(Boolean).join(':');
+const EXTRA_LD_PATH = [
+  `${USER_HOME}/anaconda3/lib`,
+  '/data01/home/chenzx/anaconda3/lib',
+].join(':');
+
+function getEngineEnv() {
+  return {
+    ...process.env,
+    PATH: `${EXTRA_PATHS}:${process.env.PATH || ''}`,
+    LD_LIBRARY_PATH: EXTRA_LD_PATH,
+  };
+}
+
+// Check which engines are available on the system
+function getAvailableEngines() {
+  const env = getEngineEnv();
+  const available = [];
+  for (const engine of SUPPORTED_ENGINES) {
+    try {
+      execSync(`which ${engine}`, { stdio: 'ignore', env });
+      available.push(engine);
+    } catch {
+      // Engine not found
+    }
+  }
+  return available;
+}
 
 function buildCommand(engine, outDir, mainFile) {
   switch (engine) {
@@ -41,6 +73,21 @@ function runSpawn(cmd, args, cwd, pushLog, env) {
 export async function runCompile({ projectId, mainFile, engine = 'pdflatex' }) {
   if (!SUPPORTED_ENGINES.includes(engine)) {
     return { ok: false, error: `Unsupported engine: ${engine}` };
+  }
+
+  // Check if the engine is available
+  const availableEngines = getAvailableEngines();
+  if (!availableEngines.includes(engine)) {
+    const installHint = engine === 'tectonic'
+      ? '\n\nTectonic is a self-contained LaTeX engine. Install: curl -L https://tectonic.xyz/install.sh | sh'
+      : engine === 'pdflatex'
+        ? '\n\nInstall TeX Live: sudo apt install texlive-latex-base (Ubuntu/Debian) or brew install texlive (macOS)'
+        : '';
+    return {
+      ok: false,
+      error: `${engine} is not installed on this system.\n\nAvailable engines: ${availableEngines.length > 0 ? availableEngines.join(', ') : 'none'}${installHint}`,
+      availableEngines,
+    };
   }
 
   const projectRoot = await getProjectRoot(projectId);

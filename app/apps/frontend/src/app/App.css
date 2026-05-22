@@ -124,6 +124,442 @@
   --zone-editor-dot: #3b82f6;
 }
 
+/* ============================================
+   Cyber Tech Theme Component Overrides
+   Fix hardcoded white backgrounds for dark theme
+   ============================================ */
+
+[data-theme="cyber-tech"] {
+  /* Project page */
+  .project-page {
+    background: var(--bg);
+  }
+
+  .project-grid {
+    background: transparent;
+  }
+
+  .project-card {
+    background: var(--panel);
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  .project-card:hover {
+    border-color: var(--zone-files-accent);
+    box-shadow: 0 0 20px var(--zone-files-glow);
+  }
+
+  .project-row {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .project-row:hover {
+    background: var(--hover);
+    border-color: var(--zone-files-accent);
+  }
+
+  .project-row.active {
+    background: var(--zone-files-accent-dim);
+    border-color: var(--zone-files-accent);
+    color: var(--zone-files-accent);
+  }
+
+  /* Inputs */
+  .input,
+  .inline-input,
+  .chat-input {
+    background: var(--paper);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .input:focus,
+  .inline-input:focus,
+  .chat-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* Chat messages */
+  .chat-msg {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .chat-msg.assistant {
+    background: var(--zone-ai-accent-dim);
+    border-color: var(--zone-ai-border);
+  }
+
+  /* Vision results */
+  .vision-result {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .vision-preview {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  /* Image drop zone */
+  .image-drop-zone {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .image-drop-zone:hover,
+  .image-drop-zone:focus {
+    border-color: var(--accent);
+    background: var(--hover);
+  }
+
+  .image-drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* Panels */
+  .panel {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .panel-header {
+    background: var(--panel-muted);
+    border-color: var(--border);
+  }
+
+  /* Breadcrumb */
+  .breadcrumb-bar {
+    background: var(--panel-muted);
+    border-color: var(--border);
+  }
+
+  /* Status bar */
+  .status-bar {
+    background: var(--panel-muted);
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  /* Save indicator */
+  .save-indicator {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  /* Sidebar */
+  .side-panel {
+    background: var(--panel);
+  }
+
+  /* Editor panel */
+  .editor-panel {
+    background: var(--bg);
+  }
+
+  /* Tree rows */
+  .tree-row {
+    background: transparent;
+  }
+
+  .tree-row:hover {
+    background: var(--hover);
+  }
+
+  .tree-row.selected {
+    background: var(--zone-files-accent-dim);
+    color: var(--zone-files-accent);
+  }
+
+  /* Tags */
+  .tag {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .tag.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Buttons */
+  .btn,
+  button:not(.icon-btn) {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .btn:hover,
+  button:not(.icon-btn):hover {
+    background: var(--hover);
+    border-color: var(--accent);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+  }
+
+  /* Dropdowns */
+  .ios-dropdown {
+    background: var(--panel);
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  .ios-dropdown-item {
+    color: var(--text);
+  }
+
+  .ios-dropdown-item:hover {
+    background: var(--hover);
+  }
+
+  .ios-dropdown-item.active {
+    color: var(--accent);
+  }
+
+  /* Modal */
+  .modal,
+  .modal-content {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .modal-header {
+    background: var(--panel-muted);
+    border-color: var(--border);
+  }
+
+  /* Tabs */
+  .tab {
+    color: var(--text-secondary);
+  }
+
+  .tab:hover {
+    color: var(--text);
+    background: var(--hover);
+  }
+
+  .tab.active {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+  }
+
+  /* Selection */
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--text);
+  }
+
+  /* Landing page */
+  .landing-page {
+    background: var(--bg);
+  }
+
+  .landing-announce {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .landing-announce-text {
+    color: var(--text-secondary);
+  }
+
+  .landing-announce-link {
+    color: var(--accent);
+  }
+
+  .landing-subtitle {
+    color: var(--text-secondary);
+  }
+
+  .landing-subtitle b {
+    color: var(--text);
+  }
+
+  .landing-btn-secondary {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .landing-btn-secondary:hover {
+    background: var(--hover);
+    border-color: var(--accent);
+  }
+
+  .landing-badge {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .landing-stats {
+    color: var(--text-secondary);
+  }
+
+  .landing-stat-value {
+    color: var(--accent);
+  }
+
+  .landing-stat-label {
+    color: var(--text-secondary);
+  }
+
+  .landing-features {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .landing-feature-card {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+
+  .landing-feature-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--zone-files-glow);
+  }
+
+  .landing-footer {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text-secondary);
+  }
+
+  .landing-footer a {
+    color: var(--accent);
+  }
+
+  /* Feature carousel */
+  .feature-carousel {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .feature-item {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+
+  .feature-item:hover {
+    border-color: var(--accent);
+  }
+
+  /* Template gallery */
+  .template-gallery {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .template-card {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+
+  .template-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--zone-files-glow);
+  }
+
+  /* Settings modal */
+  .settings-modal {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  .settings-section {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+
+  /* Transfer panel */
+  .transfer-panel {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  /* iOS select in dark theme */
+  .ios-select-trigger {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .ios-select-trigger:hover {
+    background: var(--hover);
+  }
+
+  /* Tooltips */
+  .tooltip {
+    background: var(--text);
+    color: var(--bg);
+  }
+
+  /* Code blocks */
+  pre, code {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  /* Tables */
+  table {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+
+  th, td {
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  th {
+    background: var(--panel-muted);
+  }
+
+  tr:hover {
+    background: var(--hover);
+  }
+}
+
 [data-theme="dracula"] {
   --bg: #282a36;
   --paper: #21222c;
@@ -722,14 +1158,15 @@ body::before {
 }
 
 .project-row {
-  border: 1px solid rgba(120, 98, 83, 0.2);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border);
+  background: var(--panel);
   color: var(--text);
   border-radius: 10px;
   padding: 6px 8px;
   text-align: left;
   cursor: pointer;
   font-size: 12px;
+  transition: all 0.15s ease;
 }
 
 .project-row.active {
@@ -749,11 +1186,19 @@ body::before {
 
 .inline-input {
   width: 100%;
-  border: 1px solid rgba(120, 98, 83, 0.35);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px 6px;
   font-size: 12px;
-  background: #fffdf9;
+  background: var(--paper);
+  color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inline-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .tree-row.inline {
@@ -763,10 +1208,11 @@ body::before {
 .input {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(120, 98, 83, 0.3);
+  border: 1px solid var(--border);
   padding: 8px 10px;
   font-size: 12px;
-  background: #fffdf9;
+  background: var(--paper);
+  color: var(--text);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -790,13 +1236,14 @@ body::before {
 .chat-msg {
   padding: 8px 10px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(120, 98, 83, 0.18);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
 }
 
 .chat-msg.assistant {
-  background: rgba(180, 74, 47, 0.12);
-  border-color: rgba(180, 74, 47, 0.24);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .chat-msg .role {
@@ -848,11 +1295,11 @@ body::before {
 .chat-input {
   min-height: 60px;
   border-radius: 10px;
-  border: 1px solid rgba(120, 98, 83, 0.22);
+  border: 1px solid var(--border);
   padding: 8px 10px;
   font-size: 12px;
   resize: vertical;
-  background: rgba(252, 248, 241, 0.9);
+  background: var(--paper);
   color: var(--text);
   font-family: inherit;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -1768,13 +2215,19 @@ body::before {
 }
 
 .project-card {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(120, 98, 83, 0.2);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.project-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
 }
 
 .project-card .inline-input {
@@ -1809,10 +2262,10 @@ body::before {
 }
 
 .vision-result {
-  border: 1px dashed rgba(120, 98, 83, 0.35);
+  border: 1px dashed var(--border);
   border-radius: 12px;
   padding: 8px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--panel);
 }
 
 .vision-result pre,
@@ -1827,10 +2280,10 @@ body::before {
 }
 
 .vision-preview {
-  border: 1px dashed rgba(120, 98, 83, 0.25);
+  border: 1px dashed var(--border);
   border-radius: 12px;
   padding: 6px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--panel);
 }
 
 .vision-preview img {
@@ -1841,10 +2294,10 @@ body::before {
 
 /* 图片拖拽上传区域 */
 .image-drop-zone {
-  border: 2px dashed rgba(120, 98, 83, 0.25);
+  border: 2px dashed var(--border);
   border-radius: 12px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--panel);
   transition: all 0.2s ease;
   cursor: pointer;
   outline: none;
@@ -1852,18 +2305,18 @@ body::before {
 
 .image-drop-zone:hover,
 .image-drop-zone:focus {
-  border-color: rgba(180, 74, 47, 0.4);
-  background: rgba(255, 255, 255, 0.8);
+  border-color: var(--accent);
+  background: var(--hover);
 }
 
 .image-drop-zone.drag-over {
   border-color: var(--accent);
-  background: rgba(180, 74, 47, 0.08);
+  background: var(--accent-soft);
 }
 
 .image-drop-zone.has-file {
   border-style: solid;
-  border-color: rgba(180, 74, 47, 0.3);
+  border-color: var(--accent);
 }
 
 .drop-zone-content {
@@ -3195,6 +3648,196 @@ textarea.input {
   text-decoration: none;
 }
 
+/* Cyber Tech theme overrides for markdown - white background simulation */
+[data-theme="cyber-tech"] .markdown-body,
+[data-theme="primer-dark"] .markdown-body,
+[data-theme="dracula"] .markdown-body {
+  color: #1a1a1a;  /* 深色文字 */
+  background: transparent;
+}
+
+[data-theme="cyber-tech"] .markdown-body code,
+[data-theme="primer-dark"] .markdown-body code,
+[data-theme="dracula"] .markdown-body code {
+  background: #f5f5f5;
+  color: #c7254e;
+}
+
+[data-theme="cyber-tech"] .markdown-body pre,
+[data-theme="primer-dark"] .markdown-body pre,
+[data-theme="dracula"] .markdown-body pre {
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+}
+
+[data-theme="cyber-tech"] .markdown-body pre code,
+[data-theme="primer-dark"] .markdown-body pre code,
+[data-theme="dracula"] .markdown-body pre code {
+  background: transparent;
+  color: #333;
+}
+
+[data-theme="cyber-tech"] .markdown-body blockquote,
+[data-theme="primer-dark"] .markdown-body blockquote,
+[data-theme="dracula"] .markdown-body blockquote {
+  background: #f9f9f9;
+  color: #555;
+  border-left-color: #888;
+}
+
+[data-theme="cyber-tech"] .markdown-body th,
+[data-theme="primer-dark"] .markdown-body th,
+[data-theme="dracula"] .markdown-body th {
+  background: #f5f5f5;
+  color: #1a1a1a;
+  border-color: #ccc;
+}
+
+[data-theme="cyber-tech"] .markdown-body td,
+[data-theme="primer-dark"] .markdown-body td,
+[data-theme="dracula"] .markdown-body td {
+  border-color: #ccc;
+  color: #1a1a1a;
+}
+
+[data-theme="cyber-tech"] .markdown-body a,
+[data-theme="primer-dark"] .markdown-body a,
+[data-theme="dracula"] .markdown-body a {
+  color: #0066cc;
+}
+
+[data-theme="cyber-tech"] .markdown-body h1,
+[data-theme="cyber-tech"] .markdown-body h2,
+[data-theme="cyber-tech"] .markdown-body h3,
+[data-theme="cyber-tech"] .markdown-body h4,
+[data-theme="cyber-tech"] .markdown-body h5,
+[data-theme="cyber-tech"] .markdown-body h6,
+[data-theme="primer-dark"] .markdown-body h1,
+[data-theme="primer-dark"] .markdown-body h2,
+[data-theme="primer-dark"] .markdown-body h3,
+[data-theme="primer-dark"] .markdown-body h4,
+[data-theme="primer-dark"] .markdown-body h5,
+[data-theme="primer-dark"] .markdown-body h6,
+[data-theme="dracula"] .markdown-body h1,
+[data-theme="dracula"] .markdown-body h2,
+[data-theme="dracula"] .markdown-body h3,
+[data-theme="dracula"] .markdown-body h4,
+[data-theme="dracula"] .markdown-body h5,
+[data-theme="dracula"] .markdown-body h6 {
+  color: #1a1a1a;
+}
+
+/* Cyber Tech theme overrides for LaTeX preview */
+[data-theme="cyber-tech"] .latex-preview-container,
+[data-theme="primer-dark"] .latex-preview-container,
+[data-theme="dracula"] .latex-preview-container {
+  background: var(--bg);
+}
+
+/* LaTeX preview page - white background with dark text for paper simulation */
+[data-theme="cyber-tech"] .latex-preview-page,
+[data-theme="primer-dark"] .latex-preview-page,
+[data-theme="dracula"] .latex-preview-page {
+  background: #ffffff !important;  /* 保持白色背景模拟纸张 */
+  color: #1a1a1a !important;  /* 深色文字确保可读性 */
+  border: none;
+}
+
+[data-theme="cyber-tech"] .latex-preview-page h1,
+[data-theme="cyber-tech"] .latex-preview-page h2,
+[data-theme="cyber-tech"] .latex-preview-page h3,
+[data-theme="cyber-tech"] .latex-preview-page h4,
+[data-theme="cyber-tech"] .latex-preview-page p,
+[data-theme="cyber-tech"] .latex-preview-page li,
+[data-theme="cyber-tech"] .latex-preview-page td,
+[data-theme="cyber-tech"] .latex-preview-page th,
+[data-theme="primer-dark"] .latex-preview-page h1,
+[data-theme="primer-dark"] .latex-preview-page h2,
+[data-theme="primer-dark"] .latex-preview-page h3,
+[data-theme="primer-dark"] .latex-preview-page h4,
+[data-theme="primer-dark"] .latex-preview-page p,
+[data-theme="primer-dark"] .latex-preview-page li,
+[data-theme="primer-dark"] .latex-preview-page td,
+[data-theme="primer-dark"] .latex-preview-page th,
+[data-theme="dracula"] .latex-preview-page h1,
+[data-theme="dracula"] .latex-preview-page h2,
+[data-theme="dracula"] .latex-preview-page h3,
+[data-theme="dracula"] .latex-preview-page h4,
+[data-theme="dracula"] .latex-preview-page p,
+[data-theme="dracula"] .latex-preview-page li,
+[data-theme="dracula"] .latex-preview-page td,
+[data-theme="dracula"] .latex-preview-page th {
+  color: #1a1a1a !important;  /* 深色文字 */
+}
+
+[data-theme="cyber-tech"] .latex-preview-page .latex-verbatim,
+[data-theme="primer-dark"] .latex-preview-page .latex-verbatim,
+[data-theme="dracula"] .latex-preview-page .latex-verbatim {
+  background: #f5f5f5;  /* 浅灰背景 */
+  border: 1px solid #e0e0e0;
+  color: #333333;
+}
+
+[data-theme="cyber-tech"] .latex-preview-page .latex-cite,
+[data-theme="cyber-tech"] .latex-preview-page .latex-ref,
+[data-theme="primer-dark"] .latex-preview-page .latex-cite,
+[data-theme="primer-dark"] .latex-preview-page .latex-ref,
+[data-theme="dracula"] .latex-preview-page .latex-cite,
+[data-theme="dracula"] .latex-preview-page .latex-ref {
+  color: #006621;  /* 绿色引用链接 */
+}
+
+[data-theme="cyber-tech"] .latex-preview-page .latex-quote,
+[data-theme="primer-dark"] .latex-preview-page .latex-quote,
+[data-theme="dracula"] .latex-preview-page .latex-quote {
+  border-left-color: #888;
+  color: #555;
+}
+
+[data-theme="cyber-tech"] .latex-preview-page .latex-figure .latex-caption,
+[data-theme="cyber-tech"] .latex-preview-page .latex-table-wrap .latex-caption,
+[data-theme="primer-dark"] .latex-preview-page .latex-figure .latex-caption,
+[data-theme="primer-dark"] .latex-preview-page .latex-table-wrap .latex-caption,
+[data-theme="dracula"] .latex-preview-page .latex-figure .latex-caption,
+[data-theme="dracula"] .latex-preview-page .latex-table-wrap .latex-caption {
+  color: #555;
+}
+
+[data-theme="cyber-tech"] .latex-preview-page table.latex-tabular td,
+[data-theme="cyber-tech"] .latex-preview-page table.latex-tabular th,
+[data-theme="primer-dark"] .latex-preview-page table.latex-tabular td,
+[data-theme="primer-dark"] .latex-preview-page table.latex-tabular th,
+[data-theme="dracula"] .latex-preview-page table.latex-tabular td,
+[data-theme="dracula"] .latex-preview-page table.latex-tabular th {
+  border-color: #ccc;
+  color: #1a1a1a;
+}
+
+[data-theme="cyber-tech"] .latex-preview-page table.latex-tabular .hline-top,
+[data-theme="cyber-tech"] .latex-preview-page table.latex-tabular .hline-bottom,
+[data-theme="cyber-tech"] .latex-preview-page table.latex-tabular .hline-mid,
+[data-theme="primer-dark"] .latex-preview-page table.latex-tabular .hline-top,
+[data-theme="primer-dark"] .latex-preview-page table.latex-tabular .hline-bottom,
+[data-theme="primer-dark"] .latex-preview-page table.latex-tabular .hline-mid,
+[data-theme="dracula"] .latex-preview-page table.latex-tabular .hline-top,
+[data-theme="dracula"] .latex-preview-page table.latex-tabular .hline-bottom,
+[data-theme="dracula"] .latex-preview-page table.latex-tabular .hline-mid {
+  border-color: #333;
+}
+
+/* KaTeX math in dark themes */
+[data-theme="cyber-tech"] .katex,
+[data-theme="primer-dark"] .katex,
+[data-theme="dracula"] .katex {
+  color: var(--text);
+}
+
+[data-theme="cyber-tech"] .katex .mathnormal,
+[data-theme="primer-dark"] .katex .mathnormal,
+[data-theme="dracula"] .katex .mathnormal {
+  color: var(--text);
+}
+
 .markdown-body a:hover {
   text-decoration: underline;
 }
@@ -4047,4 +4690,443 @@ textarea.input {
 }
 [data-theme="cyber-tech"] button:hover {
   text-shadow: 0 0 8px currentColor;
+}
+
+/* ============================================
+   UI Animations & Transitions
+   ============================================ */
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade in with slide up */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade in with slide down */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scale in animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Slide in from left */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Bounce in animation */
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Glow pulse animation */
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 4px var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 16px var(--accent-soft), 0 0 24px var(--accent-soft);
+  }
+}
+
+/* Spin animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Float animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* Wiggle animation */
+@keyframes wiggle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-3deg);
+  }
+  75% {
+    transform: rotate(3deg);
+  }
+}
+
+/* Progress bar animation */
+@keyframes progressBar {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+/* Typing cursor blink */
+@keyframes cursorBlink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* ============================================
+   Animation Utility Classes
+   ============================================ */
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.4s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.35s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.35s ease-out forwards;
+}
+
+.animate-bounce-in {
+  animation: bounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--paper) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-wiggle {
+  animation: wiggle 0.5s ease-in-out;
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+
+/* ============================================
+   Transition Utilities
+   ============================================ */
+
+.transition-all {
+  transition: all 0.25s ease;
+}
+
+.transition-colors {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.transition-transform {
+  transition: transform 0.2s ease;
+}
+
+.transition-opacity {
+  transition: opacity 0.2s ease;
+}
+
+.transition-shadow {
+  transition: box-shadow 0.2s ease;
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Hover scale effect */
+.hover-scale {
+  transition: transform 0.2s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+/* Press effect */
+.press-effect {
+  transition: transform 0.1s ease;
+}
+
+.press-effect:active {
+  transform: scale(0.97);
+}
+
+/* ============================================
+   Panel & Component Animations
+   ============================================ */
+
+/* Panel appear animation */
+.panel {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* Message bubble animations */
+.message-enter {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.message-exit {
+  animation: fadeIn 0.2s ease-out reverse;
+}
+
+/* Tab transition */
+.tab-content {
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* Tooltip animation */
+.tooltip {
+  animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: top center;
+}
+
+/* Dropdown menu animation */
+.dropdown-menu {
+  animation: fadeInDown 0.2s ease-out;
+}
+
+/* Modal/Dialog animation */
+.modal-overlay {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    rgba(255, 255, 255, 0.5) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Spinner */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Progress indicator */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Typing indicator dots */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  background: var(--muted);
+  border-radius: 50%;
+  animation: float 1.4s ease-in-out infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* ============================================
+   Completion Popup Animations
+   ============================================ */
+
+.cm-tooltip-autocomplete {
+  animation: fadeInDown 0.15s ease-out;
+}
+
+.cm-tooltip-autocomplete > ul {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.cm-completionLabel {
+  transition: color 0.15s ease;
+}
+
+.cm-completionDetail {
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.cm-completionMatchedText {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* ============================================
+   Theme Transition
+   ============================================ */
+
+[data-theme] {
+  transition: 
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+/* ============================================
+   Reduced Motion Support
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -5,6 +5,7 @@ import { MarkdownPreview } from './MarkdownPreview';
 import { LatexPreview } from './LatexPreview';
 import { TerminalPanel } from './TerminalPanel';
 import { getOpenPrismProjectId, isImagePath, isPdfPath, isPreviewableTextPath } from '../utils/previewAssets';
+import { compileProject } from '../../api/client';
 
 interface OpenFile {
   filename: string;
@@ -31,6 +32,9 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   const [editorRatio, setEditorRatio] = useState(0.5);
   const [previewScrollRatio, setPreviewScrollRatio] = useState<number | undefined>(undefined);
   const [editorScrollRatio, setEditorScrollRatio] = useState<number | undefined>(undefined);
+  const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
+  const [compiling, setCompiling] = useState(false);
+  const [compileResult, setCompileResult] = useState<{ ok: boolean; log?: string; error?: string; availableEngines?: string[] } | null>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
   const scrollSourceRef = useRef<'editor' | 'preview' | null>(null);
   const activeFile = openFiles?.[activeFileIndex];
@@ -81,18 +85,32 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   }, []);
 
   const handleEditorScroll = useCallback((ratio: number) => {
-    if (scrollSourceRef.current === 'preview') return;
+    if (!syncScrollEnabled || scrollSourceRef.current === 'preview') return;
     scrollSourceRef.current = 'editor';
     setPreviewScrollRatio(ratio);
     requestAnimationFrame(() => { scrollSourceRef.current = null; });
-  }, []);
+  }, [syncScrollEnabled]);
 
   const handlePreviewScroll = useCallback((ratio: number) => {
-    if (scrollSourceRef.current === 'editor') return;
+    if (!syncScrollEnabled || scrollSourceRef.current === 'editor') return;
     scrollSourceRef.current = 'preview';
     setEditorScrollRatio(ratio);
     requestAnimationFrame(() => { scrollSourceRef.current = null; });
-  }, []);
+  }, [syncScrollEnabled]);
+
+  const handleCompile = useCallback(async () => {
+    if (!projectId || compiling) return;
+    setCompiling(true);
+    setCompileResult(null);
+    try {
+      const result = await compileProject({ projectId, mainFile: activeFile?.filename || 'main.tex', engine: 'pdflatex' });
+      setCompileResult(result);
+    } catch (e: any) {
+      setCompileResult({ ok: false, error: e.message });
+    } finally {
+      setCompiling(false);
+    }
+  }, [projectId, compiling, activeFile?.filename]);
 
   const termH = terminalMaximized ? '100%' : terminalHeight;
 
@@ -145,6 +163,88 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
               ))}
             </div>
           )}
+          {activeFile && activeFile.type === 'chapter' && editorViewMode === 'split' && (
+            <button
+              onClick={() => setSyncScrollEnabled(v => !v)}
+              title={syncScrollEnabled ? 'Disable sync scroll' : 'Enable sync scroll'}
+              style={{
+                marginLeft: '6px',
+                fontSize: '11px',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                padding: '3px 8px',
+                cursor: 'pointer',
+                background: syncScrollEnabled ? 'var(--accent-soft)' : 'transparent',
+                color: syncScrollEnabled ? 'var(--accent-strong)' : 'var(--muted)',
+                fontWeight: 500,
+                transition: 'all 0.15s',
+              }}
+            >
+              🔗 {syncScrollEnabled ? 'Sync' : 'Free'}
+            </button>
+          )}
+          {activeFile && activeFile.type === 'chapter' && (
+            <button
+              onClick={handleCompile}
+              disabled={compiling || !projectId}
+              title="Compile to PDF"
+              style={{
+                marginLeft: '6px',
+                fontSize: '11px',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                padding: '3px 8px',
+                cursor: compiling || !projectId ? 'wait' : 'pointer',
+                background: compiling ? 'var(--accent-soft)' : 'transparent',
+                color: compiling ? 'var(--accent-strong)' : 'var(--text-secondary)',
+                fontWeight: 500,
+                transition: 'all 0.15s',
+              }}
+            >
+              {compiling ? '⏳ Compiling...' : '📄 Compile'}
+            </button>
+          )}
+          {compileResult && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: '20px',
+                right: '20px',
+                width: '480px',
+                maxHeight: '360px',
+                background: 'var(--panel)',
+                border: `1px solid ${compileResult.ok ? 'var(--success)' : 'var(--danger)'}`,
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{
+                padding: '10px 14px',
+                background: compileResult.ok ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                borderBottom: `1px solid ${compileResult.ok ? 'var(--success)' : 'var(--danger)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: compileResult.ok ? 'var(--success)' : 'var(--danger)' }}>
+                  {compileResult.ok ? '✅ 编译成功' : '❌ 编译失败'}
+                </span>
+                <button
+                  onClick={() => setCompileResult(null)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--muted)' }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+                {compileResult.log || compileResult.error}
+              </div>
+            </div>
+          )}
           <button onClick={onToggleTerminal} style={{ marginLeft: 'auto', fontSize: '11px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px 8px', borderRadius: '4px', transition: 'color 0.15s' }}>
             {terminalVisible ? '▼ Terminal' : '▲ Terminal'}
           </button>
@@ -161,7 +261,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                   <img
                     src={`/api/projects/${encodeURIComponent(projectId)}/blob?${new URLSearchParams({ path: activeFile.filename }).toString()}`}
                     alt={activeFile.filename}
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--paper)' }}
                   />
                 ) : (
                   <div style={{ color: 'var(--muted)', fontSize: 13 }}>Image preview is available for project files.</div>
@@ -215,7 +315,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                     >
                       <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
                     </div>
-                    <div style={{ flex: 1, overflow: 'hidden', background: 'var(--paper)' }}>
+                    <div style={{ flex: 1, overflow: 'hidden', background: '#f5f5f0' }}>
                       {activeFile.filename.endsWith('.tex') ? (
                         <LatexPreview
                           content={activeFile.content}

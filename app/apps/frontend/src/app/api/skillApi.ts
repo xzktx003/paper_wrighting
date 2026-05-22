@@ -34,7 +34,7 @@ export async function deleteSkill(name: string): Promise<{ ok: boolean }> {
   return res.json();
 }
 
-export async function reloadSkills(projectSkillsDir: string) {
+export async function reloadSkills(projectSkillsDir?: string) {
   const res = await fetch(`${BASE}/skills/reload`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

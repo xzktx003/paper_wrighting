@@ -23,6 +23,7 @@ import { registerTerminalRoutes } from './routes/terminal.js';
 import { registerExportRoutes } from './routes/export.js';
 import { registerWsRoutes } from './routes/ws.js';
 import { registerTransferRoutes } from './routes/transfer.js';
+import { registerBibtexRoutes } from './routes/bibtex.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -58,6 +59,7 @@ registerTerminalRoutes(fastify);
 registerExportRoutes(fastify);
 registerWsRoutes(fastify);
 registerTransferRoutes(fastify);
+registerBibtexRoutes(fastify);
 
 // Config endpoints
 fastify.get('/api/config', async () => publicAppConfig(appConfig));
