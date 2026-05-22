@@ -1,43 +1,0 @@
-============================================================
-TORQ Iteration 1 - End-to-End STE Training
-Model: /data01/datasets/Qwen3-0.6B
-LR: 0.01, Steps: 300
-============================================================
-
-[1/4] Loading model...
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Skipping import of cpp extensions due to incompatible torch version. Please upgrade to torch >= 2.11.0 (found 2.8.0+cu126).
-Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 7808.85it/s]
-
-[2/4] Evaluating baseline (BF16) perplexity...
-Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 131072). Running this sequence through the model will result in indexing errors
-  Baseline BF16 PPL: 50.94
-
-[3/4] Training TORQ rotations (STE end-to-end)...
-  Target layers: 196
-  Collecting activations...
-  [1/196] model.layers.0.self_attn.q_proj: MSE 1.4904e-03 -> 1.1404e-03 (23.5% reduction)
-  [28/196] model.layers.3.mlp.down_proj: MSE 1.5701e-03 -> 1.2645e-03 (19.5% reduction)
-  [56/196] model.layers.7.mlp.down_proj: MSE 4.4686e-03 -> 3.9148e-03 (12.4% reduction)
-  [84/196] model.layers.11.mlp.down_proj: MSE 4.9172e-03 -> 4.1047e-03 (16.5% reduction)
-  [112/196] model.layers.15.mlp.down_proj: MSE 8.6617e-03 -> 6.9464e-03 (19.8% reduction)
-  [140/196] model.layers.19.mlp.down_proj: MSE 9.0446e-02 -> 7.0827e-02 (21.7% reduction)
-  [168/196] model.layers.23.mlp.down_proj: MSE 1.9006e-01 -> 1.7308e-01 (8.9% reduction)
-  [196/196] model.layers.27.mlp.down_proj: MSE 1.3735e+00 -> 2.2707e+00 (-65.3% reduction)
-  Training completed in 863.7s
-
-[4/4] Evaluating TORQ W4A4 perplexity...
-Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 10097.60it/s]
-  TORQ W4A4 PPL: 137.18
-
-============================================================
-RESULTS SUMMARY (Iteration 1 - STE)
-============================================================
-  BF16 Baseline PPL:  50.94
-  TORQ W4A4 PPL:      137.18
-  Gap to BF16:         86.23
-  Training time:       863.7s
-============================================================
-
-Results saved to outputs/results_iter1.json
