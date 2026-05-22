@@ -16,22 +16,22 @@ interface Props {
 export function LeftPanel({ projectPath, config, onFileSelect, onChapterReorder, globalSkills = [], chapterSkills = [], onActivateSkill = () => {} }: Props) {
   if (!projectPath || !config) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div style={{ padding: '12px', fontWeight: 'bold', borderBottom: '1px solid #e0e0e0' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--panel)' }}>
+        <div style={{ padding: '12px 14px', fontWeight: 600, fontSize: '13px', borderBottom: '1px solid var(--border)', color: 'var(--text)' }}>
           Project
         </div>
-        <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-          <p style={{ color: '#888' }}>No project open</p>
-          <button style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>Open Project</button>
-          <button style={{ padding: '6px 12px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>New Project</button>
+        <div style={{ flex: 1, padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '28px', opacity: 0.3 }}>📂</div>
+          <p style={{ color: 'var(--muted)', fontSize: '13px', margin: 0 }}>No project open</p>
+          <button style={{ padding: '7px 16px', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--paper)', color: 'var(--text)', fontSize: '12px', fontWeight: 500, transition: 'all 0.15s' }}>Open Project</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '8px 12px', fontWeight: 'bold', borderBottom: '1px solid #e0e0e0', fontSize: '14px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--panel)' }}>
+      <div style={{ padding: '10px 14px', fontWeight: 600, borderBottom: '1px solid var(--border)', fontSize: '13px', color: 'var(--text)', background: 'var(--panel-muted)' }}>
         {config.title || 'Untitled'}
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
@@ -42,8 +42,8 @@ export function LeftPanel({ projectPath, config, onFileSelect, onChapterReorder,
           onChapterReorder={onChapterReorder}
         />
       </div>
-      <div style={{ borderTop: '1px solid #e0e0e0', maxHeight: '40%', overflow: 'auto' }}>
-        <div style={{ padding: '6px 8px', fontWeight: 600, fontSize: '12px' }}>Skills</div>
+      <div style={{ borderTop: '1px solid var(--border)', maxHeight: '40%', overflow: 'auto', background: 'var(--panel-muted)' }}>
+        <div style={{ padding: '8px 12px', fontWeight: 600, fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Skills</div>
         <SkillPanel
           globalSkills={globalSkills}
           chapterSkills={chapterSkills}

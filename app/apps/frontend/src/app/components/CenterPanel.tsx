@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview } from './MarkdownPreview';
 import { LatexPreview } from './LatexPreview';
@@ -24,80 +24,168 @@ interface Props {
 
 export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, terminalVisible, onToggleTerminal, projectPath }: Props) {
   const [showPreview, setShowPreview] = useState(true);
-  const [terminalHeight, setTerminalHeight] = useState(350);
+  const [terminalHeight, setTerminalHeight] = useState(250);
+  const [terminalMaximized, setTerminalMaximized] = useState(false);
+  const [editorRatio, setEditorRatio] = useState(0.5);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
   const activeFile = openFiles?.[activeFileIndex];
 
   const handleTerminalResize = useCallback((e: React.MouseEvent) => {
-    const startY = e.clientY;
+    e.preventDefault();
+    const startY = e.clientX !== undefined ? e.clientY : 0;
     const startH = terminalHeight;
-    const onMove = (ev: MouseEvent) => setTerminalHeight(Math.max(150, Math.min(600, startH + (startY - ev.clientY))));
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    const onMove = (ev: MouseEvent) => {
+      const newH = Math.max(100, Math.min(800, startH + (startY - ev.clientY)));
+      setTerminalHeight(newH);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [terminalHeight]);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ height: '36px', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', padding: '0 8px', gap: '2px', overflow: 'auto' }}>
-        {(openFiles || []).map((file, i) => (
-          <div
-            key={file.filename}
-            onClick={() => onTabSelect(i)}
-            style={{
-              padding: '4px 12px',
-              fontSize: '12px',
-              cursor: 'pointer',
-              borderRadius: '4px 4px 0 0',
-              background: i === activeFileIndex ? '#fff' : '#f5f5f5',
-              borderBottom: i === activeFileIndex ? '2px solid #1976d2' : 'none',
-            }}
-          >
-            {file.filename}{file.dirty ? ' •' : ''}
-            <span onClick={(e) => { e.stopPropagation(); onTabClose(i); }} style={{ marginLeft: '6px', color: '#999' }}>×</span>
-          </div>
-        ))}
-        {activeFile && activeFile.type === 'chapter' && (
-          <button onClick={() => setShowPreview(!showPreview)} style={{ marginLeft: '8px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px', padding: '2px 6px', cursor: 'pointer', background: showPreview ? '#e3f2fd' : '#fff' }}>
-            Preview
-          </button>
-        )}
-        <button onClick={onToggleTerminal} style={{ marginLeft: 'auto', fontSize: '11px', border: 'none', background: 'none', cursor: 'pointer' }}>
-          {terminalVisible ? '▼ Terminal' : '▲ Terminal'}
-        </button>
-      </div>
+  const handleEditorPreviewResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = editorAreaRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev: MouseEvent) => {
+      const ratio = (ev.clientY - rect.top) / rect.height;
+      setEditorRatio(Math.max(0.2, Math.min(0.8, ratio)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
-      {activeFile ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <MarkdownEditor
-              content={activeFile.content}
-              onChange={(c) => onFileChange(activeFileIndex, c)}
-            />
-          </div>
-          {showPreview && activeFile.type === 'chapter' && (
-            <>
-              <div style={{ height: '1px', background: '#e0e0e0' }} />
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                {activeFile.filename.endsWith('.tex') ? (
-                  <LatexPreview content={activeFile.content} />
-                ) : (
-                  <MarkdownPreview content={activeFile.content} />
-                )}
-              </div>
-            </>
+  const termH = terminalMaximized ? '100%' : terminalHeight;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
+      {/* Tab bar */}
+      {!terminalMaximized && (
+        <div style={{ height: '38px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: '2px', overflow: 'auto', flexShrink: 0, background: 'var(--panel-muted)' }}>
+          {(openFiles || []).map((file, i) => (
+            <div
+              key={file.filename}
+              onClick={() => onTabSelect(i)}
+              style={{
+                padding: '5px 14px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                borderRadius: '6px 6px 0 0',
+                background: i === activeFileIndex ? 'var(--paper)' : 'transparent',
+                borderBottom: i === activeFileIndex ? '2px solid var(--accent)' : '2px solid transparent',
+                color: i === activeFileIndex ? 'var(--accent-strong)' : 'var(--text-secondary)',
+                fontWeight: i === activeFileIndex ? 500 : 400,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {file.filename}{file.dirty ? ' •' : ''}
+              <span onClick={(e) => { e.stopPropagation(); onTabClose(i); }} style={{ marginLeft: '8px', color: 'var(--muted)', cursor: 'pointer', opacity: 0.6, fontSize: '13px' }}>×</span>
+            </div>
+          ))}
+          {activeFile && activeFile.type === 'chapter' && (
+            <button onClick={() => setShowPreview(!showPreview)} style={{ marginLeft: '8px', fontSize: '11px', border: '1px solid var(--border)', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', background: showPreview ? 'var(--accent-soft)' : 'var(--paper)', color: showPreview ? 'var(--accent-strong)' : 'var(--text-secondary)', fontWeight: 500, transition: 'all 0.15s' }}>
+              Preview
+            </button>
           )}
-        </div>
-      ) : (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
-          Open a file from the project tree
+          <button onClick={onToggleTerminal} style={{ marginLeft: 'auto', fontSize: '11px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px 8px', borderRadius: '4px', transition: 'color 0.15s' }}>
+            {terminalVisible ? '▼ Terminal' : '▲ Terminal'}
+          </button>
         </div>
       )}
 
+      {/* Editor + Preview area */}
+      {!terminalMaximized && (
+        activeFile ? (
+          <div ref={editorAreaRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ height: showPreview && activeFile.type === 'chapter' ? `${editorRatio * 100}%` : '100%', overflow: 'hidden' }}>
+              <MarkdownEditor
+                content={activeFile.content}
+                onChange={(c) => onFileChange(activeFileIndex, c)}
+              />
+            </div>
+            {showPreview && activeFile.type === 'chapter' && (
+              <>
+                <div
+                  onMouseDown={handleEditorPreviewResize}
+                  style={{ height: '5px', cursor: 'row-resize', background: 'var(--border)', flexShrink: 0, position: 'relative', transition: 'background 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
+                >
+                  <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
+                </div>
+                <div style={{ flex: 1, overflow: 'auto', background: 'var(--paper)' }}>
+                  {activeFile.filename.endsWith('.tex') ? (
+                    <LatexPreview content={activeFile.content} />
+                  ) : (
+                    <MarkdownPreview content={activeFile.content} />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--muted)' }}>
+            <div style={{ fontSize: '36px', opacity: 0.25 }}>📄</div>
+            <p style={{ margin: 0, fontSize: '13px' }}>Open a file from the project tree</p>
+          </div>
+        )
+      )}
+
+      {/* Terminal */}
       {terminalVisible && (
         <>
-          <div onMouseDown={handleTerminalResize} style={{ height: '4px', cursor: 'row-resize', background: '#e0e0e0', flexShrink: 0 }} />
-          <div style={{ height: terminalHeight, flexShrink: 0 }}>
-            <TerminalPanel cwd={projectPath || '/'} />
+          {!terminalMaximized && (
+            <div
+              onMouseDown={handleTerminalResize}
+              style={{ height: '5px', cursor: 'row-resize', background: 'var(--border)', flexShrink: 0, position: 'relative', transition: 'background 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
+            >
+              <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
+            </div>
+          )}
+          <div style={{ height: terminalMaximized ? '100%' : terminalHeight, flex: terminalMaximized ? 1 : undefined, flexShrink: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+            <div style={{ height: '28px', background: '#1e1e2e', display: 'flex', alignItems: 'center', padding: '0 12px', gap: '8px', flexShrink: 0 }}>
+              <span style={{ color: '#cdd6f4', fontSize: '11px', fontWeight: 500 }}>Terminal</span>
+              <span style={{ color: '#6c7086', fontSize: '10px', marginLeft: 'auto', fontFamily: '"JetBrains Mono", monospace' }}>{projectPath || '/'}</span>
+              <button
+                onClick={() => setTerminalMaximized(!terminalMaximized)}
+                style={{ border: 'none', background: 'none', color: '#a6adc8', cursor: 'pointer', fontSize: '12px', padding: '0 4px', transition: 'color 0.15s' }}
+                title={terminalMaximized ? 'Restore' : 'Maximize'}
+                onMouseEnter={e => (e.currentTarget.style.color = '#cdd6f4')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#a6adc8')}
+              >
+                {terminalMaximized ? '⊡' : '⊞'}
+              </button>
+              <button
+                onClick={onToggleTerminal}
+                style={{ border: 'none', background: 'none', color: '#a6adc8', cursor: 'pointer', fontSize: '12px', padding: '0 4px', transition: 'color 0.15s' }}
+                title="Close terminal"
+                onMouseEnter={e => (e.currentTarget.style.color = '#f38ba8')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#a6adc8')}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <TerminalPanel cwd={projectPath || '/'} />
+            </div>
           </div>
         </>
       )}

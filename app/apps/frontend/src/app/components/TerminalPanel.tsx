@@ -77,12 +77,6 @@ export function TerminalPanel({ cwd }: Props) {
   }, [cwd]);
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ height: '28px', background: '#252526', display: 'flex', alignItems: 'center', padding: '0 8px', gap: '8px' }}>
-        <span style={{ color: '#ccc', fontSize: '11px' }}>Terminal</span>
-        <span style={{ color: '#888', fontSize: '11px', marginLeft: 'auto' }}>{cwd}</span>
-      </div>
-      <div ref={containerRef} style={{ flex: 1 }} />
-    </div>
+    <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
   );
 }

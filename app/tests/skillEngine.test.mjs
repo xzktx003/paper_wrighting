@@ -20,9 +20,9 @@ describe('Skill Engine', () => {
   });
 
   it('getSkill returns specific skill by name with prompt', async () => {
-    const skill = getSkill('academic-tone');
+    const skill = getSkill('ml-paper-writing');
     expect(skill).toBeTruthy();
-    expect(skill.name).toBe('academic-tone');
+    expect(skill.name).toBe('ml-paper-writing');
     expect(skill.type).toBe('writing');
     expect(skill.prompt).toBeTruthy();
   });
@@ -39,20 +39,19 @@ describe('Skill Engine', () => {
     expect(types.has('review')).toBe(true);
     expect(types.has('analysis')).toBe(true);
     expect(types.has('utility')).toBe(true);
-    expect(types.has('code')).toBe(true);
+    expect(types.has('research')).toBe(true);
   });
 
   it('skills have correct trigger modes', async () => {
     const skills = listSkills();
     const triggers = new Set(skills.map(s => s.trigger));
-    expect(triggers.has('both')).toBe(true);
     expect(triggers.has('manual')).toBe(true);
   });
 
   it('assemblePrompt combines global and chapter skills', async () => {
-    const prompt = assemblePrompt({ globalSkills: ['academic-tone'], chapterSkills: ['section-drafter'] });
-    expect(prompt).toContain('academic');
-    expect(prompt).toContain('章节');
+    const prompt = assemblePrompt({ globalSkills: ['ml-paper-writing'], chapterSkills: ['nature-polishing'] });
+    expect(prompt).toContain('ML');
+    expect(prompt).toContain('Nature');
   });
 
   it('assemblePrompt with no skills returns base prompt', async () => {
@@ -61,7 +60,7 @@ describe('Skill Engine', () => {
   });
 
   it('assemblePrompt includes manual skill when provided', async () => {
-    const prompt = assemblePrompt({ globalSkills: [], chapterSkills: [], manualSkill: 'prose-polisher' });
-    expect(prompt).toContain('润色');
+    const prompt = assemblePrompt({ globalSkills: [], chapterSkills: [], manualSkill: 'writing-anti-ai' });
+    expect(prompt).toContain('AI');
   });
 });

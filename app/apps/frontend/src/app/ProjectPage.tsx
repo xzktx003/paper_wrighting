@@ -525,6 +525,11 @@ export default function ProjectPage() {
               )}
             </div>
             <button className="btn ghost" onClick={() => setSettingsOpen(true)}>{t('设置')}</button>
+            <button className="btn ghost" onClick={() => {
+              const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+              document.documentElement.setAttribute('data-theme', next);
+              localStorage.setItem('paper-writer-theme', next);
+            }} style={{ padding: '6px 10px' }}>{document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙'}</button>
           </div>
         </header>
 

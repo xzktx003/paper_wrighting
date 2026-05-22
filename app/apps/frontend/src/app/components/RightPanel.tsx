@@ -35,8 +35,8 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ height: '36px', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--panel)' }}>
+      <div style={{ height: '38px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', background: 'var(--panel-muted)' }}>
         <ConversationTabs
           conversations={conversations}
           activeId={activeConv?.id || null}
@@ -50,24 +50,84 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
       {activeConv ? (
         <>
           <ChatView messages={activeConv.history} loading={loading} />
-          <div style={{ borderTop: '1px solid #e0e0e0', padding: '8px' }}>
-            <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>
-              {activeConv.context_scope.type === 'chapter' ? `Chapter: ${activeConv.context_scope.file}` :
-               activeConv.context_scope.type === 'code' ? 'Code' :
-               activeConv.context_scope.type === 'global' ? 'Global' : 'Free'} | Mode: {activeConv.mode}
+          <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px', background: 'var(--panel-muted)' }}>
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', fontSize: '10px', fontWeight: 600 }}>
+                {activeConv.context_scope.type === 'chapter' ? `Ch: ${activeConv.context_scope.file}` :
+                 activeConv.context_scope.type === 'code' ? 'Code' :
+                 activeConv.context_scope.type === 'global' ? 'Global' : 'Free'}
+              </span>
+              <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--bg-secondary)', fontSize: '10px', fontWeight: 500 }}>
+                {activeConv.mode}
+              </span>
             </div>
-            <textarea
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-              style={{ width: '100%', minHeight: '60px', resize: 'vertical', border: '1px solid #ddd', borderRadius: '4px', padding: '8px', fontSize: '13px', boxSizing: 'border-box' }}
-            />
+            <div style={{ position: 'relative' }}>
+              <textarea
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message... (Enter to send)"
+                style={{
+                  width: '100%',
+                  minHeight: '56px',
+                  resize: 'vertical',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                  background: 'var(--paper)',
+                  color: 'var(--text)',
+                  fontFamily: 'inherit',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                  outline: 'none',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!inputValue.trim()}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  bottom: '8px',
+                  border: 'none',
+                  background: inputValue.trim() ? 'var(--accent)' : 'var(--bg-secondary)',
+                  color: inputValue.trim() ? '#fff' : 'var(--muted)',
+                  borderRadius: '8px',
+                  padding: '5px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: inputValue.trim() ? 'pointer' : 'default',
+                  transition: 'all 0.2s',
+                }}
+              >
+                Send
+              </button>
+            </div>
           </div>
         </>
       ) : (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
-          <button onClick={() => setShowNewDialog(true)} style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--muted)' }}>
+          <div style={{ fontSize: '32px', opacity: 0.3 }}>💬</div>
+          <p style={{ fontSize: '13px', margin: 0 }}>No active conversation</p>
+          <button
+            onClick={() => setShowNewDialog(true)}
+            style={{
+              padding: '8px 20px',
+              border: '1px solid var(--border)',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              background: 'var(--paper)',
+              color: 'var(--accent-strong)',
+              fontSize: '13px',
+              fontWeight: 500,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--paper)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+          >
             + New Conversation
           </button>
         </div>

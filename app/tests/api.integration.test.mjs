@@ -46,10 +46,10 @@ describe('Backend API Integration', () => {
     });
 
     it('GET /api/skills/:name returns specific skill', async () => {
-      const res = await fetch(`${BASE}/api/skills/academic-tone`);
+      const res = await fetch(`${BASE}/api/skills/ml-paper-writing`);
       const data = await res.json();
       expect(res.status).toBe(200);
-      expect(data.name).toBe('academic-tone');
+      expect(data.name).toBe('ml-paper-writing');
     });
   });
 
