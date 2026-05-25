@@ -45,7 +45,7 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
 
   // LLM config is resolved server-side from the repository .env.
   // Do not read or cache API keys in browser storage.
-  const SETTINGS_KEY = 'openprism-settings-v1';
+  const SETTINGS_KEY = 'paper-agent-settings-v1';
 
   const readMineruConfigFromStorage = (): { mineruApiBase: string; mineruToken: string } => {
     try {
@@ -109,8 +109,7 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
           setSourceMainFile(main || texFiles[0]);
         }
       })
-      .catch(() => {});
-  }, [projectId]);
+      .catch((err) => { console.error('Failed to load source files:', err); });
 
   // Load templates on mount
   useEffect(() => {
@@ -120,7 +119,7 @@ export default function TransferPanel({ projectId, onJobUpdate }: TransferPanelP
           setTemplates(res.templates || []);
           setTemplatesLoaded(true);
         })
-        .catch(() => {});
+        .catch((err) => { console.error('Failed to load templates:', err); });
     }
   }, [templatesLoaded]);
 

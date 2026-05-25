@@ -60,13 +60,30 @@ export { SUPPORTED_ENGINES };
 // Engines that need multiple passes + bibtex for citations
 const MULTI_PASS_ENGINES = ['pdflatex', 'xelatex', 'lualatex'];
 
-function runSpawn(cmd, args, cwd, pushLog, env) {
+const COMPILE_TIMEOUT_MS = 120_000; // 2 minutes per pass
+
+function runSpawn(cmd, args, cwd, pushLog, env, timeoutMs = COMPILE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd, env: env || getEngineEnv() });
+    let killed = false;
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
     child.stdout.on('data', pushLog);
     child.stderr.on('data', pushLog);
-    child.on('error', (err) => reject(err));
-    child.on('close', (code) => resolve(code));
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (killed) {
+        reject(new Error(`Process timed out after ${timeoutMs / 1000}s and was killed`));
+      } else {
+        resolve(code);
+      }
+    });
   });
 }
 

@@ -60,7 +60,7 @@ describe('Project Service', () => {
     await expect(loadProject('/tmp/non-existent-project-xyz')).rejects.toThrow();
   });
 
-  it('getProjectRoot resolves OpenPrism metadata id when directory name differs', async () => {
+  it('getProjectRoot resolves Paper Agent metadata id when directory name differs', async () => {
     const root = await getProjectRoot('c2b87dfc-af29-42ef-b088-0f28aa9d65c3');
     expect(root.endsWith('/papers/torq')).toBe(true);
   });

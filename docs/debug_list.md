@@ -13,7 +13,7 @@
 - Fix: make project deletion tolerant of missing or invalid metadata, resolve project roots by scanning `project.json.id` when the direct directory does not exist, and treat already-removed project directories as successful no-ops.
 - Regression: added a Fastify route test and a Playwright delete-flow script. On this machine, browser launch is blocked by missing GTK/ATK system libraries, so the Playwright script falls back to Playwright APIRequest validation.
 
-- 2026-05-22: 修复 AI Assistant 在目录名与 project.json id 不一致的 OpenPrism 项目中误访问 `papers/<uuid>/chapters` 的问题；AI 路由改用 `getProjectRoot()` 解析真实项目目录，并增强工具错误处理、`.bib` 自动查找、`list_code` 工具。
+- 2026-05-22: 修复 AI Assistant 在目录名与 project.json id 不一致的项目中误访问 `papers/<uuid>/chapters` 的问题；AI 路由改用 `getProjectRoot()` 解析真实项目目录，并增强工具错误处理、`.bib` 自动查找、`list_code` 工具。
 
 - 2026-05-22: 修复 Terminal WS 在缺少系统 `script` 命令时触发 `spawn script ENOENT` 并导致后端进程崩溃；无 `script` 时降级直接启动 shell，并处理 child process error。Terminal cwd 也改用 `getProjectRoot()` 支持目录名与 id 不一致。
 - 2026-05-22: 移除 AI 新建对话中的独立 Code scope 半成品入口；Chat/Agent/Tools 改为明确分工，Agent 不再暴露代码写入/执行工具，代码任务统一收敛到 Tools 模式并限制在 `code/` 目录内。

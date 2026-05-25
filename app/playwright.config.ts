@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * OpenPrism Playwright E2E 测试配置
+ * Paper Agent Playwright E2E 测试配置
  *
  * 使用方式：
  *   npx playwright test                    # 运行所有测试

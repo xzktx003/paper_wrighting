@@ -30,7 +30,7 @@ export function SkillPanel({ globalSkills, chapterSkills, onActivateSkill }: Pro
   const [tagsExpanded, setTagsExpanded] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', display_name: '', description: '', type: 'writing', trigger: 'manual', prompt: '' });
 
-  const refreshSkills = () => listSkills().then(setSkills).catch(() => {});
+  const refreshSkills = () => listSkills().then(setSkills).catch((err) => { console.error('Failed to load skills:', err); });
 
   useEffect(() => { refreshSkills(); }, []);
 

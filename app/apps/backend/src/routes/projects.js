@@ -14,6 +14,34 @@ import { getLang, t } from '../i18n/index.js';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf', '.eps'];
 
+// Per-project lock to prevent concurrent project.json writes
+const projectLocks = new Map();
+
+function acquireProjectLock(projectId) {
+  if (!projectLocks.has(projectId)) {
+    projectLocks.set(projectId, Promise.resolve());
+  }
+  let release;
+  const next = new Promise((resolve) => { release = resolve; });
+  const prev = projectLocks.get(projectId);
+  projectLocks.set(projectId, next);
+  return prev.then(() => release);
+}
+
+async function updateProjectMeta(projectId, updater) {
+  const release = await acquireProjectLock(projectId);
+  try {
+    const projectRoot = await getProjectRoot(projectId);
+    const metaPath = path.join(projectRoot, 'project.json');
+    const meta = await readJson(metaPath);
+    const next = updater(meta);
+    await writeJson(metaPath, next);
+    return next;
+  } finally {
+    release();
+  }
+}
+
 async function ensureDocsSupportDir(projectRoot) {
   await ensureDir(path.join(projectRoot, 'docs'));
 }
@@ -177,11 +205,7 @@ export function registerProjectRoutes(fastify) {
     const { id } = req.params;
     const { name } = req.body || {};
     if (!name) return { ok: false, error: 'Missing name' };
-    const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, name };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMeta(id, (meta) => ({ ...meta, name }));
     return { ok: true, project: next };
   });
 
@@ -251,38 +275,26 @@ export function registerProjectRoutes(fastify) {
     const { id } = req.params;
     const { tags } = req.body || {};
     if (!Array.isArray(tags)) return { ok: false, error: 'tags must be an array' };
-    const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, tags, updatedAt: new Date().toISOString() };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMeta(id, (meta) => ({ ...meta, tags, updatedAt: new Date().toISOString() }));
     return { ok: true, project: next };
   });
 
   fastify.patch('/api/projects/:id/archive', async (req) => {
     const { id } = req.params;
     const { archived } = req.body || {};
-    const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, archived: !!archived, updatedAt: new Date().toISOString() };
-    await writeJson(metaPath, next);
+    const next = await updateProjectMeta(id, (meta) => ({ ...meta, archived: !!archived, updatedAt: new Date().toISOString() }));
     return { ok: true, project: next };
   });
 
   fastify.patch('/api/projects/:id/trash', async (req) => {
     const { id } = req.params;
     const { trashed } = req.body || {};
-    const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = {
+    const next = await updateProjectMeta(id, (meta) => ({
       ...meta,
       trashed: !!trashed,
       trashedAt: trashed ? new Date().toISOString() : null,
       updatedAt: new Date().toISOString()
-    };
-    await writeJson(metaPath, next);
+    }));
     return { ok: true, project: next };
   });
 
@@ -307,11 +319,10 @@ export function registerProjectRoutes(fastify) {
     if (!Array.isArray(order)) {
       return { ok: false, error: 'Missing order.' };
     }
-    const projectRoot = await getProjectRoot(id);
-    const metaPath = path.join(projectRoot, 'project.json');
-    const meta = await readJson(metaPath);
-    const next = { ...meta, fileOrder: { ...(meta.fileOrder || {}), [folder]: order } };
-    await writeJson(metaPath, next);
+    await updateProjectMeta(id, (meta) => ({
+      ...meta,
+      fileOrder: { ...(meta.fileOrder || {}), [folder]: order },
+    }));
     return { ok: true };
   });
 
@@ -391,10 +402,7 @@ export function registerProjectRoutes(fastify) {
     await ensureDir(path.dirname(abs));
     await fs.writeFile(abs, content ?? '', 'utf8');
     try {
-      const metaPath = path.join(projectRoot, 'project.json');
-      const meta = await readJson(metaPath);
-      meta.updatedAt = new Date().toISOString();
-      await writeJson(metaPath, meta);
+      await updateProjectMeta(id, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
     } catch { /* ignore */ }
     return { ok: true };
   });
@@ -427,10 +435,7 @@ export function registerProjectRoutes(fastify) {
       await fs.writeFile(abs, content ?? '', 'utf8');
     }
     try {
-      const metaPath = path.join(projectRoot, 'project.json');
-      const meta = await readJson(metaPath);
-      meta.updatedAt = new Date().toISOString();
-      await writeJson(metaPath, meta);
+      await updateProjectMeta(id, (meta) => ({ ...meta, updatedAt: new Date().toISOString() }));
     } catch { /* ignore */ }
     return { ok: true, path: filePath, type: type === 'folder' ? 'dir' : type };
   });

@@ -31,9 +31,12 @@ export async function renameFile(oldPath, newPath) {
 }
 
 export function watchDirectory(dirPath, onChange) {
-  if (watchers.has(dirPath)) return;
+  if (watchers.has(dirPath)) return watchers.get(dirPath);
   const watcher = watch(dirPath, { recursive: true }, (eventType, filename) => {
     if (filename) onChange({ eventType, filename, path: join(dirPath, filename) });
+  });
+  watcher.on('error', () => {
+    unwatchDirectory(dirPath);
   });
   watchers.set(dirPath, watcher);
   return watcher;
@@ -45,4 +48,15 @@ export function unwatchDirectory(dirPath) {
     watcher.close();
     watchers.delete(dirPath);
   }
+}
+
+export function unwatchAll() {
+  for (const [dirPath, watcher] of watchers) {
+    watcher.close();
+  }
+  watchers.clear();
+}
+
+export function getActiveWatcherCount() {
+  return watchers.size;
 }

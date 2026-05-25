@@ -11,7 +11,7 @@ const DRAWIO_EMBED_URL = 'https://embed.diagrams.net/?embed=1&ui=atlas&spin=1&pr
 
 // Default empty diagram XML
 const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="OpenPrism" version="24.0.0">
+<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="Paper Agent" version="24.0.0">
   <diagram id="diagram1" name="Page-1">
     <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>

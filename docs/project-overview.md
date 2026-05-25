@@ -1,6 +1,6 @@
 # Project Overview
 
-Paper Writer manages each paper as a filesystem-backed project under `papers/`.
+**Paper Agent** is a local-first AI-powered academic writing tool. It manages each paper as a filesystem-backed project under `papers/`.
 
 The frontend includes a theme selector for both project management and editor screens. Basic Light and Basic Dark remain available as conservative defaults, while GitHub Dark, Catppuccin, Tokyo Night, and Dracula-inspired themes provide higher-contrast editor-style alternatives.
 

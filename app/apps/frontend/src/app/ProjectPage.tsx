@@ -23,7 +23,7 @@ import { ThemeToggle, useTheme } from './components/ThemeToggle';
 type ViewFilter = 'all' | 'mine' | 'archived' | 'trash';
 type SortBy = 'updatedAt' | 'name' | 'createdAt';
 
-const SETTINGS_KEY = 'openprism-settings-v1';
+const SETTINGS_KEY = 'paper-agent-settings-v1';
 
 interface LLMSettings {
   llmEndpoint: string;
@@ -437,7 +437,7 @@ export default function ProjectPage() {
       {/* ── Sidebar ── */}
       <aside className="project-sidebar">
         <div className="sidebar-brand">
-          <div className="brand-title">OpenPrism</div>
+          <div className="brand-title">Paper Agent</div>
           <div className="brand-sub">{t('Projects Workspace')}</div>
         </div>
 

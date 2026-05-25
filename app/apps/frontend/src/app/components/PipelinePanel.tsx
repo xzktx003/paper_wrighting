@@ -45,7 +45,7 @@ export function PipelinePanel({ projectPath, chapterScope }: Props) {
   const [selectedType, setSelectedType] = useState('paper-pipeline');
 
   useEffect(() => {
-    listPipelineTypes().then(setPipelineTypes).catch(() => {});
+    listPipelineTypes().then(setPipelineTypes).catch((err) => { console.error('Failed to load pipeline types:', err); });
   }, []);
 
   const handleStart = async () => {

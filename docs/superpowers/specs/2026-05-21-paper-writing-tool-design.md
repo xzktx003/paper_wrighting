@@ -2,20 +2,20 @@
 
 ## 概述
 
-基于 OpenPrism fork 改造的本地论文写作工具。核心理念：编辑器优先，AI 是辅助侧边栏。支持 Markdown/LaTeX 双模式编辑、多文件章节管理、三层 Skill 系统、多对话窗口、代码/实验模块。纯本地部署，数据不出本地。
+Paper Agent 是基于 OpenPrism fork 改造的本地论文写作工具。核心理念：编辑器优先，AI 是辅助侧边栏。支持 Markdown/LaTeX 双模式编辑、多文件章节管理、三层 Skill 系统、多对话窗口、代码/实验模块。纯本地部署，数据不出本地。
 
 ## 技术栈
 
 | 层 | 技术 | 来源 |
 |---|---|---|
-| 前端框架 | React 18 + TypeScript | OpenPrism |
-| 构建工具 | Vite 5 | OpenPrism |
-| 后端框架 | Fastify 4 (Node.js, ESM) | OpenPrism |
-| 编辑器 | CodeMirror 6 | OpenPrism |
+| 前端框架 | React 18 + TypeScript | Paper Agent (OpenPrism) |
+| 构建工具 | Vite 5 | Paper Agent (OpenPrism) |
+| 后端框架 | Fastify 4 (Node.js, ESM) | Paper Agent (OpenPrism) |
+| 编辑器 | CodeMirror 6 | Paper Agent (OpenPrism) |
 | AI/LLM | @anthropic-ai/sdk (Claude API) | 替换 LangChain |
-| PDF 渲染 | pdfjs-dist | OpenPrism |
-| 实时通信 | WebSocket (fastify-websocket) | OpenPrism |
-| LaTeX 编译 | pdflatex/xelatex/tectonic | OpenPrism |
+| PDF 渲染 | pdfjs-dist | Paper Agent (OpenPrism) |
+| 实时通信 | WebSocket (fastify-websocket) | Paper Agent (OpenPrism) |
+| LaTeX 编译 | pdflatex/xelatex/tectonic | Paper Agent (OpenPrism) |
 | 终端 | xterm.js + node-pty | 新增 |
 | Markdown→LaTeX | Pandoc | 新增 |
 | 代码执行 | Node.js child_process | 新增 |
@@ -103,7 +103,7 @@ code:
 - 支持学术 Markdown 扩展：数学公式（KaTeX）、脚注、引用、表格
 
 **LaTeX 模式：**
-- 复用 OpenPrism 现有 LaTeX 语言支持
+- 继承 OpenPrism 现有 LaTeX 语言支持
 - PDF 实时预览（pdfjs-dist）
 
 **代码模式：**
@@ -258,12 +258,12 @@ type ContextScope =
 
 **替换 LangChain 为 Anthropic SDK：**
 
-OpenPrism 使用 LangChain + OpenAI-compatible API。改造为直接使用 `@anthropic-ai/sdk`，原因：
+OpenPrism（上游项目）使用 LangChain + OpenAI-compatible API。Paper Agent 改造为直接使用 `@anthropic-ai/sdk`，原因：
 - 减少依赖层级
 - 更好地利用 Claude 的 tool use 能力
 - 支持 extended thinking
 
-**三种交互模式（保留 OpenPrism 设计）：**
+**三种交互模式（继承自 OpenPrism 设计）：**
 
 1. **Chat 模式** — 纯对话，不调用工具、不修改文档。用于讨论思路、问问题、头脑风暴
 2. **Agent 模式** — AI 可读取章节/引用并通过 `propose_edit` 生成修改建议，展示给用户确认后应用；不直接写文件、不运行代码
@@ -375,8 +375,8 @@ routes/
 ├── ai.js            # Claude API 调用（chat/agent/tools）
 ├── code.js          # 代码文件读写、执行
 ├── terminal.js      # 终端 WebSocket（node-pty）
-├── compile.js       # LaTeX 编译（复用 OpenPrism）
-├── arxiv.js         # arXiv 搜索（复用 OpenPrism）
+├── compile.js       # LaTeX 编译（继承 OpenPrism）
+├── arxiv.js         # arXiv 搜索（继承 OpenPrism）
 ├── export.js        # 合并导出（Markdown→LaTeX→PDF）
 └── ws.js            # WebSocket（文件变更推送）
 ```
@@ -389,10 +389,10 @@ services/
 ├── fileManager.js        # 文件操作、fs.watch 监听
 ├── claudeService.js      # Anthropic SDK 封装、tool use 处理
 ├── codeExecutor.js       # 代码执行（child_process + 超时控制）
-├── compileService.js     # LaTeX 编译（复用 OpenPrism）
+├── compileService.js     # LaTeX 编译（继承 OpenPrism）
 ├── exportService.js      # Pandoc 转换 + 合并导出
 ├── conversationStore.js  # 对话历史持久化（本地 JSON 文件）
-└── arxivService.js       # arXiv 搜索（复用 OpenPrism）
+└── arxivService.js       # arXiv 搜索（继承 OpenPrism）
 ```
 
 ## 数据持久化
@@ -413,13 +413,13 @@ services/
 
 ## 改造步骤概要
 
-1. Fork OpenPrism，剥离不需要的功能（实时协作 Yjs、tunneling、ngrok）
+1. Fork OpenPrism 上游，剥离不需要的功能（实时协作 Yjs、tunneling、ngrok）
 2. 替换 LangChain 为 @anthropic-ai/sdk
 3. 增加 Markdown 编辑模式（@codemirror/lang-markdown + 预览）
 4. 重构左栏为论文项目树 + Skill 面板
 5. 实现 Skill Engine（加载、解析、prompt 组装）
 6. 移植 Claude Scholar 内置 skill 库
-7. 实现多对话窗口系统（替换 OpenPrism 单一 chat 面板）
+7. 实现多对话窗口系统（替换上游 OpenPrism 单一 chat 面板）
 8. 增加 code/ 模块（代码编辑 + 执行）
 9. 增加内嵌终端（xterm.js + node-pty）
 10. 实现导出流程（Markdown → Pandoc → LaTeX → PDF）

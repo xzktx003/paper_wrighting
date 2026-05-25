@@ -24,6 +24,7 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
     const [fontSize, setFontSize] = useState(14);
     const [isRendering, setIsRendering] = useState(false);
     const [prevContent, setPrevContent] = useState(content);
+    const rafRef = useRef<number>(0);
 
     // Detect content changes for animation
     useEffect(() => {
@@ -45,7 +46,8 @@ export const LatexPreview = forwardRef<HTMLDivElement, Props>(
       scrollingRef.current = true;
       const maxScroll = el.scrollHeight - el.clientHeight;
       el.scrollTop = scrollRatio * maxScroll;
-      requestAnimationFrame(() => { scrollingRef.current = false; });
+      rafRef.current = requestAnimationFrame(() => { scrollingRef.current = false; });
+      return () => cancelAnimationFrame(rafRef.current);
     }, [scrollRatio]);
 
     const handleScroll = () => {

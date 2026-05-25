@@ -15,8 +15,8 @@ const terminals = new Map();
 let nextId = 1;
 
 async function resolveCwd(cwd) {
-  if (cwd && cwd.startsWith('__openprism__:')) {
-    const id = cwd.replace('__openprism__:', '');
+  if (cwd && cwd.startsWith('__paper_agent__:')) {
+    const id = cwd.replace('__paper_agent__:', '');
     return await getProjectRoot(id);
   }
   if (cwd && existsSync(cwd)) return cwd;
@@ -25,14 +25,14 @@ async function resolveCwd(cwd) {
 
 export function getTerminalSessionName(cwd = '') {
   const raw = String(cwd || 'home');
-  const explicitProjectId = raw.startsWith('__openprism__:') ? raw.replace('__openprism__:', '') : '';
+  const explicitProjectId = raw.startsWith('__paper_agent__:') ? raw.replace('__paper_agent__:', '') : '';
   const stableInput = explicitProjectId || raw;
   const readable = (explicitProjectId || path.basename(raw) || 'home')
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 36) || 'home';
   const digest = crypto.createHash('sha1').update(stableInput).digest('hex').slice(0, 10);
-  return `openprism-${readable}-${digest}`;
+  return `paper-agent-${readable}-${digest}`;
 }
 
 export function buildTmuxSpawnOptions({ cwd, cols, rows, sessionName }) {

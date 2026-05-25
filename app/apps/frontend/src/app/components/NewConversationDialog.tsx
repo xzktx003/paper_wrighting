@@ -27,7 +27,7 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(cfg => {
       if (cfg.claude_model) setConfigModel(cfg.claude_model);
-    }).catch(() => {});
+    }).catch((err) => { console.error('Failed to load config:', err); });
   }, []);
 
   const handleSubmit = () => {

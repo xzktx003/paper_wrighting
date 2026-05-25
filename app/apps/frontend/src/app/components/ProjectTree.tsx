@@ -39,7 +39,7 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetFolder, setUploadTargetFolder] = useState<string>('');
-  const projectId = getOpenPrismProjectId(projectPath);
+  const projectId = getPaperAgentProjectId(projectPath);
   const tree = useMemo(() => buildProjectTree(fileItems), [fileItems]);
 
   useEffect(() => {
@@ -586,8 +586,8 @@ function MenuDivider() {
   return <div style={{ height: 1, background: 'var(--border)', margin: '4px 2px' }} />;
 }
 
-function getOpenPrismProjectId(projectPath: string): string | null {
-  return projectPath.startsWith('__openprism__:') ? projectPath.replace('__openprism__:', '') : null;
+function getPaperAgentProjectId(projectPath: string): string | null {
+  return projectPath.startsWith('__paper_agent__:') ? projectPath.replace('__paper_agent__:', '') : null;
 }
 
 function FileIcon({ path, isDir, isOpen }: { path: string; isDir: boolean; isOpen: boolean }) {
