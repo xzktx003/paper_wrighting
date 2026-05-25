@@ -47,10 +47,10 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
 
   useEffect(() => {
     if (!projectId || project.path) return;
-    loadOpenPrismProject(projectId);
+    loadPaperAgentProject(projectId);
   }, [projectId]);
 
-  async function loadOpenPrismProject(id: string) {
+  async function loadPaperAgentProject(id: string) {
     setProject(p => ({ ...p, loading: true, error: null }));
     try {
       const treeRes = await fetch(`/api/projects/${id}/tree`);
@@ -81,7 +81,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
         files: items.filter((item): item is { path: string; type: 'file' | 'dir' } => item.type === 'file' || item.type === 'dir'),
       };
 
-      setProject({ path: `__openprism__:${id}`, config, loading: false, error: null });
+      setProject({ path: `__paper_agent__:${id}`, config, loading: false, error: null });
     } catch (e: any) {
       setProject(p => ({ ...p, loading: false, error: e.message }));
     }
@@ -94,10 +94,10 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
 
   useEffect(() => {
     if (project.path) {
-      if (!project.path.startsWith('__openprism__:')) {
-        reloadSkills(`${project.path}/skills`).then(() => listSkills().then(setSkills)).catch(() => {});
+      if (!project.path.startsWith('__paper_agent__:')) {
+        reloadSkills(`${project.path}/skills`).then(() => listSkills().then(setSkills)).catch((err) => { console.error('Failed to reload skills:', err); });
       } else {
-        listSkills().then(setSkills).catch(() => {});
+        listSkills().then(setSkills).catch((err) => { console.error('Failed to list skills:', err); });
       }
       convHook.refresh();
     }
@@ -110,9 +110,9 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     }
   }, [project.config]);
 
-  const getOpenPrismId = useCallback(() => {
-    if (project.path?.startsWith('__openprism__:')) {
-      return project.path.replace('__openprism__:', '');
+  const getPaperAgentId = useCallback(() => {
+    if (project.path?.startsWith('__paper_agent__:')) {
+      return project.path.replace('__paper_agent__:', '');
     }
     return null;
   }, [project.path]);
@@ -126,11 +126,11 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     if (!project.path) return;
     let content = '';
     try {
-      const opId = getOpenPrismId();
-      if (opId && (isImagePath(file.path) || isPdfPath(file.path))) {
+      const paId = getPaperAgentId();
+      if (paId && (isImagePath(file.path) || isPdfPath(file.path))) {
         content = '';
-      } else if (opId && isPreviewableTextPath(file.path)) {
-        const res = await fetch(`/api/projects/${opId}/file?path=${encodeURIComponent(file.path)}`);
+      } else if (paId && isPreviewableTextPath(file.path)) {
+        const res = await fetch(`/api/projects/${paId}/file?path=${encodeURIComponent(file.path)}`);
         const data = await res.json();
         content = data.content || '';
       } else if (file.type === 'chapter') {
@@ -147,7 +147,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
       setActiveFileIndex(prev.length);
       return [...prev, { filename: file.path, content, type: file.type, dirty: false }];
     });
-  }, [openFiles, project.path, getOpenPrismId]);
+  }, [openFiles, project.path, getPaperAgentId]);
 
   const updateFileContent = useCallback((index: number, content: string) => {
     setOpenFiles(prev => prev.map((f, i) => i === index ? { ...f, content, dirty: true } : f));
@@ -156,9 +156,9 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
   const saveFile = useCallback(async (index: number) => {
     const file = openFiles[index];
     if (!file || !project.path) return;
-    const opId = getOpenPrismId();
-    if (opId) {
-      await fetch(`/api/projects/${opId}/file`, {
+    const paId = getPaperAgentId();
+    if (paId) {
+      await fetch(`/api/projects/${paId}/file`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: file.filename, content: file.content }),
@@ -167,7 +167,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
       await writeChapter(project.path, file.filename, file.content);
     }
     setOpenFiles(prev => prev.map((f, i) => i === index ? { ...f, dirty: false } : f));
-  }, [openFiles, project.path, getOpenPrismId]);
+  }, [openFiles, project.path, getPaperAgentId]);
 
   const closeFile = useCallback((index: number) => {
     setOpenFiles(prev => prev.filter((_, i) => i !== index));

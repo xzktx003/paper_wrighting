@@ -12,7 +12,7 @@ function resolvePythonExecutable() {
 
 export async function runPythonPlot(payload) {
   const runId = crypto.randomUUID();
-  const tmpDir = path.join('/tmp', `openprism_plot_${runId}`);
+  const tmpDir = path.join('/tmp', `paper_agent_plot_${runId}`);
   await ensureDir(tmpDir);
   const payloadPath = path.join(tmpDir, 'payload.json');
   await fs.writeFile(payloadPath, JSON.stringify(payload), 'utf8');

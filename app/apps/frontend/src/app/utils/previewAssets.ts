@@ -17,9 +17,9 @@ const PROJECT_ROOT_DIRS = new Set([
   'output',
 ]);
 
-export function getOpenPrismProjectId(projectPath?: string | null): string | null {
-  if (!projectPath?.startsWith('__openprism__:')) return null;
-  return projectPath.replace('__openprism__:', '');
+export function getPaperAgentProjectId(projectPath?: string | null): string | null {
+  if (!projectPath?.startsWith('__paper_agent__:')) return null;
+  return projectPath.replace('__paper_agent__:', '');
 }
 
 export function isImagePath(filePath: string): boolean {

@@ -105,6 +105,12 @@ if (existsSync(frontendDist)) {
 
 await ensureDir(DATA_DIR);
 
+// Clean up file watchers on shutdown
+fastify.addHook('onClose', async () => {
+  const { unwatchAll } = await import('./services/fileManager.js');
+  unwatchAll();
+});
+
 await fastify.listen({ port: PORT, host: '0.0.0.0' });
 
 console.log('');

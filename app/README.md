@@ -1,17 +1,13 @@
 <div align="center">
 
-<img src="static/logo-rotating.gif" alt="OpenPrism Logo" width="200"/>
+<img src="static/logo-rotating.gif" alt="Paper Agent Logo" width="200"/>
 
-# OpenPrism
+# Paper Agent
 
-### OpenPrism — Vibe Writing for Academia
+### Paper Agent — AI-Powered Academic Writing
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/OpenDCAI/OpenPrism?style=social)](https://github.com/OpenDCAI/OpenPrism/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/OpenDCAI/OpenPrism?style=social)](https://github.com/OpenDCAI/OpenPrism/network/members)
-[![GitHub Issues](https://img.shields.io/github/issues/OpenDCAI/OpenPrism)](https://github.com/OpenDCAI/OpenPrism/issues)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/OpenDCAI/OpenPrism)](https://github.com/OpenDCAI/OpenPrism/pulls)
 
 [中文](README_ZH.md) | [English](README.md)
 
@@ -74,7 +70,7 @@
 
 <div align="center">
 <br>
-<img src="static/首页.gif" alt="OpenPrism Home" width="90%"/>
+<img src="static/首页.gif" alt="Paper Agent Home" width="90%"/>
 <br>
 <sub>✨ Home preview: three-panel workspace + editor + preview</sub>
 <br><br>
@@ -84,7 +80,7 @@
 
 ## ✨ Core Features
 
-OpenPrism is a local-first LaTeX + AI workspace for academic writing, optimized for fast editing, controlled changes, and privacy.
+Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimized for fast editing, controlled changes, and privacy.
 
 ### 🤖 AI Assistant
 
@@ -278,7 +274,7 @@ OpenPrism is a local-first LaTeX + AI workspace for academic writing, optimized 
 
 #### LaTeX Compilation Environment (Required)
 
-OpenPrism requires a LaTeX engine to generate PDFs. Choose one of the following options based on your OS:
+Paper Agent requires a LaTeX engine to generate PDFs. Choose one of the following options based on your OS:
 
 **Option 1: TexLive (Recommended)**
 - **Linux (Ubuntu/Debian)**:
@@ -358,10 +354,11 @@ npm run build
 
 # 5. Configure environment variables (optional)
 cat > .env << EOF
+# LLM Configuration (env vars prefixed with OPENPRISM_ for legacy compatibility)
 OPENPRISM_LLM_BASE_URL=https://api.openai.com/v1
 OPENPRISM_LLM_API_KEY=your-api-key
 OPENPRISM_LLM_MODEL=gpt-5.5
-OPENPRISM_DATA_DIR=/var/openprism/data
+OPENPRISM_DATA_DIR=./data
 PORT=8787
 EOF
 
@@ -402,7 +399,7 @@ OPENPRISM_MINERU_TOKEN=your-mineru-token
 
 ### LLM Configuration
 
-OpenPrism supports any **OpenAI-compatible** endpoint, including custom base URL:
+Paper Agent supports any **OpenAI-compatible** endpoint, including custom base URL:
 
 **Method 1: Environment Variables**
 ```bash
@@ -468,7 +465,7 @@ data/
 
 ## 👥 Collaboration Guide
 
-OpenPrism includes a built-in real-time collaboration system based on CRDT (Yjs) + WebSocket, allowing multiple users to edit the same document simultaneously without any third-party service.
+Paper Agent includes a built-in real-time collaboration system based on CRDT (Yjs) + WebSocket, allowing multiple users to edit the same document simultaneously without any third-party service.
 
 ### Collaboration Environment Variables
 
@@ -487,7 +484,7 @@ OPENPRISM_COLLAB_TOKEN_TTL=86400
 
 ### How to Use
 
-1. **Deploy**: Deploy OpenPrism to a server with a public IP, configure a domain and HTTPS
+1. **Deploy**: Deploy Paper Agent to a server with a public IP, configure a domain and HTTPS
 2. **Generate invite**: Click "Generate Invite Link" in the collaboration panel on the editor page
 3. **Share link**: Send the generated link to your collaborator
 4. **Join**: Collaborator opens the link, token is verified automatically, and they enter the editor
@@ -520,7 +517,7 @@ server {
 <details>
 <summary><strong>No Public Server? Use Tunnel (ngrok)</strong></summary>
 
-You can collaborate remotely without a public server. OpenPrism has built-in tunnel support — one command exposes your local service to the internet.
+You can collaborate remotely without a public server. Paper Agent has built-in tunnel support — one command exposes your local service to the internet.
 
 #### Quick Start (ngrok, Recommended)
 
@@ -537,7 +534,7 @@ npm run tunnel:ngrok
 3. On startup, the terminal prints a public URL. Share it with your collaborator:
 
 ```
-  OpenPrism started at http://localhost:8787
+  Paper Agent started at http://localhost:8787
 
   Tunnel active (ngrok):
   Public URL: https://xxxx.ngrok-free.app
@@ -572,7 +569,7 @@ npm run tunnel:ngrok
 ## 📁 Project Structure
 
 ```
-OpenPrism/
+Paper Agent/
 ├── apps/
 │   ├── frontend/           # React + Vite frontend
 │   │   ├── src/
@@ -684,12 +681,12 @@ MIT License. See [LICENSE](LICENSE).
 <br>
 
 <a name="wechat-group"></a>
-<img src="static/wechat.png" alt="OpenPrism WeChat Community" width="300"/>
+<img src="static/wechat.png" alt="Paper Agent WeChat Community" width="300"/>
 <br>
 <sub>Scan to join the community WeChat group</sub>
 
 <p align="center">
-  <em>Made with ❤️ by OpenPrism Team</em>
+  <em>Made with ❤️ by Paper Agent Team</em>
 </p>
 
 </div>

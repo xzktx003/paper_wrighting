@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import zhCN from './locales/zh-CN.json';
 import enUS from './locales/en-US.json';
 
-const STORAGE_KEY = 'openprism-lang';
+const STORAGE_KEY = 'paper-agent-lang';
 const defaultLang = 'zh-CN';
 
 function getInitialLang() {

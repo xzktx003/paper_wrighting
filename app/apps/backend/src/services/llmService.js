@@ -231,13 +231,14 @@ async function openaiChatWithTools({ systemPrompt, messages, tools, onToolUse, m
 
 /* ── Streaming variants ─────────────────────────────── */
 
-async function anthropicChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult }) {
+async function anthropicChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal }) {
   if (!anthropicClient) throw new Error('Anthropic not initialized.');
   const useModel = model || anthropicClient._defaultModel;
   const params = { model: useModel, max_tokens: 8192, system: systemPrompt, messages, stream: true };
   if (tools && tools.length > 0) params.tools = tools;
 
-  const stream = anthropicClient.messages.stream(params);
+  const streamOpts = signal ? { signal } : {};
+  const stream = anthropicClient.messages.stream(params, streamOpts);
   let fullText = '';
   const toolUseBlocks = [];
   let currentToolId = null;
@@ -285,13 +286,13 @@ async function anthropicChatCompletionStream({ systemPrompt, messages, tools, mo
       { role: 'assistant', content: toolUseBlocks.map(b => ({ type: 'tool_use', id: b.id, name: b.name, input: b.input })) },
       { role: 'user', content: toolResults },
     ];
-    return anthropicChatCompletionStream({ systemPrompt, messages: newMessages, tools, model, onToken, onToolUse, onToolResult });
+    return anthropicChatCompletionStream({ systemPrompt, messages: newMessages, tools, model, onToken, onToolUse, onToolResult, signal });
   }
 
   return { fullText };
 }
 
-async function openaiChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult }) {
+async function openaiChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal }) {
   if (!openaiClient) throw new Error('OpenAI-compatible provider not initialized.');
   const useModel = model || openaiClient._defaultModel;
   const oaiMessages = buildOpenAIMessages(systemPrompt, messages);
@@ -299,7 +300,7 @@ async function openaiChatCompletionStream({ systemPrompt, messages, tools, model
   const oaiTools = toOpenAITools(tools);
   if (oaiTools) params.tools = oaiTools;
 
-  const stream = await openaiClient.chat.completions.create(params);
+  const stream = await openaiClient.chat.completions.create(params, signal ? { signal } : {});
   let fullText = '';
   const toolCallsMap = new Map();
 

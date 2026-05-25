@@ -4,6 +4,20 @@ import { randomUUID } from 'crypto';
 
 const STORE_BASE = join(process.env.HOME, '.paper-writer', 'conversations');
 
+// Per-file lock queue to prevent concurrent read-modify-write races
+const locks = new Map();
+
+function acquireLock(key) {
+  if (!locks.has(key)) {
+    locks.set(key, Promise.resolve());
+  }
+  let release;
+  const next = new Promise((resolve) => { release = resolve; });
+  const prev = locks.get(key);
+  locks.set(key, next);
+  return prev.then(() => release);
+}
+
 function getProjectDir(projectId) {
   return join(STORE_BASE, projectId);
 }
@@ -37,18 +51,30 @@ export async function getConversation(projectId, convId) {
 }
 
 export async function updateConversation(projectId, convId, updates) {
-  const conv = await getConversation(projectId, convId);
-  Object.assign(conv, updates, { updated_at: new Date().toISOString() });
-  await writeFile(getConvPath(projectId, convId), JSON.stringify(conv, null, 2), 'utf-8');
-  return conv;
+  const filePath = getConvPath(projectId, convId);
+  const release = await acquireLock(filePath);
+  try {
+    const conv = await getConversation(projectId, convId);
+    Object.assign(conv, updates, { updated_at: new Date().toISOString() });
+    await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
+    return conv;
+  } finally {
+    release();
+  }
 }
 
 export async function appendMessage(projectId, convId, message) {
-  const conv = await getConversation(projectId, convId);
-  conv.history.push(message);
-  conv.updated_at = new Date().toISOString();
-  await writeFile(getConvPath(projectId, convId), JSON.stringify(conv, null, 2), 'utf-8');
-  return conv;
+  const filePath = getConvPath(projectId, convId);
+  const release = await acquireLock(filePath);
+  try {
+    const conv = await getConversation(projectId, convId);
+    conv.history.push(message);
+    conv.updated_at = new Date().toISOString();
+    await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
+    return conv;
+  } finally {
+    release();
+  }
 }
 
 export async function listConversations(projectId) {

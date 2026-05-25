@@ -4,7 +4,7 @@ import { RenderedDocumentEditor } from './RenderedDocumentEditor';
 import { MarkdownPreview } from './MarkdownPreview';
 import { LatexPreview } from './LatexPreview';
 import { DrawioEditor } from './DrawioEditor';
-import { getOpenPrismProjectId, isImagePath, isPdfPath, isPreviewableTextPath, isDrawioPath } from '../utils/previewAssets';
+import { getPaperAgentProjectId, isImagePath, isPdfPath, isPreviewableTextPath, isDrawioPath } from '../utils/previewAssets';
 import { compileProject, syncTexSourceToPdf } from '../../api/client';
 
 interface OpenFile {
@@ -36,7 +36,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   const editorAreaRef = useRef<HTMLDivElement>(null);
   const scrollSourceRef = useRef<'editor' | 'preview' | null>(null);
   const activeFile = openFiles?.[activeFileIndex];
-  const projectId = getOpenPrismProjectId(projectPath);
+  const projectId = getPaperAgentProjectId(projectPath);
   const activeIsImage = !!activeFile && isImagePath(activeFile.filename);
   const activeIsPdf = !!activeFile && isPdfPath(activeFile.filename);
   const activeIsText = !!activeFile && isPreviewableTextPath(activeFile.filename);

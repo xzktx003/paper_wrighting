@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 const BASE = 'http://localhost:8787';
 const PROJECT_ID = 'c2b87dfc-af29-42ef-b088-0f28aa9d65c3';
 
-describe('OpenPrism Project Loading (Editor Page Flow)', () => {
+describe('Paper Agent Project Loading (Editor Page Flow)', () => {
   it('GET /api/projects/:id/tree returns file tree', async () => {
     const res = await fetch(`${BASE}/api/projects/${PROJECT_ID}/tree`);
     const data = await res.json();

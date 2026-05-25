@@ -52,9 +52,9 @@ export interface ArxivPaper {
 }
 
 const API_BASE = '';
-const LANG_KEY = 'openprism-lang';
-const COLLAB_TOKEN_KEY = 'openprism-collab-token';
-const COLLAB_SERVER_KEY = 'openprism-collab-server';
+const LANG_KEY = 'paper-agent-lang';
+const COLLAB_TOKEN_KEY = 'paper-agent-collab-token';
+const COLLAB_SERVER_KEY = 'paper-agent-collab-server';
 
 function getLangHeader() {
   if (typeof window === 'undefined') return 'zh-CN';

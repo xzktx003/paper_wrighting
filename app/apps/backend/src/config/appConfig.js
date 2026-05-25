@@ -44,7 +44,7 @@ export function parseEnv(content = '') {
 function serializeEnv({ values, order }) {
   const seen = new Set();
   const keys = [...order, ...Object.keys(values)];
-  const lines = ['# Local OpenPrism LLM configuration. Do not commit this file.'];
+  const lines = ['# Local Paper Agent LLM configuration. Do not commit this file.'];
   for (const key of keys) {
     if (seen.has(key) || !(key in values)) continue;
     seen.add(key);

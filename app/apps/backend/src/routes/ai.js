@@ -11,8 +11,8 @@ import { getProjectRoot } from '../services/projectService.js';
 import { diffLines } from 'diff';
 
 export async function resolveProjectPath(projectPath) {
-  if (projectPath && projectPath.startsWith('__openprism__:')) {
-    const id = projectPath.replace('__openprism__:', '');
+  if (projectPath && projectPath.startsWith('__paper_agent__:')) {
+    const id = projectPath.replace('__paper_agent__:', '');
     return await getProjectRoot(id);
   }
   return projectPath;
@@ -108,6 +108,27 @@ async function buildContextMessages(conv, resolvedPath, projectConfig) {
   return ctx;
 }
 
+function classifyAIError(err) {
+  const status = err.status || err.statusCode;
+  switch (status) {
+    case 401: return 'Authentication failed. Please check your API key configuration.';
+    case 402: return 'API quota exceeded. Please check your billing or upgrade your plan.';
+    case 403: return 'Access denied. Your API key does not have permission for this model.';
+    case 404: return 'Model not found. Please check your model configuration.';
+    case 429: return 'Rate limit exceeded. Please wait a moment and try again.';
+    case 500: return 'AI service internal error. Please try again later.';
+    case 503: return 'AI service temporarily unavailable. Please try again later.';
+    default:
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+        return 'Cannot connect to AI service. Please check your network and endpoint configuration.';
+      }
+      if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT') {
+        return 'AI service request timed out. Please try again.';
+      }
+      return `AI error: ${err.message || String(err)}`;
+  }
+}
+
 export function registerAIRoutes(fastify) {
   // ── SSE Streaming endpoint ──────────────────────────────
   fastify.post('/api/ai/stream', async (request, reply) => {
@@ -140,7 +161,12 @@ export function registerAIRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
 
+    // Abort LLM request when client disconnects
+    const abortController = new AbortController();
+    request.raw.on('close', () => abortController.abort());
+
     const sendEvent = (event, data) => {
+      if (abortController.signal.aborted) return;
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
@@ -148,6 +174,7 @@ export function registerAIRoutes(fastify) {
       if (conv.mode === 'chat') {
         const result = await chatCompletionStream({
           systemPrompt, messages, model: modelOverride,
+          signal: abortController.signal,
           onToken: (text) => sendEvent('token', { text }),
         });
         await appendMessage(projectId, convId, { role: 'assistant', content: result.fullText });
@@ -157,6 +184,7 @@ export function registerAIRoutes(fastify) {
         let fullText = '';
         const result = await chatCompletionStream({
           systemPrompt, messages, tools: getToolsForMode(conv.mode), model: modelOverride,
+          signal: abortController.signal,
           onToken: (text) => { fullText += text; sendEvent('token', { text }); },
           onToolUse: async (name, input) => {
             sendEvent('tool_use', { name, input });
@@ -170,10 +198,8 @@ export function registerAIRoutes(fastify) {
         sendEvent('done', { fullText: result.fullText });
       }
     } catch (err) {
-      const errorMsg = err.status === 402
-        ? 'API quota exceeded. Please check your Claude API billing.'
-        : `AI error: ${err.message || String(err)}`;
-      sendEvent('error', { message: errorMsg });
+      if (abortController.signal.aborted) return;
+      sendEvent('error', { message: classifyAIError(err), code: err.status || 500 });
     }
 
     reply.raw.end();
@@ -230,10 +256,8 @@ export function registerAIRoutes(fastify) {
 
       return { reply: 'Unknown mode' };
     } catch (err) {
-      const errorMsg = err.status === 402
-        ? 'API quota exceeded. Please check your Claude API billing.'
-        : `AI error: ${err.message || String(err)}`;
-      return { reply: errorMsg, error: true };
+      const errorMsg = classifyAIError(err);
+      return { reply: errorMsg, error: true, code: err.status || 500 };
     }
   });
 }
@@ -241,7 +265,7 @@ export function registerAIRoutes(fastify) {
 export async function executeTool(name, input, projectPath) {
   switch (name) {
     case 'read_chapter': {
-      // Try sec/ first (OpenPrism), then chapters/ (new format)
+      // Try sec/ first (original format), then chapters/ (new format)
       const filename = String(input.filename || '').replace(/^\/+/, '');
       const secPath = filename.startsWith('sec/') ? join(projectPath, filename) : join(projectPath, 'sec', filename);
       const chapPath = filename.startsWith('chapters/') ? join(projectPath, filename) : join(projectPath, 'chapters', filename);

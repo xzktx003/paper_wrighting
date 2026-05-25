@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fork OpenPrism and transform it into a local-first academic paper writing tool with Markdown/LaTeX dual-mode editing, multi-conversation AI panel, skill system, code execution, and embedded terminal.
+**Goal:** Create Paper Agent (forked from OpenPrism) — a local-first academic paper writing tool with Markdown/LaTeX dual-mode editing, multi-conversation AI panel, skill system, code execution, and embedded terminal.
 
 **Architecture:** Three-panel layout (project tree | editor | AI conversations). Backend: Fastify 4 + Anthropic SDK + node-pty. Frontend: React 18 + CodeMirror 6 + xterm.js. All data local filesystem.
 
@@ -12,7 +12,7 @@
 
 ## Phase 1: Project Bootstrap & Cleanup
 
-### Task 1: Fork and Strip OpenPrism
+### Task 1: Fork and Strip OpenPrism (upstream)
 
 **Files:**
 - Remove: `packages/shared/` (Yjs collab types)
