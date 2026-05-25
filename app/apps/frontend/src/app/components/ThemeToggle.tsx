@@ -41,55 +41,82 @@ export function ThemeToggle({
   onThemeChange: (theme: ThemeName) => void;
 }) {
   const current = THEMES.find((item) => item.value === theme) || THEMES[0];
+  const [open, setOpen] = useState(false);
 
   return (
-    <label
-      style={{
-        border: '1px solid var(--border)',
-        background: 'var(--panel)',
-        borderRadius: '6px',
-        padding: '3px 7px',
-        cursor: 'pointer',
-        fontSize: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        color: 'var(--text)',
-        minWidth: 132,
-      }}
-      title="Select theme"
-    >
-      <span
-        aria-hidden="true"
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        title={`主题: ${current.label}`}
         style={{
-          width: 10,
-          height: 10,
-          borderRadius: 999,
-          background: current.swatch,
-          boxShadow: `0 0 12px ${current.swatch}`,
-          flexShrink: 0,
-        }}
-      />
-      <select
-        value={theme}
-        onChange={(event) => onThemeChange(event.target.value as ThemeName)}
-        style={{
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--text)',
-          fontSize: 12,
-          fontWeight: 600,
-          outline: 'none',
+          border: '1px solid var(--border)',
+          background: 'var(--panel)',
+          borderRadius: '6px',
+          padding: '4px 8px',
           cursor: 'pointer',
-          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          color: 'var(--text)',
+          fontSize: 11,
         }}
       >
-        {THEMES.map((item) => (
-          <option key={item.value} value={item.value}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 999,
+            background: current.swatch,
+            boxShadow: `0 0 8px ${current.swatch}`,
+            flexShrink: 0,
+          }}
+        />
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.6 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            zIndex: 9999,
+            minWidth: 120,
+            padding: '4px',
+          }}>
+            {THEMES.map((item) => (
+              <div
+                key={item.value}
+                onClick={() => { onThemeChange(item.value); setOpen(false); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  color: item.value === theme ? 'var(--accent)' : 'var(--text)',
+                  fontWeight: item.value === theme ? 600 : 400,
+                  background: item.value === theme ? 'var(--accent-soft)' : 'transparent',
+                }}
+                onMouseEnter={e => { if (item.value !== theme) e.currentTarget.style.background = 'var(--hover)'; }}
+                onMouseLeave={e => { if (item.value !== theme) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: item.swatch, flexShrink: 0 }} />
+                {item.label}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

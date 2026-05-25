@@ -91,6 +91,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
               onScrollRef.current(scroller.scrollTop / maxScroll);
             },
           }),
+          EditorView.lineWrapping,
           EditorView.theme({
             '&': { height: '100%' },
             '.cm-scroller': { overflow: 'auto' },
