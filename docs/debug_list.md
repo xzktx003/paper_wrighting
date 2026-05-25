@@ -28,3 +28,26 @@
 - 2026-05-22: 改进集成 Terminal 生命周期；每个项目/cwd 使用稳定 tmux session，关闭面板或刷新页面只断开当前客户端并在下次打开时重新 attach，只有 tmux session 被杀掉时才自动新建。
 - 2026-05-22: 修复 Files 右键 Copy Path 在 HTTP/非安全上下文下未真正写入剪贴板、导致用户粘贴到旧选中文本/正文片段的问题；复制路径现在先规范化项目相对路径，并在 Clipboard API 不可用时使用 textarea + execCommand fallback。
 - 2026-05-22: Fixed Rendered editor mode semantics. The prior implementation still used CodeMirror source lines with inline replacement widgets, which looked and behaved like source editing rather than an editable compiled preview. Rendered mode now uses a dedicated editable preview surface and keeps malformed/unsupported syntax as editable source fallback.
+
+## 2026-05-25 - Sprint 1/2 系统稳定性修复
+
+- **对话存储并发保护** (`conversationStore.js`): 引入 per-file Promise 锁队列，`updateConversation` 和 `appendMessage` 使用 `acquireLock/release` 包裹，防止快速发送多条消息时读-改-写竞态导致数据丢失。
+- **LaTeX 编译超时** (`compileService.js`): `runSpawn` 增加 120s 超时机制，超时后 SIGKILL 子进程并返回明确错误信息。
+- **SSE 流式连接泄漏** (`routes/ai.js`): 客户端断开时通过 AbortController 中止 LLM 请求，signal 传递到 Anthropic/OpenAI SDK 的 stream 调用。
+- **project.json 并发写** (`routes/projects.js`): 引入 per-project 锁队列 + `updateProjectMeta` 辅助函数，重构 rename/tags/archive/trash/file-order/file-save 路由。
+- **静默 catch 修复**: TransferPanel、AppContext、PipelinePanel、SkillPanel、NewConversationDialog 等组件的 `.catch(() => {})` 改为 `.catch(err => console.error(...))` 并保留错误上下文。
+- **AI 错误分类** (`routes/ai.js`): 新增 `classifyAIError` 函数，将 401/402/403/404/429/500/503 及网络错误映射为用户可理解的中文提示。
+- **防抖 timer 清理** (`LatexPreview.tsx`): 使用 `rafRef = useRef<number>()` 并在 useEffect cleanup 中 `cancelAnimationFrame`。
+- **fs.watch 清理** (`fileManager.js`): 增加 `watcher.on('error')` 自动关闭 + `unwatchAll()` 导出，Fastify `onClose` hook 调用 `unwatchAll()`。
+- **Rendered 模式写回保护** (`RenderedDocumentEditor.tsx`): 使用 `parsedContentRef` 追踪解析时的源内容，`commitBlock` 时若源已变更则跳过写回。
+- **propose_edit Accept/Reject UI**: `useConversations` hook 新增 `PendingEdit` 状态管理，ChatView 使用 InlineDiffViewer 展示 diff 并提供 Accept/Reject 按钮。
+
+## 2026-05-25 - Pipeline 2.0 实现
+
+- 新增 Pipeline 2.0 Stage 系统，支持 5 种类型化执行器: AI (LLM skill)、Compute (shell 命令)、Human (人机交互检查点)、Citation (引用管理)、Compile (LaTeX 编译)。
+- 5 个预设管线模板: Writing Flow、Paper Pipeline、Quick Review、Citation Pipeline、Executable Paper。
+- Human checkpoint 支持 approve/reject/skip/edit 四种操作，pipeline 在 human 阶段自动暂停等待用户决策。
+- 支持 pause/resume、retry with feedback、stage skip、abort signal 传播。
+- V2 API 挂载于 `/api/v2/pipeline/*`，V1 路由保持向后兼容。
+- 前端 PipelinePanelV2 组件: 类型化图标、可展开 stage 详情、human checkpoint 交互 UI。
+- 80 个测试用例覆盖: stageTypes 验证、presets 完整性、engine 生命周期、writing flow 全流程、compute/compile/citation 执行器。

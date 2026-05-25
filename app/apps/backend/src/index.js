@@ -28,6 +28,7 @@ import { registerSyncTeXRoutes } from './routes/synctex.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerAntiAiRoutes } from './routes/antiAi.js';
 import { registerPipelineRoutes } from './routes/pipeline.js';
+import { registerPipelineV2Routes } from './routes/pipelineV2.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -68,6 +69,7 @@ registerSyncTeXRoutes(fastify);
 registerReviewRoutes(fastify);
 registerAntiAiRoutes(fastify);
 registerPipelineRoutes(fastify);
+registerPipelineV2Routes(fastify);
 
 // Config endpoints
 fastify.get('/api/config', async () => publicAppConfig(appConfig));

@@ -61,32 +61,40 @@
 
 ## 三、优先修复清单 (按 ROI 排序)
 
-### Sprint 1: 止血 (修复数据一致性 + 稳定性)
+### Sprint 1: 止血 (修复数据一致性 + 稳定性) ✅ 已完成 2026-05-25
 
 ```
-P1 [紧急] conversationStore 并发保护 ─────→ 引入文件锁/队列
-P2 [紧急] compileService 超时机制 ───────→ 添加 timeout + kill
-P3 [紧急] SSE 连接泄漏 ─────────────────→ 监听 close/error 事件并 abort
-P4 [中等] catch(() => {}) 静默失败 ──────→ 统一错误提示组件
-P6 [中等] AI 错误分类 ─────────────────→ 结构化错误码 + 前端分类展示
+P1 [紧急] conversationStore 并发保护 ─────→ ✅ 引入 per-file Promise 锁队列
+P2 [紧急] compileService 超时机制 ───────→ ✅ 120s timeout + SIGKILL
+P3 [紧急] SSE 连接泄漏 ─────────────────→ ✅ AbortController + signal 传播到 SDK
+P4 [中等] catch(() => {}) 静默失败 ──────→ ✅ 统一 console.error 错误上报
+P6 [中等] AI 错误分类 ─────────────────→ ✅ classifyAIError 结构化错误码
 ```
 
-### Sprint 2: 强化 (测试 + 可观测性)
+### Sprint 2: 强化 (测试 + 可观测性) ✅ 已完成 2026-05-25
 
 ```
-P9 [改进] 编译/LLM/SSE 单元测试 ────────→ vitest 覆盖关键路径
-P10 [改进] 并发竞态测试 ─────────────────→ 模拟并发请求的测试用例
-P5 [改进] Rendered 模式写回风险文档 ─────→ 更新 func_list + debug_list
+P4 [紧急] project.json 并发写 ──────────→ ✅ per-project 锁 + updateProjectMeta
+P7 [中等] 防抖 timer 未清理 ────────────→ ✅ rafRef + cancelAnimationFrame
+P8 [中等] fs.watch 清理不彻底 ──────────→ ✅ error handler + unwatchAll + onClose hook
+P9 [改进] 编译/LLM/SSE 单元测试 ────────→ ✅ vitest 12 tests (compileService)
+P10 [改进] 并发竞态测试 ─────────────────→ ✅ vitest 3 tests (concurrency)
+P11 [改进] Rendered 模式写回保护 ────────→ ✅ parsedContentRef 脏检查
+P12 [改进] propose_edit Accept/Reject UI →  ✅ InlineDiffViewer + PendingEdit 状态
 ```
 
-### Sprint 3: 扩展 (差异化功能)
+### Sprint 3: 扩展 (差异化功能) ✅ 已完成 2026-05-25
 
 ```
 外部空白区机会:
-  ▨ AI 辅助写作全流程 (Outline → Draft → Polish → Review)
-  ▨ Pipeline 管线增强 (多阶段自动工作流 + 人机协同)
-  ▨ 可执行论文环境 (代码/数据/图表/论文一体化)
-  ▨ 智能引用管理 (自动发现、格式化、去重)
+  ✅ AI 辅助写作全流程 (Outline → Draft → Polish → Review)
+     → Writing Flow preset: 6 stages with human checkpoints
+  ✅ Pipeline 管线增强 (多阶段自动工作流 + 人机协同)
+     → Pipeline 2.0: 5 typed executors, composable stages, pause/resume/retry
+  ✅ 可执行论文环境 (代码/数据/图表/论文一体化)
+     → Executable Paper preset: Compute → Figures → Compile
+  ✅ 智能引用管理 (自动发现、格式化、去重)
+     → Citation Pipeline preset: Verify → Deduplicate → Discover
 ```
 
 ---

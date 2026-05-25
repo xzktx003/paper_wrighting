@@ -142,6 +142,16 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Missing Citations**: find statements that need citations
 - **Compile Log Summary**: summarize compile errors and fix suggestions
 
+### ⚡ Pipeline 2.0
+
+- **Composable Stages**: 5 typed executors — AI (LLM skill), Compute (shell), Human (checkpoint), Citation (reference management), Compile (LaTeX)
+- **Preset Templates**: Writing Flow, Paper Pipeline, Quick Review, Citation Pipeline, Executable Paper
+- **Human Checkpoints**: approve / reject / skip / edit actions with feedback
+- **Writing Flow**: Outline → Draft → Polish → Review with interactive review gates
+- **Citation Management**: verify, format, deduplicate, and discover references automatically
+- **Executable Paper**: run experiments → generate figures → compile PDF in one pipeline
+- **Controls**: pause/resume, retry with feedback, skip stage, abort signal propagation
+
 ### 👥 Real-time Collaboration
 
 - **Multi-user editing**: multiple users edit the same document simultaneously with real-time sync
