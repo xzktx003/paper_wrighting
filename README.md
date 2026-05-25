@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="static/logo-rotating.gif" alt="Paper Agent Logo" width="200"/>
+<img src="asserts/logo-rotating.gif" alt="Paper Agent Logo" width="200"/>
 
 # Paper Agent
 
@@ -19,9 +19,9 @@
 |:---:|:---:|:---:|
 | Chat / Agent history<br>Tools multi-step edits | TexLive / Tectonic / Auto<br>PDF preview & download | ACL / CVPR / NeurIPS / ICML<br>One-click conversion |
 
-| 🔄 Template Transfer | | |
+| 🔄 Template Transfer | ⚡ Pipeline | 🔍 Anti-AI Detection |
 |:---:|:---:|:---:|
-| Legacy (LaTeX→LaTeX) / MinerU (PDF→MD→LaTeX)<br>LLM-powered migration + auto compile fix + VLM layout check | | |
+| Legacy (LaTeX→LaTeX) / MinerU (PDF→MD→LaTeX)<br>LLM-powered migration + auto compile fix + VLM layout check | Multi-stage workflow engine<br>AI / Human / Compile / Citation | Rule scan + LLM deep analysis<br>+ GPTZero third-party detection |
 
 | 🔧 Advanced Editing | 🗂️ Project Management | ⚙️ Configuration |
 |:---:|:---:|:---:|
@@ -54,6 +54,10 @@
 
 ## 📢 News
 
+> [!TIP]
+> 🆕 <strong>2025-05 · Anti-AI Detection & Pipeline</strong><br>
+> New Anti-AI detection panel with three modes: Rule Scan (Quick), LLM Deep Analysis (Deep), and GPTZero third-party detection. Pipeline 2.0 workflow engine is now available with multi-stage orchestration (AI / Human / Compile / Citation / Compute) and 5 built-in preset templates.
+
 > [!WARNING]
 > 🚧 <strong>Template Transfer is under testing</strong><br>
 > The Template Transfer feature is currently in beta and may contain known or unknown bugs. If you encounter any issues, please report them via [Issues](https://github.com/OpenDCAI/OpenPrism/issues).
@@ -70,7 +74,7 @@
 
 <div align="center">
 <br>
-<img src="static/首页.gif" alt="Paper Agent Home" width="90%"/>
+<img src="asserts/首页.gif" alt="Paper Agent Home" width="90%"/>
 <br>
 <sub>✨ Home preview: three-panel workspace + editor + preview</sub>
 <br><br>
@@ -142,6 +146,14 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Missing Citations**: find statements that need citations
 - **Compile Log Summary**: summarize compile errors and fix suggestions
 
+### 🔍 Anti-AI Detection
+
+- **Rule Scan (Quick)**: fast assessment based on word frequency, sentence patterns, vocabulary diversity, and paragraph uniformity
+- **LLM Deep Analysis (Deep)**: LLM-powered analysis across five dimensions — lexical diversity, argument structure, sentence variation, specificity, and transition patterns
+- **GPTZero Detection**: automated third-party detection via Playwright browser automation
+- **Rewrite Suggestions**: auto-generate replacement suggestions to make AI-typical phrasing sound more natural
+- **Multi-dimensional Scoring**: overall score + per-dimension breakdown + flagged passages + human trait identification
+
 ### ⚡ Pipeline 2.0
 
 - **Composable Stages**: 5 typed executors — AI (LLM skill), Compute (shell), Human (checkpoint), Citation (reference management), Compile (LaTeX)
@@ -167,7 +179,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/三栏界面.png" alt="Three-panel workspace" width="90%"/>
+<img src="asserts/三栏界面.png" alt="Three-panel workspace" width="90%"/>
 <br>
 <sub>✨ AI Assistant | LaTeX Editor | PDF Preview</sub>
 <br><br>
@@ -177,7 +189,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/编辑页面的界面.png" alt="Editor view" width="90%"/>
+<img src="asserts/编辑页面的界面.png" alt="Editor view" width="90%"/>
 <br>
 <sub>✨ Synchronized editing and preview</sub>
 <br><br>
@@ -187,7 +199,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/Agent模式.png" alt="Agent mode" width="85%"/>
+<img src="asserts/Agent模式.png" alt="Agent mode" width="85%"/>
 <br>
 <sub>✨ Generate diff suggestions for review</sub>
 <br><br>
@@ -197,7 +209,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/一键诊断.png" alt="One-click diagnose" width="85%"/>
+<img src="asserts/一键诊断.png" alt="One-click diagnose" width="85%"/>
 <br>
 <sub>✨ Parse compile errors and jump to locations</sub>
 <br><br>
@@ -207,7 +219,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/网络搜索.gif" alt="WebSearch" width="85%"/>
+<img src="asserts/网络搜索.gif" alt="WebSearch" width="85%"/>
 <br>
 <sub>✨ Online search with concise summaries</sub>
 <br><br>
@@ -217,7 +229,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/论文检索.gif" alt="PaperSearch" width="85%"/>
+<img src="asserts/论文检索.gif" alt="PaperSearch" width="85%"/>
 <br>
 <sub>✨ Academic search and citation info</sub>
 <br><br>
@@ -227,7 +239,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/图表生成.png" alt="Chart generation" width="85%"/>
+<img src="asserts/图表生成.png" alt="Chart generation" width="85%"/>
 <br><sub>✨ Turn tables into charts in one step</sub>
 <br><br>
 </div>
@@ -236,7 +248,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/公式识别.png" alt="Formula recognition" width="85%"/>
+<img src="asserts/公式识别.png" alt="Formula recognition" width="85%"/>
 <br><sub>✨ Recognize structures for editable outputs</sub>
 <br><br>
 </div>
@@ -245,7 +257,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/AI自动补全.gif" alt="AI autocomplete" width="85%"/>
+<img src="asserts/AI自动补全.gif" alt="AI autocomplete" width="85%"/>
 <br>
 <sub>✨ Option/Alt + / to trigger, Tab to accept</sub>
 <br><br>
@@ -255,7 +267,7 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/同行评审.png" alt="Peer Review" width="85%"/>
+<img src="asserts/同行评审.png" alt="Peer Review" width="85%"/>
 <br>
 <sub>✨ AI Quality Check: Review Report / Consistency Check / Missing Citations / Compile Summary</sub>
 <br><br>
@@ -265,9 +277,29 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 <div align="center">
 <br>
-<img src="static/协作.png" alt="Real-time Collaboration" width="85%"/>
+<img src="asserts/协作.png" alt="Real-time Collaboration" width="85%"/>
 <br>
 <sub>✨ Multi-user real-time collaborative editing with cursor sync and online user management</sub>
+<br><br>
+</div>
+
+### 🔍 Anti-AI Detection
+
+<div align="center">
+<br>
+<img src="asserts/anti-ai-panel.png" alt="Anti-AI Detection" width="85%"/>
+<br>
+<sub>✨ Rule scan + LLM deep analysis + GPTZero third-party detection for multi-dimensional AI trace identification</sub>
+<br><br>
+</div>
+
+### ⚡ Pipeline
+
+<div align="center">
+<br>
+<img src="asserts/pipeline-panel.png" alt="Pipeline" width="85%"/>
+<br>
+<sub>✨ Multi-stage workflow: Polish → Review → Revise → Compile with human checkpoints</sub>
 <br><br>
 </div>
 
@@ -426,7 +458,7 @@ OPENPRISM_LLM_MODEL=gpt-5.5
 
 <div align="center">
 <br>
-<img src="static/模型配置setting.png" alt="Model Configuration Settings" width="85%"/>
+<img src="asserts/模型配置setting.png" alt="Model Configuration Settings" width="85%"/>
 <br>
 <sub>✨ LLM Configuration Settings Panel</sub>
 <br><br>
@@ -585,14 +617,26 @@ Paper Agent/
 │   │   ├── src/
 │   │   │   ├── app/App.tsx    # Main application logic
 │   │   │   ├── app/TransferPanel.tsx  # Template transfer UI
+│   │   │   ├── app/components/AntiAiPanel.tsx  # Anti-AI detection panel
+│   │   │   ├── app/components/PipelinePanelV2.tsx  # Pipeline panel
 │   │   │   ├── api/client.ts  # API calls
 │   │   │   └── latex/         # TexLive integration
 │   └── backend/            # Fastify backend
 │       └── src/
 │           ├── index.js       # API / compile / LLM proxy
-│           ├── routes/transfer.js  # Transfer API endpoints
+│           ├── routes/
+│           │   ├── transfer.js     # Transfer API endpoints
+│           │   ├── antiAi.js       # Anti-AI detection endpoints
+│           │   ├── review.js       # Peer review endpoint
+│           │   └── pipelineV2.js   # Pipeline workflow endpoints
 │           └── services/
+│               ├── llmService.js           # LLM call service
+│               ├── gptzeroService.js       # GPTZero Playwright detection
 │               ├── mineruService.js        # MinerU API integration
+│               ├── pipeline/              # Pipeline engine
+│               │   ├── pipelineEngine.js  # Core pipeline engine
+│               │   ├── presets.js         # Preset pipeline templates
+│               │   └── executors/         # Stage executors
 │               └── transferAgent/          # LangGraph transfer workflows
 │                   ├── graph.js            # Legacy transfer graph
 │                   ├── graphMineru.js       # MinerU transfer graph
@@ -619,6 +663,21 @@ Paper Agent/
 <td>Multi-user real-time editing with cursor sync and online user management (currently requires a server with public IP)</td>
 </tr>
 <tr>
+<td><strong>📚 Template Transfer (Dual Mode)</strong></td>
+<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
+<td>Legacy (LaTeX→LaTeX) and MinerU (PDF→MD→LaTeX) dual-mode template transfer with LLM-powered migration, auto compile fix, and VLM layout check</td>
+</tr>
+<tr>
+<td><strong>🔍 Anti-AI Detection</strong></td>
+<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
+<td>Three detection modes: Rule Scan (Quick), LLM Deep Analysis (Deep), GPTZero third-party detection, with rewrite suggestions and multi-dimensional scoring</td>
+</tr>
+<tr>
+<td><strong>⚡ Pipeline 2.0</strong></td>
+<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
+<td>Multi-stage workflow engine with 5 typed executors (AI / Human / Compile / Citation / Compute), 5 built-in preset templates, pause/resume/retry/skip controls</td>
+</tr>
+<tr>
 <td><strong>🌐 Serverless Collaboration</strong></td>
 <td><img src="https://img.shields.io/badge/⏳-Planned-yellow?style=flat-square" alt="Planned"/></td>
 <td>Local collaboration without a public server: ① built-in tunnel integration (ngrok / Cloudflare Tunnel) to expose local services in one click; ② WebRTC-based P2P direct connection without third-party relay</td>
@@ -627,11 +686,6 @@ Paper Agent/
 <td><strong>🔍 Enhanced WebSearch</strong></td>
 <td><img src="https://img.shields.io/badge/⏳-Planned-yellow?style=flat-square" alt="Planned"/></td>
 <td>Integrate third-party Search APIs (e.g. Google / Baidu / SerpAPI) for improved search quality and coverage</td>
-</tr>
-<tr>
-<td><strong>📚 Template Transfer (Dual Mode)</strong></td>
-<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
-<td>Legacy (LaTeX→LaTeX) and MinerU (PDF→MD→LaTeX) dual-mode template transfer with LLM-powered migration, auto compile fix, and VLM layout check</td>
 </tr>
 <tr>
 <td><strong>📸 Version Snapshots &amp; Rollback</strong></td>
@@ -691,7 +745,7 @@ MIT License. See [LICENSE](LICENSE).
 <br>
 
 <a name="wechat-group"></a>
-<img src="static/wechat.png" alt="Paper Agent WeChat Community" width="300"/>
+<img src="asserts/wechat.png" alt="Paper Agent WeChat Community" width="300"/>
 <br>
 <sub>Scan to join the community WeChat group</sub>
 

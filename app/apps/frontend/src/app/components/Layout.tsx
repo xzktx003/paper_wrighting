@@ -110,6 +110,9 @@ export function Layout() {
             terminalVisible={app.terminalVisible}
             onToggleTerminal={app.toggleTerminal}
             projectPath={app.project.path || undefined}
+            pendingEdits={app.pendingEdits}
+            onAcceptEdit={app.acceptEdit}
+            onRejectEdit={app.rejectEdit}
           />
         </div>
 

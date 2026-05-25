@@ -7,14 +7,6 @@ interface Props {
   onCancel: () => void;
 }
 
-const AVAILABLE_MODELS = [
-  { value: '', label: 'Default (from settings)' },
-  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-  { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
-  { value: 'claude-haiku-4-20250506', label: 'Claude Haiku 4' },
-  { value: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
-];
-
 export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: Props) {
   const [name, setName] = useState('');
   const [scopeType, setScopeType] = useState('free');
@@ -23,11 +15,21 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
   const [model, setModel] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [configModel, setConfigModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelsError, setModelsError] = useState('');
 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(cfg => {
-      if (cfg.claude_model) setConfigModel(cfg.claude_model);
+      if (cfg.claude_model || cfg.llm_model) setConfigModel(cfg.llm_model || cfg.claude_model);
     }).catch((err) => { console.error('Failed to load config:', err); });
+
+    fetch('/api/models').then(r => r.json()).then(data => {
+      if (data.error) {
+        setModelsError(data.error);
+      } else if (data.models && data.models.length > 0) {
+        setAvailableModels(data.models);
+      }
+    }).catch((err) => { setModelsError(`Failed to fetch models: ${err.message}`); });
   }, []);
 
   const handleSubmit = () => {
@@ -38,23 +40,23 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: '8px', padding: '24px', width: '400px' }}>
+      <div style={{ background: 'var(--paper)', borderRadius: '8px', padding: '24px', width: '400px', color: 'var(--text)' }}>
         <h3 style={{ margin: '0 0 16px' }}>New Conversation</h3>
 
         <label style={{ display: 'block', marginBottom: '12px' }}>
           <span style={{ fontSize: '13px', fontWeight: 500 }}>Name</span>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Write Introduction"
-            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }} />
+            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '4px', boxSizing: 'border-box', background: 'var(--panel)', color: 'var(--text)' }} />
         </label>
 
         <label style={{ display: 'block', marginBottom: '12px' }}>
           <span style={{ fontSize: '13px', fontWeight: 500 }}>Model</span>
+          {modelsError && <span style={{ fontSize: '11px', color: 'var(--danger)', marginLeft: '8px' }}>{modelsError}</span>}
           <select value={model} onChange={e => setModel(e.target.value)}
-            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px' }}>
-            {AVAILABLE_MODELS.map(m => (
-              <option key={m.value} value={m.value}>
-                {m.value === '' ? `Default (${configModel || 'from settings'})` : m.label}
-              </option>
+            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--panel)', color: 'var(--text)' }}>
+            <option value="">{`Default (${configModel || 'from settings'})`}</option>
+            {availableModels.map(m => (
+              <option key={m} value={m}>{m}</option>
             ))}
           </select>
         </label>
@@ -62,7 +64,7 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
         <label style={{ display: 'block', marginBottom: '12px' }}>
           <span style={{ fontSize: '13px', fontWeight: 500 }}>Context Scope</span>
           <select value={scopeType} onChange={e => setScopeType(e.target.value)}
-            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px' }}>
+            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--panel)', color: 'var(--text)' }}>
             <option value="free">Free (no file binding)</option>
             <option value="global">Global (all chapters)</option>
             <option value="chapter">Chapter (specific)</option>
@@ -73,7 +75,7 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
           <label style={{ display: 'block', marginBottom: '12px' }}>
             <span style={{ fontSize: '13px', fontWeight: 500 }}>Chapter</span>
             <select value={scopeFile} onChange={e => setScopeFile(e.target.value)}
-              style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px' }}>
+              style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--panel)', color: 'var(--text)' }}>
               <option value="">Select...</option>
               {chapters.map(ch => <option key={ch.file} value={ch.file}>{ch.file}</option>)}
             </select>
@@ -83,7 +85,7 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
         <label style={{ display: 'block', marginBottom: '12px' }}>
           <span style={{ fontSize: '13px', fontWeight: 500 }}>Mode</span>
           <select value={mode} onChange={e => setMode(e.target.value)}
-            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '4px' }}>
+            style={{ display: 'block', width: '100%', marginTop: '4px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--panel)', color: 'var(--text)' }}>
             <option value="chat">Chat (read-only discussion)</option>
             <option value="agent">Agent (propose edits)</option>
             <option value="tools">Tools (multi-step tasks)</option>
@@ -91,8 +93,8 @@ export function NewConversationDialog({ chapters, skills, onSubmit, onCancel }: 
         </label>
 
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button onClick={onCancel} style={{ padding: '6px 16px', border: '1px solid #ddd', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSubmit} style={{ padding: '6px 16px', border: 'none', borderRadius: '4px', background: '#1976d2', color: '#fff', cursor: 'pointer' }}>Create</button>
+          <button onClick={onCancel} style={{ padding: '6px 16px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--panel)', color: 'var(--text)', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSubmit} style={{ padding: '6px 16px', border: 'none', borderRadius: '4px', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Create</button>
         </div>
       </div>
     </div>

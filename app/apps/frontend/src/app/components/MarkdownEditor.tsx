@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorState, StateField, StateEffect } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -8,6 +8,96 @@ import { syntaxHighlighting, defaultHighlightStyle, foldGutter, foldKeymap } fro
 import { searchKeymap } from '@codemirror/search';
 import { autocompletion, completionKeymap, CompletionContext } from '@codemirror/autocomplete';
 import { latexCompletions, bibtexCompletion } from './latexCompletions';
+
+// Ghost text widget for AI completion
+class GhostTextWidget extends WidgetType {
+  constructor(readonly text: string) { super(); }
+  toDOM() {
+    const span = document.createElement('span');
+    span.textContent = this.text;
+    span.style.opacity = '0.4';
+    span.style.fontStyle = 'italic';
+    span.className = 'cm-ghost-text';
+    return span;
+  }
+}
+
+const setGhostText = StateEffect.define<{ pos: number; text: string } | null>();
+
+const ghostTextField = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(value, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setGhostText)) {
+        if (!e.value) return Decoration.none;
+        const widget = Decoration.widget({ widget: new GhostTextWidget(e.value.text), side: 1 });
+        return Decoration.set([widget.range(e.value.pos)]);
+      }
+    }
+    if (tr.docChanged) return Decoration.none;
+    return value;
+  },
+  provide: f => EditorView.decorations.from(f),
+});
+
+let pendingGhostText: string | null = null;
+
+async function triggerAICompletion(view: EditorView) {
+  const cursor = view.state.selection.main.head;
+  const doc = view.state.doc.toString();
+  const textBefore = doc.slice(0, cursor);
+  const textAfter = doc.slice(cursor);
+
+  if (!textBefore.trim()) return true;
+
+  view.dispatch({ effects: setGhostText.of({ pos: cursor, text: '...' }) });
+
+  try {
+    const res = await fetch('/api/ai/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ textBefore, textAfter }),
+    });
+    const data = await res.json();
+    if (data.ok && data.completion) {
+      const currentCursor = view.state.selection.main.head;
+      if (currentCursor === cursor) {
+        pendingGhostText = data.completion;
+        view.dispatch({ effects: setGhostText.of({ pos: cursor, text: data.completion }) });
+      }
+    } else {
+      view.dispatch({ effects: setGhostText.of(null) });
+    }
+  } catch {
+    view.dispatch({ effects: setGhostText.of(null) });
+  }
+  return true;
+}
+
+function acceptGhostText(view: EditorView) {
+  if (!pendingGhostText) return false;
+  const cursor = view.state.selection.main.head;
+  view.dispatch({
+    changes: { from: cursor, insert: pendingGhostText },
+    effects: setGhostText.of(null),
+  });
+  pendingGhostText = null;
+  return true;
+}
+
+function dismissGhostText(view: EditorView) {
+  if (!pendingGhostText) return false;
+  view.dispatch({ effects: setGhostText.of(null) });
+  pendingGhostText = null;
+  return true;
+}
+
+const aiCompletionKeymap = keymap.of([
+  { key: 'Alt-/', run: triggerAICompletion },
+  { key: 'Ctrl-Space', run: triggerAICompletion },
+  { key: 'Tab', run: acceptGhostText },
+  { key: 'Escape', run: dismissGhostText },
+]);
 
 interface Props {
   content: string;
@@ -19,6 +109,7 @@ interface Props {
 
 export interface MarkdownEditorHandle {
   scrollToRatio: (ratio: number) => void;
+  insertText: (text: string) => void;
 }
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
@@ -43,7 +134,27 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
         scroller.scrollTop = ratio * maxScroll;
         requestAnimationFrame(() => { scrollingRef.current = false; });
       },
+      insertText: (text: string) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const cursor = view.state.selection.main.head;
+        view.dispatch({ changes: { from: cursor, insert: text } });
+      },
     }));
+
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const text = (e as CustomEvent).detail;
+        if (typeof text === 'string') {
+          const cursor = view.state.selection.main.head;
+          view.dispatch({ changes: { from: cursor, insert: text } });
+        }
+      };
+      window.addEventListener('editor-insert-text', handler);
+      return () => window.removeEventListener('editor-insert-text', handler);
+    }, []);
 
     useEffect(() => {
       if (!containerRef.current) return;
@@ -78,6 +189,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
             ],
           }),
           keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, ...completionKeymap]),
+          aiCompletionKeymap,
+          ghostTextField,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());

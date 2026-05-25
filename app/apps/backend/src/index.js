@@ -23,6 +23,7 @@ import { registerCompileRoutes } from './routes/compile.js';
 import { registerVisionRoutes } from './routes/vision.js';
 import { registerPlotRoutes } from './routes/plot.js';
 import { registerAIRoutes } from './routes/ai.js';
+import { registerAICompletionRoute } from './routes/ai.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerChapterRoutes } from './routes/chapters.js';
 import { registerPaperProjectRoutes } from './routes/paperProjects.js';
@@ -38,6 +39,7 @@ import { registerReviewRoutes } from './routes/review.js';
 import { registerAntiAiRoutes } from './routes/antiAi.js';
 import { registerPipelineRoutes } from './routes/pipeline.js';
 import { registerPipelineV2Routes } from './routes/pipelineV2.js';
+import { registerWebsearchRoutes } from './routes/websearch.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -63,6 +65,7 @@ registerCompileRoutes(fastify);
 registerVisionRoutes(fastify);
 registerPlotRoutes(fastify);
 registerAIRoutes(fastify);
+registerAICompletionRoute(fastify);
 registerSkillRoutes(fastify);
 registerChapterRoutes(fastify);
 registerPaperProjectRoutes(fastify);
@@ -78,6 +81,7 @@ registerReviewRoutes(fastify);
 registerAntiAiRoutes(fastify);
 registerPipelineRoutes(fastify);
 registerPipelineV2Routes(fastify);
+registerWebsearchRoutes(fastify);
 
 // Config endpoints
 fastify.get('/api/config', async () => publicAppConfig(appConfig));
@@ -89,6 +93,44 @@ fastify.put('/api/config', async (request) => {
     await initLLM(appConfig);
   }
   return { ok: true };
+});
+
+// Models endpoint: fetch available models from configured LLM provider
+fastify.get('/api/models', async (request, reply) => {
+  try {
+    // Try OpenAI-compatible endpoint first (works for both OpenAI and proxied Claude)
+    const baseUrl = appConfig.llm_base_url || appConfig.claude_base_url || '';
+    const apiKey = appConfig.llm_api_key || appConfig.claude_api_key || '';
+    if (!baseUrl && !apiKey) {
+      reply.code(500);
+      return { error: 'No LLM API configured. Set base URL and API key in settings.' };
+    }
+    const modelsUrl = `${baseUrl || 'https://api.openai.com/v1'}/models`;
+    const res = await fetch(modelsUrl, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      // Fallback: try Claude base URL if different
+      if (appConfig.claude_base_url && appConfig.claude_base_url !== baseUrl) {
+        const claudeRes = await fetch(`${appConfig.claude_base_url}/models`, {
+          headers: { 'Authorization': `Bearer ${appConfig.claude_api_key}` },
+        });
+        if (claudeRes.ok) {
+          const data = await claudeRes.json();
+          const models = (data.data || data.models || []).map(m => typeof m === 'string' ? m : m.id);
+          return { models };
+        }
+      }
+      reply.code(500);
+      return { error: `Failed to fetch models: ${res.status} ${res.statusText}` };
+    }
+    const data = await res.json();
+    const models = (data.data || data.models || []).map(m => typeof m === 'string' ? m : m.id);
+    return { models };
+  } catch (err) {
+    reply.code(500);
+    return { error: `Failed to fetch models: ${err.message}` };
+  }
 });
 
 // Serve frontend static files in production mode

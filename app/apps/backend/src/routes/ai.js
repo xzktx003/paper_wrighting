@@ -338,3 +338,36 @@ async function readReferences(projectPath) {
   if (!bib) return 'No .bib file found in project root.';
   return await readTextFile(join(projectPath, bib));
 }
+
+// ── AI Inline Completion endpoint ──────────────────────────
+export function registerAICompletionRoute(fastify) {
+  fastify.post('/api/ai/complete', async (request) => {
+    const { textBefore, textAfter, filename } = request.body || {};
+    if (!textBefore && !textAfter) {
+      return { ok: false, error: 'No context provided.' };
+    }
+
+    const systemPrompt = `You are an academic writing assistant specializing in LaTeX and scientific papers. Continue the text naturally from where the cursor is. Output ONLY the continuation text (1-3 sentences). Do not repeat existing text. Do not add explanations. Match the style, language, and tone of the surrounding text.`;
+
+    const userContent = [
+      filename ? `File: ${filename}` : '',
+      `Text before cursor:\n${(textBefore || '').slice(-2000)}`,
+      textAfter ? `Text after cursor:\n${(textAfter || '').slice(0, 500)}` : '',
+      'Continue writing from the cursor position:'
+    ].filter(Boolean).join('\n\n');
+
+    try {
+      const response = await chatCompletion({
+        systemPrompt,
+        messages: [{ role: 'user', content: userContent }],
+      });
+      const textBlock = response.content.find(b => b.type === 'text');
+      let completion = textBlock?.text || '';
+      // Strip thinking tags if model returns them
+      completion = completion.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      return { ok: true, completion };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+}

@@ -94,6 +94,31 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
     setStatus(`Deleted ${node.path}`);
   };
 
+  const renameItem = async (node: FileTreeNode) => {
+    if (!projectId) return setStatus('File operations are only available for managed projects.');
+    const oldName = getBaseName(node.path);
+    const newName = window.prompt('Rename to:', oldName);
+    if (newName === null || !newName.trim() || newName.trim() === oldName) return;
+    const trimmed = newName.trim();
+    if (trimmed.includes('/') || trimmed === '.' || trimmed === '..') {
+      return setStatus('Invalid file name.');
+    }
+    const parentPath = getParentPath(node.path);
+    const newPath = joinProjectPath(parentPath, trimmed);
+    const res = await fetch(`/api/projects/${projectId}/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: node.path, to: newPath }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.ok === false) {
+      setStatus(body.error || `Failed to rename ${node.path}`);
+      return;
+    }
+    setFileItems(prev => moveTreeItem(prev, node.path, newPath));
+    setStatus(`Renamed ${oldName} → ${trimmed}`);
+  };
+
   const moveItemToFolder = async (source: ClipboardTreeItem, targetFolderPath: string) => {
     if (!projectId) return setStatus('File operations are only available for managed projects.');
     if (!canMoveTreeItem(source, targetFolderPath)) return;
@@ -337,6 +362,7 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
           onCopyPath={copyPath}
           onCopy={(node) => setClipboardItem({ path: node.path, type: node.type, action: 'copy' })}
           onCut={(node) => setClipboardItem({ path: node.path, type: node.type, action: 'cut' })}
+          onRename={(node) => void renameItem(node)}
           onCreateFile={(targetFolder) => createItem(targetFolder, 'file')}
           onCreateFolder={(targetFolder) => createItem(targetFolder, 'folder')}
           onUpload={(targetFolder) => triggerUpload(targetFolder)}
@@ -461,6 +487,7 @@ interface ContextMenuProps {
   onCopyPath: (node: FileTreeNode) => void;
   onCopy: (node: FileTreeNode) => void;
   onCut: (node: FileTreeNode) => void;
+  onRename: (node: FileTreeNode) => void;
   onCreateFile: (targetFolderPath: string) => void;
   onCreateFolder: (targetFolderPath: string) => void;
   onUpload: (targetFolderPath: string) => void;
@@ -469,7 +496,7 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onCopy, onCut, onCreateFile, onCreateFolder, onUpload, onPaste, onDelete, onClose }: ContextMenuProps) {
+function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onCopy, onCut, onRename, onCreateFile, onCreateFolder, onUpload, onPaste, onDelete, onClose }: ContextMenuProps) {
   const createTargetFolderPath = getCreateTargetFolderPath(node);
   const targetFolderPath = createTargetFolderPath ?? getParentPath(node?.path || '');
   const canCreateChildren = canCreateChildrenFromContext(node);
@@ -506,6 +533,7 @@ function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onCopy, onCut, onC
           <MenuItem label="Copy Path" onClick={() => run(() => void onCopyPath(node))} />
           <MenuItem label="Copy" onClick={() => run(() => onCopy(node))} />
           <MenuItem label="Cut" onClick={() => run(() => onCut(node))} />
+          <MenuItem label="Rename" onClick={() => run(() => onRename(node))} />
           <MenuDivider />
         </>
       )}
