@@ -55,43 +55,69 @@ async function readPaperContent(resolvedPath, chapterScope) {
 }
 
 export function registerReviewRoutes(fastify) {
-  fastify.post('/api/review/structured', async (request) => {
+  fastify.post('/api/review/structured', async (request, reply) => {
     const { projectPath, chapterScope } = request.body;
-    const resolvedPath = await resolveProjectPath(projectPath);
+    let resolvedPath;
+    try {
+      resolvedPath = await resolveProjectPath(projectPath);
+    } catch (err) {
+      reply.code(500);
+      return { error: `Failed to resolve project path: ${err.message}` };
+    }
 
-    const content = await readPaperContent(resolvedPath, chapterScope);
-    if (!content.trim()) {
+    let content;
+    try {
+      content = await readPaperContent(resolvedPath, chapterScope);
+    } catch (err) {
+      reply.code(500);
+      return { error: `Failed to read paper content: ${err.message}` };
+    }
+
+    if (!content || !content.trim()) {
       return { error: 'No paper content found to review.' };
     }
 
     const skillPrompt = assemblePrompt({ manualSkill: 'academic-paper-reviewer' });
     const systemPrompt = `${skillPrompt}\n\nIMPORTANT: You MUST output your review as a single valid JSON object matching this exact schema (no markdown fencing, no extra text):\n${REVIEW_JSON_SCHEMA}`;
 
-    const response = await chatCompletion({
-      systemPrompt,
-      messages: [{ role: 'user', content: `Please provide a structured peer review of the following academic paper:\n\n${content.slice(0, 15000)}` }],
-    });
+    let response;
+    try {
+      response = await chatCompletion({
+        systemPrompt,
+        messages: [{ role: 'user', content: `Please provide a structured peer review of the following academic paper:\n\n${content.slice(0, 15000)}` }],
+      });
+    } catch (err) {
+      reply.code(500);
+      return { error: `LLM call failed: ${err.message}` };
+    }
 
     const textBlock = response.content.find(b => b.type === 'text');
     const rawText = textBlock?.text || '';
 
-    // Extract JSON from response
     let reviewData;
     try {
-      // Try direct parse
       reviewData = JSON.parse(rawText);
     } catch {
-      // Try to extract JSON from markdown code block
       const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
-        reviewData = JSON.parse(jsonMatch[1]);
+        try {
+          reviewData = JSON.parse(jsonMatch[1]);
+        } catch {
+          const braceMatch = rawText.match(/\{[\s\S]*\}/);
+          if (braceMatch) {
+            try { reviewData = JSON.parse(braceMatch[0]); }
+            catch { return { error: 'Failed to parse review as JSON', rawText: rawText.slice(0, 1000) }; }
+          } else {
+            return { error: 'Failed to parse review as JSON', rawText: rawText.slice(0, 1000) };
+          }
+        }
       } else {
-        // Try to find JSON object in text
         const braceMatch = rawText.match(/\{[\s\S]*\}/);
         if (braceMatch) {
-          reviewData = JSON.parse(braceMatch[0]);
+          try { reviewData = JSON.parse(braceMatch[0]); }
+          catch { return { error: 'Failed to parse review as JSON', rawText: rawText.slice(0, 1000) }; }
         } else {
-          return { error: 'Failed to parse review as JSON', rawText };
+          return { error: 'Failed to parse review as JSON', rawText: rawText.slice(0, 1000) };
         }
       }
     }

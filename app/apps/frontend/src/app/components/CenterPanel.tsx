@@ -4,6 +4,7 @@ import { RenderedDocumentEditor } from './RenderedDocumentEditor';
 import { MarkdownPreview } from './MarkdownPreview';
 import { LatexPreview } from './LatexPreview';
 import { DrawioEditor } from './DrawioEditor';
+import { InlineDiffViewer } from './InlineDiffViewer';
 import { getPaperAgentProjectId, isImagePath, isPdfPath, isPreviewableTextPath, isDrawioPath } from '../utils/previewAssets';
 import { compileProject, syncTexSourceToPdf } from '../../api/client';
 
@@ -12,6 +13,15 @@ interface OpenFile {
   content: string;
   type: 'chapter' | 'code' | 'other';
   dirty: boolean;
+}
+
+interface PendingEdit {
+  id: string;
+  filename: string;
+  original: string;
+  new_content: string;
+  stats: { added: number; removed: number };
+  status: 'pending' | 'accepted' | 'rejected';
 }
 
 interface Props {
@@ -23,9 +33,14 @@ interface Props {
   onToggleTerminal: () => void;
   terminalVisible: boolean;
   projectPath?: string;
+  pendingEdits?: PendingEdit[];
+  onAcceptEdit?: (editId: string) => void;
+  onRejectEdit?: (editId: string) => void;
 }
 
-export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath }: Props) {
+type PreviewTab = 'pdf' | 'fig' | 'diff';
+
+export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [editorViewMode, setEditorViewMode] = useState<'source' | 'split' | 'live'>('split');
   const [editorRatio, setEditorRatio] = useState(0.5);
   const [previewScrollRatio, setPreviewScrollRatio] = useState<number | undefined>(undefined);
@@ -33,6 +48,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
   const [compiling, setCompiling] = useState(false);
   const [compileResult, setCompileResult] = useState<{ ok: boolean; log?: string; error?: string; availableEngines?: string[] } | null>(null);
+  const [previewTab, setPreviewTab] = useState<PreviewTab>('pdf');
   const editorAreaRef = useRef<HTMLDivElement>(null);
   const scrollSourceRef = useRef<'editor' | 'preview' | null>(null);
   const activeFile = openFiles?.[activeFileIndex];
@@ -277,24 +293,105 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                   >
                     <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '3px', height: '30px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
                   </div>
-                  <div style={{ flex: 1, overflow: 'hidden', background: '#f5f5f0' }}>
-                    {activeFile.filename.endsWith('.tex') ? (
-                      <LatexPreview
-                        content={activeFile.content}
-                        projectId={projectId}
-                        currentFile={activeFile.filename}
-                        onScroll={handlePreviewScroll}
-                        scrollRatio={previewScrollRatio}
-                      />
-                    ) : (
-                      <MarkdownPreview
-                        content={activeFile.content}
-                        projectId={projectId}
-                        currentFile={activeFile.filename}
-                        onScroll={handlePreviewScroll}
-                        scrollRatio={previewScrollRatio}
-                      />
-                    )}
+                  <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#f5f5f0' }}>
+                    {/* Preview tab bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, padding: '0 8px' }}>
+                      {(['pdf', 'fig', 'diff'] as PreviewTab[]).map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setPreviewTab(tab)}
+                          style={{
+                            padding: '5px 10px',
+                            border: 'none',
+                            borderBottom: previewTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                            background: 'none',
+                            color: previewTab === tab ? 'var(--accent-strong)' : 'var(--muted)',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {tab}
+                          {tab === 'diff' && pendingEdits.filter(e => e.status === 'pending').length > 0 && (
+                            <span style={{ marginLeft: '4px', background: 'var(--accent)', color: '#fff', borderRadius: '8px', padding: '0 5px', fontSize: '10px' }}>
+                              {pendingEdits.filter(e => e.status === 'pending').length}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Preview content */}
+                    <div style={{ flex: 1, overflow: 'auto' }}>
+                      {previewTab === 'pdf' && (
+                        activeFile.filename.endsWith('.tex') ? (
+                          <LatexPreview
+                            content={activeFile.content}
+                            projectId={projectId}
+                            currentFile={activeFile.filename}
+                            onScroll={handlePreviewScroll}
+                            scrollRatio={previewScrollRatio}
+                          />
+                        ) : (
+                          <MarkdownPreview
+                            content={activeFile.content}
+                            projectId={projectId}
+                            currentFile={activeFile.filename}
+                            onScroll={handlePreviewScroll}
+                            scrollRatio={previewScrollRatio}
+                          />
+                        )
+                      )}
+                      {previewTab === 'fig' && (
+                        <div style={{ padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>
+                          {projectId ? (
+                            <div>
+                              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Figures in project</p>
+                              <p style={{ margin: 0, opacity: 0.7 }}>Figures referenced in the document will appear here after compilation.</p>
+                            </div>
+                          ) : (
+                            <p style={{ margin: 0 }}>No project loaded.</p>
+                          )}
+                        </div>
+                      )}
+                      {previewTab === 'diff' && (
+                        <div style={{ padding: '12px' }}>
+                          {pendingEdits.filter(e => e.status === 'pending').length === 0 ? (
+                            <div style={{ color: 'var(--muted)', fontSize: '12px', textAlign: 'center', padding: '24px' }}>
+                              No pending edits. Use Agent mode to propose changes.
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
+                                DIFF PREVIEW ({pendingEdits.filter(e => e.status === 'pending').length})
+                              </div>
+                              {pendingEdits.filter(e => e.status === 'pending').map(edit => (
+                                <div key={edit.id} style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                  <div style={{ padding: '6px 10px', background: 'var(--panel-muted)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 600 }}>{edit.filename}</span>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      <button onClick={() => onAcceptEdit?.(edit.id)} style={{ padding: '3px 10px', borderRadius: '4px', border: 'none', background: '#22c55e', color: '#fff', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Apply</button>
+                                      <button onClick={() => onRejectEdit?.(edit.id)} style={{ padding: '3px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--paper)', color: 'var(--text)', fontSize: '11px', cursor: 'pointer' }}>Dismiss</button>
+                                    </div>
+                                  </div>
+                                  {/* Side-by-side diff */}
+                                  <div style={{ display: 'flex', fontSize: '11px', fontFamily: 'monospace' }}>
+                                    <div style={{ flex: 1, borderRight: '1px solid var(--border)', overflow: 'auto', maxHeight: '250px' }}>
+                                      <div style={{ padding: '4px 8px', background: 'rgba(239,68,68,0.08)', fontWeight: 600, fontSize: '10px', color: '#ef4444', borderBottom: '1px solid var(--border)' }}>BEFORE</div>
+                                      <pre style={{ margin: 0, padding: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text)', lineHeight: 1.5 }}>{edit.original.slice(0, 2000)}</pre>
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'auto', maxHeight: '250px' }}>
+                                      <div style={{ padding: '4px 8px', background: 'rgba(34,197,94,0.08)', fontWeight: 600, fontSize: '10px', color: '#22c55e', borderBottom: '1px solid var(--border)' }}>AFTER</div>
+                                      <pre style={{ margin: 0, padding: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text)', lineHeight: 1.5 }}>{edit.new_content.slice(0, 2000)}</pre>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
