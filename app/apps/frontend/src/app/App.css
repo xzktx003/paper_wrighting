@@ -3825,6 +3825,55 @@ textarea.input {
   border-color: #333;
 }
 
+/* Rendered Document Editor - white background for paper simulation in dark themes */
+[data-theme="cyber-tech"] .rendered-document-editor,
+[data-theme="primer-dark"] .rendered-document-editor,
+[data-theme="dracula"] .rendered-document-editor {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+[data-theme="cyber-tech"] .rendered-document-editor h1,
+[data-theme="cyber-tech"] .rendered-document-editor h2,
+[data-theme="cyber-tech"] .rendered-document-editor h3,
+[data-theme="cyber-tech"] .rendered-document-editor h4,
+[data-theme="cyber-tech"] .rendered-document-editor h5,
+[data-theme="cyber-tech"] .rendered-document-editor h6,
+[data-theme="cyber-tech"] .rendered-document-editor p,
+[data-theme="cyber-tech"] .rendered-document-editor li,
+[data-theme="primer-dark"] .rendered-document-editor h1,
+[data-theme="primer-dark"] .rendered-document-editor h2,
+[data-theme="primer-dark"] .rendered-document-editor h3,
+[data-theme="primer-dark"] .rendered-document-editor h4,
+[data-theme="primer-dark"] .rendered-document-editor h5,
+[data-theme="primer-dark"] .rendered-document-editor h6,
+[data-theme="primer-dark"] .rendered-document-editor p,
+[data-theme="primer-dark"] .rendered-document-editor li,
+[data-theme="dracula"] .rendered-document-editor h1,
+[data-theme="dracula"] .rendered-document-editor h2,
+[data-theme="dracula"] .rendered-document-editor h3,
+[data-theme="dracula"] .rendered-document-editor h4,
+[data-theme="dracula"] .rendered-document-editor h5,
+[data-theme="dracula"] .rendered-document-editor h6,
+[data-theme="dracula"] .rendered-document-editor p,
+[data-theme="dracula"] .rendered-document-editor li {
+  color: #1a1a1a !important;
+}
+
+[data-theme="cyber-tech"] .rendered-document-editor pre,
+[data-theme="primer-dark"] .rendered-document-editor pre,
+[data-theme="dracula"] .rendered-document-editor pre {
+  background: #f5f5f5 !important;
+  border-color: #e0e0e0 !important;
+  color: #333 !important;
+}
+
+[data-theme="cyber-tech"] .rendered-document-editor .rendered-inline-math,
+[data-theme="primer-dark"] .rendered-document-editor .rendered-inline-math,
+[data-theme="dracula"] .rendered-document-editor .rendered-inline-math {
+  color: #1a1a1a;
+}
+
 /* KaTeX math in dark themes */
 [data-theme="cyber-tech"] .katex,
 [data-theme="primer-dark"] .katex,
@@ -3836,6 +3885,36 @@ textarea.input {
 [data-theme="primer-dark"] .katex .mathnormal,
 [data-theme="dracula"] .katex .mathnormal {
   color: var(--text);
+}
+
+/* KaTeX inside rendered document editor should be dark (白底) */
+[data-theme="cyber-tech"] .rendered-document-editor .katex,
+[data-theme="primer-dark"] .rendered-document-editor .katex,
+[data-theme="dracula"] .rendered-document-editor .katex,
+[data-theme="cyber-tech"] .rendered-document-editor .katex *,
+[data-theme="primer-dark"] .rendered-document-editor .katex *,
+[data-theme="dracula"] .rendered-document-editor .katex * {
+  color: #1a1a1a !important;
+}
+
+/* KaTeX inside LaTeX preview page should be dark (白底纸张模拟) */
+[data-theme="cyber-tech"] .latex-preview-page .katex,
+[data-theme="primer-dark"] .latex-preview-page .katex,
+[data-theme="dracula"] .latex-preview-page .katex,
+[data-theme="cyber-tech"] .latex-preview-page .katex *,
+[data-theme="primer-dark"] .latex-preview-page .katex *,
+[data-theme="dracula"] .latex-preview-page .katex * {
+  color: #1a1a1a !important;
+}
+
+/* KaTeX inside Markdown preview should be dark (白底) */
+[data-theme="cyber-tech"] .markdown-body .katex,
+[data-theme="primer-dark"] .markdown-body .katex,
+[data-theme="dracula"] .markdown-body .katex,
+[data-theme="cyber-tech"] .markdown-body .katex *,
+[data-theme="primer-dark"] .markdown-body .katex *,
+[data-theme="dracula"] .markdown-body .katex * {
+  color: #1a1a1a !important;
 }
 
 .markdown-body a:hover {
