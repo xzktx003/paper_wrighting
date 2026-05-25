@@ -178,3 +178,112 @@ export async function advancePipeline(pipelineId: string, approved: boolean, fee
   });
   return res.json();
 }
+
+// ── Pipeline V2 API ──
+
+export interface PipelinePreset {
+  id: string;
+  name: string;
+  description: string;
+  stageCount: number;
+  stages: { name: string; type: string; description: string }[];
+}
+
+export interface PipelineStageV2 {
+  name: string;
+  type: 'ai' | 'compute' | 'human' | 'citation' | 'compile';
+  description: string;
+  config: Record<string, any>;
+  index: number;
+  status: 'pending' | 'running' | 'waiting' | 'completed' | 'failed' | 'skipped';
+  output: string | null;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  metadata: Record<string, any>;
+}
+
+export interface PipelineV2 {
+  id: string;
+  name: string;
+  description: string;
+  projectId: string;
+  projectPath: string;
+  stages: PipelineStageV2[];
+  currentStage: number;
+  status: 'created' | 'running' | 'waiting' | 'paused' | 'completed' | 'failed';
+  chapterScope: string | null;
+  createdAt: string;
+  updatedAt: string;
+  outputs: Record<string, string>;
+  errors: { stage: string; error: string }[];
+}
+
+export async function listPipelinePresets(): Promise<{ presets: PipelinePreset[] }> {
+  const res = await fetch(`${BASE}/v2/pipeline/presets`);
+  return res.json();
+}
+
+export async function startPipelineV2(preset: string, projectPath: string, chapterScope?: string): Promise<PipelineV2> {
+  const res = await fetch(`${BASE}/v2/pipeline/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ preset, projectPath, chapterScope }),
+  });
+  return res.json();
+}
+
+export async function getPipelineV2Status(pipelineId: string): Promise<PipelineV2> {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}`);
+  return res.json();
+}
+
+export async function runPipelineV2Stage(pipelineId: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}
+
+export async function resolvePipelineV2(pipelineId: string, action: string, feedback?: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, feedback }),
+  });
+  return res.json();
+}
+
+export async function retryPipelineV2(pipelineId: string, feedback?: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/retry`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feedback }),
+  });
+  return res.json();
+}
+
+export async function skipPipelineV2Stage(pipelineId: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/skip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}
+
+export async function pausePipelineV2(pipelineId: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/pause`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}
+
+export async function resumePipelineV2(pipelineId: string) {
+  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}

@@ -6,6 +6,7 @@ import { SkillPanel } from './SkillPanel';
 import { ReviewReportPanel } from './ReviewReportPanel';
 import { AntiAiPanel } from './AntiAiPanel';
 import { PipelinePanel } from './PipelinePanel';
+import { PipelinePanelV2 } from './PipelinePanelV2';
 import { ConversationSummary, Conversation, structuredReview, detectAntiAi } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';
 
@@ -212,7 +213,7 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
         </div>
       ) : activeTab === 'pipeline' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <PipelinePanel projectPath={projectPath || ''} chapterScope={activeFile} />
+          <PipelinePanelV2 projectPath={projectPath || ''} chapterScope={activeFile} />
         </div>
       ) : null
       }
