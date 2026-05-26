@@ -1,9 +1,3 @@
-export interface AgentResponse {
-  ok: boolean;
-  reply: string;
-  suggestion: string;
-}
-
 export interface OpenFile {
   filename: string;
   content: string;
@@ -17,9 +11,4 @@ export interface PendingEdit {
   original: string;
   proposed: string;
   description: string;
-}
-
-export interface ConversationMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
 }

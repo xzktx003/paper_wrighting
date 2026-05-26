@@ -3,6 +3,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 
 const STORE_BASE = join(process.env.HOME, '.paper-writer', 'conversations');
+const MAX_HISTORY_LENGTH = 100;
 
 // Per-file lock queue to prevent concurrent read-modify-write races
 const locks = new Map();
@@ -69,6 +70,12 @@ export async function appendMessage(projectId, convId, message) {
   try {
     const conv = await getConversation(projectId, convId);
     conv.history.push(message);
+    if (conv.history.length > MAX_HISTORY_LENGTH) {
+      const systemMsgs = conv.history.filter(m => m.role === 'system');
+      const nonSystem = conv.history.filter(m => m.role !== 'system');
+      const trimmed = nonSystem.slice(-MAX_HISTORY_LENGTH + systemMsgs.length);
+      conv.history = [...systemMsgs, ...trimmed];
+    }
     conv.updated_at = new Date().toISOString();
     await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
     return conv;

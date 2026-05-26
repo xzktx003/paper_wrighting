@@ -34,10 +34,10 @@ import { registerBibtexRoutes } from './routes/bibtex.js';
 import { registerSyncTeXRoutes } from './routes/synctex.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerAntiAiRoutes } from './routes/antiAi.js';
-import { registerPipelineRoutes } from './routes/pipeline.js';
 import { registerPipelineV2Routes } from './routes/pipelineV2.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { registerAuthHook } from './middleware/auth.js';
 
 const fastify = Fastify({ logger: true });
 
@@ -53,6 +53,19 @@ await fastify.register(multipart, {
   }
 });
 await fastify.register(websocket);
+
+registerAuthHook(fastify);
+
+fastify.setErrorHandler((error, request, reply) => {
+  const status = error.statusCode || 500;
+  if (status >= 500) {
+    fastify.log.error(error);
+  }
+  reply.code(status).send({
+    error: error.message || 'Internal Server Error',
+    statusCode: status,
+  });
+});
 
 registerHealthRoutes(fastify);
 registerProjectRoutes(fastify);
@@ -72,7 +85,6 @@ registerBibtexRoutes(fastify);
 registerSyncTeXRoutes(fastify);
 registerReviewRoutes(fastify);
 registerAntiAiRoutes(fastify);
-registerPipelineRoutes(fastify);
 registerPipelineV2Routes(fastify);
 
 // Config endpoints

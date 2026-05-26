@@ -1,17 +1,32 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import EditorPage from './EditorPage';
-import LandingPage from './LandingPage';
-import ProjectPage from './ProjectPage';
-import CollabJoinPage from './CollabJoinPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+const EditorPage = lazy(() => import('./EditorPage'));
+const LandingPage = lazy(() => import('./LandingPage'));
+const ProjectPage = lazy(() => import('./ProjectPage'));
+const CollabJoinPage = lazy(() => import('./CollabJoinPage'));
+
+function PageLoader() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--muted, #888)', fontSize: '14px' }}>
+      Loading...
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/projects" element={<ProjectPage />} />
-      <Route path="/editor/:projectId" element={<EditorPage />} />
-      <Route path="/collab" element={<CollabJoinPage />} />
-      <Route path="*" element={<Navigate to="/projects" replace />} />
-    </Routes>
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/projects" element={<ErrorBoundary><ProjectPage /></ErrorBoundary>} />
+          <Route path="/editor/:projectId" element={<ErrorBoundary><EditorPage /></ErrorBoundary>} />
+          <Route path="/collab" element={<ErrorBoundary><CollabJoinPage /></ErrorBoundary>} />
+          <Route path="*" element={<Navigate to="/projects" replace />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }

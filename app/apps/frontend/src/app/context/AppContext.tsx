@@ -1,16 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { useProject, ProjectConfig } from '../hooks/useProject';
 import { useConversations } from '../hooks/useConversations';
 import { readChapter, writeChapter, readCodeFile } from '../api/projectApi';
 import { listSkills, reloadSkills, SkillInfo } from '../api/skillApi';
 import { isImagePath, isPdfPath, isPreviewableTextPath } from '../utils/previewAssets';
-
-interface OpenFile {
-  filename: string;
-  content: string;
-  type: 'chapter' | 'code' | 'other';
-  dirty: boolean;
-}
+import type { OpenFile } from '../types';
 
 interface AppState {
   project: { path: string | null; config: ProjectConfig | null; loading: boolean; error: string | null };
@@ -194,7 +188,10 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     await convHook.send(message, project.path, project.config, images);
   }, [project.path, project.config, convHook]);
 
-  const value: AppState = {
+  const acceptEdit = useCallback((editId: string) => convHook.acceptEdit(editId, project.path || ''), [convHook, project.path]);
+  const toggleTerminal = useCallback(() => setTerminalVisible(v => !v), []);
+
+  const value: AppState = useMemo(() => ({
     project,
     openProject: open,
     createNewProject: create,
@@ -215,13 +212,20 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     renameConversation: convHook.rename,
     sendMessage,
     pendingEdits: convHook.pendingEdits,
-    acceptEdit: (editId: string) => convHook.acceptEdit(editId, project.path || ''),
+    acceptEdit,
     rejectEdit: convHook.rejectEdit,
     skills,
     activateSkill,
     terminalVisible,
-    toggleTerminal: () => setTerminalVisible(v => !v),
-  };
+    toggleTerminal,
+  }), [
+    project, open, create, openFiles, activeFileIndex, openFile,
+    updateFileContent, saveFile, closeFile,
+    convHook.conversations, convHook.activeConv, convHook.loading,
+    convHook.refresh, convHook.select, convHook.create, convHook.remove,
+    convHook.rename, convHook.pendingEdits, convHook.rejectEdit,
+    sendMessage, acceptEdit, skills, activateSkill, terminalVisible, toggleTerminal,
+  ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

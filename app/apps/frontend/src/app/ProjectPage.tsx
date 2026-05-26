@@ -19,74 +19,10 @@ import {
 import type { ProjectMeta, TemplateMeta, TemplateCategory } from '../api/client';
 import TransferPanel from './TransferPanel';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
+import { SettingsModal } from './components/SettingsModal';
 
 type ViewFilter = 'all' | 'mine' | 'archived' | 'trash';
 type SortBy = 'updatedAt' | 'name' | 'createdAt';
-
-const SETTINGS_KEY = 'paper-agent-settings-v1';
-
-interface LLMSettings {
-  llmEndpoint: string;
-  llmApiKey: string;
-  llmModel: string;
-}
-
-const DEFAULT_LLM: LLMSettings = {
-  llmEndpoint: '',
-  llmApiKey: '',
-  llmModel: '',
-};
-
-
-function removeCachedLLMSettings() {
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    delete parsed.llmEndpoint;
-    delete parsed.llmApiKey;
-    delete parsed.llmModel;
-    if (Object.keys(parsed).length === 0) window.localStorage.removeItem(SETTINGS_KEY);
-    else window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(parsed));
-  } catch {
-    window.localStorage.removeItem(SETTINGS_KEY);
-  }
-}
-
-function loadLLMSettings(): LLMSettings {
-  // LLM settings are loaded from the repo .env through /api/config.
-  // Never hydrate API keys from browser storage.
-  return DEFAULT_LLM;
-}
-
-async function loadLLMSettingsFromBackend(): Promise<LLMSettings> {
-  try {
-    const res = await fetch('/api/config');
-    const cfg = await res.json();
-    return {
-      llmEndpoint: cfg.llm_base_url || cfg.claude_base_url || '',
-      llmApiKey: '',
-      llmModel: cfg.llm_model || cfg.claude_model || '',
-    };
-  } catch {
-    return loadLLMSettings();
-  }
-}
-
-async function saveLLMSettingsToBackend(s: LLMSettings) {
-  removeCachedLLMSettings();
-  await fetch('/api/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      llm_provider: 'openai-compatible',
-      llm_base_url: s.llmEndpoint,
-      llm_model: s.llmModel,
-      ...(s.llmApiKey ? { llm_api_key: s.llmApiKey, claude_api_key: s.llmApiKey } : {}),
-      claude_base_url: s.llmEndpoint,
-    }),
-  });
-}
 
 function formatRelativeTime(iso: string, t: (k: string, o?: Record<string, unknown>) => string): string {
   const now = Date.now();
@@ -129,8 +65,6 @@ export default function ProjectPage() {
 
   // Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsForm, setSettingsForm] = useState<LLMSettings>(DEFAULT_LLM);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
   const [galleryCat, setGalleryCat] = useState('all');
@@ -161,12 +95,6 @@ export default function ProjectPage() {
     const res = await listProjects();
     setProjects(res.projects || []);
   }, []);
-
-  useEffect(() => {
-    if (settingsOpen && !settingsLoaded) {
-      loadLLMSettingsFromBackend().then((s) => { setSettingsForm(s); setSettingsLoaded(true); });
-    }
-  }, [settingsOpen, settingsLoaded]);
 
   useEffect(() => {
     loadProjects().catch((err) => setStatus(t('加载项目失败: {{error}}', { error: String(err) })));
@@ -978,56 +906,7 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* Settings Modal */}
-      {settingsOpen && (
-        <div className="modal-backdrop" onClick={() => setSettingsOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>{t('设置')}</div>
-              <button className="icon-btn" onClick={() => setSettingsOpen(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div className="field">
-                <label>{t('API Base URL')}</label>
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="https://api.anthropic.com"
-                  value={settingsForm.llmEndpoint}
-                  onChange={(e) => setSettingsForm((p) => ({ ...p, llmEndpoint: e.target.value }))}
-                />
-              </div>
-              <div className="field">
-                <label>{t('API Key')}</label>
-                <input
-                  className="input"
-                  type="password"
-                  placeholder="Leave blank to keep existing key"
-                  value={settingsForm.llmApiKey}
-                  onChange={(e) => setSettingsForm((p) => ({ ...p, llmApiKey: e.target.value }))}
-                />
-              </div>
-              <div className="field">
-                <label>{t('Model')}</label>
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="claude-sonnet-4.6"
-                  value={settingsForm.llmModel}
-                  onChange={(e) => setSettingsForm((p) => ({ ...p, llmModel: e.target.value }))}
-                />
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                {t('保存后立即生效，AI 对话将使用新配置。')}
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn ghost" onClick={() => { setSettingsLoaded(false); setSettingsOpen(false); }}>{t('取消')}</button>
-              <button className="btn" onClick={() => { saveLLMSettingsToBackend(settingsForm); setSettingsOpen(false); }}>{t('保存')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

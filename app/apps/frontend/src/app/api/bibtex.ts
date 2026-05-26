@@ -1,6 +1,4 @@
-/**
- * BibTeX Search API Client
- */
+import { apiFetch } from './fetchClient';
 
 const API_BASE = '/api';
 
@@ -23,12 +21,10 @@ export interface SearchResponse {
 
 export async function searchBibtex(query: string, rows = 10): Promise<SearchResponse> {
   const params = new URLSearchParams({ q: query, rows: String(rows) });
-  const response = await fetch(`${API_BASE}/bibtex/search?${params}`);
-  return response.json();
+  return apiFetch(`${API_BASE}/bibtex/search?${params}`);
 }
 
 export async function getBibtexByDoi(doi: string): Promise<{ bibtex: string | null; error?: string }> {
   const params = new URLSearchParams({ doi });
-  const response = await fetch(`${API_BASE}/bibtex/bibtex?${params}`);
-  return response.json();
+  return apiFetch(`${API_BASE}/bibtex/bibtex?${params}`);
 }

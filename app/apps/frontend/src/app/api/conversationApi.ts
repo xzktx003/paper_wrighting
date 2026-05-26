@@ -1,3 +1,5 @@
+import { apiFetch, apiPost, apiPut, apiDelete } from './fetchClient';
+
 const BASE = '/api';
 
 export interface ConversationSummary {
@@ -19,13 +21,11 @@ export interface Conversation {
 }
 
 export async function listConversations(projectId: string): Promise<ConversationSummary[]> {
-  const res = await fetch(`${BASE}/conversations/${projectId}`);
-  return res.json();
+  return apiFetch(`${BASE}/conversations/${projectId}`);
 }
 
 export async function getConversation(projectId: string, convId: string): Promise<Conversation> {
-  const res = await fetch(`${BASE}/conversations/${projectId}/${convId}`);
-  return res.json();
+  return apiFetch(`${BASE}/conversations/${projectId}/${convId}`);
 }
 
 export async function createConversation(projectId: string, data: {
@@ -35,34 +35,22 @@ export async function createConversation(projectId: string, data: {
   mode?: string;
   model?: string;
 }): Promise<Conversation> {
-  const res = await fetch(`${BASE}/conversations/${projectId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  return res.json();
+  return apiPost(`${BASE}/conversations/${projectId}`, data);
 }
 
 export async function updateConversation(projectId: string, convId: string, updates: Partial<{ name: string; active_skills: string[]; mode: string }>): Promise<Conversation> {
-  const res = await fetch(`${BASE}/conversations/${projectId}/${convId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  return res.json();
+  return apiPut(`${BASE}/conversations/${projectId}/${convId}`, updates);
 }
 
 export async function deleteConversation(projectId: string, convId: string) {
-  await fetch(`${BASE}/conversations/${projectId}/${convId}`, { method: 'DELETE' });
+  await apiDelete(`${BASE}/conversations/${projectId}/${convId}`);
 }
 
 export async function sendMessage(projectId: string, convId: string, projectPath: string, userMessage: string, projectConfig: any, images?: { dataUrl: string; name: string }[]) {
-  const res = await fetch(`${BASE}/ai/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, convId, projectPath, userMessage, projectConfig, images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })) }),
+  return apiPost(`${BASE}/ai/send`, {
+    projectId, convId, projectPath, userMessage, projectConfig,
+    images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })),
   });
-  return res.json();
 }
 
 /** SSE streaming version of sendMessage */
@@ -77,10 +65,17 @@ export async function sendMessageStream(
     onError: (message: string) => void;
   }
 ) {
+  const token = localStorage.getItem('api_token');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`${BASE}/ai/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, convId, projectPath, userMessage, projectConfig, images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })) }),
+    headers,
+    body: JSON.stringify({
+      projectId, convId, projectPath, userMessage, projectConfig,
+      images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })),
+    }),
   });
 
   if (!res.ok) {
@@ -88,7 +83,12 @@ export async function sendMessageStream(
     return;
   }
 
-  const reader = res.body!.getReader();
+  if (!res.body) {
+    callbacks.onError('Response body is null');
+    return;
+  }
+
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
@@ -97,9 +97,8 @@ export async function sendMessageStream(
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 
-    // Process SSE events
     const lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+    buffer = lines.pop() || '';
 
     let eventType = '';
     for (const line of lines) {
@@ -125,77 +124,20 @@ export async function sendMessageStream(
 
 // ── Review API ──
 export async function structuredReview(projectPath: string, chapterScope?: string) {
-  const res = await fetch(`${BASE}/review/structured`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectPath, chapterScope }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/review/structured`, { projectPath, chapterScope });
 }
 
 // ── Anti-AI API ──
 export async function detectAntiAi(projectPath: string, content?: string, chapterScope?: string) {
-  const res = await fetch(`${BASE}/anti-ai/detect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectPath, content, chapterScope }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/anti-ai/detect`, { projectPath, content, chapterScope });
 }
 
 export async function detectAntiAiDeep(projectPath: string, content?: string, chapterScope?: string) {
-  const res = await fetch(`${BASE}/anti-ai/deep-detect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectPath, content, chapterScope }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/anti-ai/deep-detect`, { projectPath, content, chapterScope });
 }
 
 export async function detectAntiAiGPTZero(projectPath: string, content?: string, chapterScope?: string) {
-  const res = await fetch(`${BASE}/anti-ai/gptzero-detect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectPath, content, chapterScope }),
-  });
-  return res.json();
-}
-
-// ── Pipeline API ──
-export async function listPipelineTypes() {
-  const res = await fetch(`${BASE}/pipeline/types`);
-  return res.json();
-}
-
-export async function startPipeline(pipelineType: string, projectPath: string, chapterScope?: string) {
-  const res = await fetch(`${BASE}/pipeline/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pipelineType, projectPath, chapterScope }),
-  });
-  return res.json();
-}
-
-export async function getPipelineStatus(pipelineId: string) {
-  const res = await fetch(`${BASE}/pipeline/${pipelineId}`);
-  return res.json();
-}
-
-export async function runPipelineStage(pipelineId: string) {
-  const res = await fetch(`${BASE}/pipeline/${pipelineId}/run-stage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
-}
-
-export async function advancePipeline(pipelineId: string, approved: boolean, feedback?: string) {
-  const res = await fetch(`${BASE}/pipeline/${pipelineId}/advance`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approved, feedback }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/anti-ai/gptzero-detect`, { projectPath, content, chapterScope });
 }
 
 // ── Pipeline V2 API ──
@@ -239,70 +181,37 @@ export interface PipelineV2 {
 }
 
 export async function listPipelinePresets(): Promise<{ presets: PipelinePreset[] }> {
-  const res = await fetch(`${BASE}/v2/pipeline/presets`);
-  return res.json();
+  return apiFetch(`${BASE}/v2/pipeline/presets`);
 }
 
 export async function startPipelineV2(preset: string, projectPath: string, chapterScope?: string): Promise<PipelineV2> {
-  const res = await fetch(`${BASE}/v2/pipeline/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ preset, projectPath, chapterScope }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/start`, { preset, projectPath, chapterScope });
 }
 
 export async function getPipelineV2Status(pipelineId: string): Promise<PipelineV2> {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}`);
-  return res.json();
+  return apiFetch(`${BASE}/v2/pipeline/${pipelineId}`);
 }
 
 export async function runPipelineV2Stage(pipelineId: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/run`, {});
 }
 
 export async function resolvePipelineV2(pipelineId: string, action: string, feedback?: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, feedback }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/resolve`, { action, feedback });
 }
 
 export async function retryPipelineV2(pipelineId: string, feedback?: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/retry`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ feedback }),
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/retry`, { feedback });
 }
 
 export async function skipPipelineV2Stage(pipelineId: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/skip`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/skip`, {});
 }
 
 export async function pausePipelineV2(pipelineId: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/pause`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/pause`, {});
 }
 
 export async function resumePipelineV2(pipelineId: string) {
-  const res = await fetch(`${BASE}/v2/pipeline/${pipelineId}/resume`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  return res.json();
+  return apiPost(`${BASE}/v2/pipeline/${pipelineId}/resume`, {});
 }

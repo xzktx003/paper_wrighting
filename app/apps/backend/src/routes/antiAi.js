@@ -1,9 +1,7 @@
-import { readTextFile, listDir } from '../services/fileManager.js';
-import { join } from 'path';
-import { existsSync } from 'fs';
 import { resolveProjectPath } from './ai.js';
 import { chatCompletion } from '../services/llmService.js';
 import { detectWithGPTZero } from '../services/gptzeroService.js';
+import { readProjectContent } from '../services/contentReader.js';
 
 // AI-typical terms organized by severity
 const AI_TERMS = {
@@ -163,30 +161,7 @@ export function registerAntiAiRoutes(fastify) {
 
     let content = directContent || '';
     if (!content) {
-      const secDir = join(resolvedPath, 'sec');
-      const chapDir = join(resolvedPath, 'chapters');
-
-      if (chapterScope) {
-        // Try reading the file from multiple candidate paths
-        const candidates = [
-          join(resolvedPath, chapterScope),
-          join(secDir, chapterScope),
-          join(chapDir, chapterScope),
-        ];
-        for (const candidate of candidates) {
-          try { content = await readTextFile(candidate); break; } catch {}
-        }
-      } else {
-        // Scan sec/ or chapters/ for .tex files; fall back to project root
-        const dir = existsSync(secDir) ? secDir : existsSync(chapDir) ? chapDir : resolvedPath;
-        const entries = await listDir(dir);
-        const texFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.tex')).sort((a, b) => a.name.localeCompare(b.name));
-        const parts = [];
-        for (const f of texFiles) {
-          try { parts.push(await readTextFile(join(dir, f.name))); } catch {}
-        }
-        content = parts.join('\n\n');
-      }
+      content = await readProjectContent(resolvedPath, chapterScope);
     }
 
     if (!content.trim()) {
@@ -225,28 +200,7 @@ export function registerAntiAiRoutes(fastify) {
 
     let content = directContent || '';
     if (!content) {
-      const secDir = join(resolvedPath, 'sec');
-      const chapDir = join(resolvedPath, 'chapters');
-
-      if (chapterScope) {
-        const candidates = [
-          join(resolvedPath, chapterScope),
-          join(secDir, chapterScope),
-          join(chapDir, chapterScope),
-        ];
-        for (const candidate of candidates) {
-          try { content = await readTextFile(candidate); break; } catch {}
-        }
-      } else {
-        const dir = existsSync(secDir) ? secDir : existsSync(chapDir) ? chapDir : resolvedPath;
-        const entries = await listDir(dir);
-        const texFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.tex')).sort((a, b) => a.name.localeCompare(b.name));
-        const parts = [];
-        for (const f of texFiles) {
-          try { parts.push(await readTextFile(join(dir, f.name))); } catch {}
-        }
-        content = parts.join('\n\n');
-      }
+      content = await readProjectContent(resolvedPath, chapterScope);
     }
 
     if (!content.trim()) {
@@ -333,28 +287,7 @@ Scoring dimensions:
 
     let content = directContent || '';
     if (!content) {
-      const secDir = join(resolvedPath, 'sec');
-      const chapDir = join(resolvedPath, 'chapters');
-
-      if (chapterScope) {
-        const candidates = [
-          join(resolvedPath, chapterScope),
-          join(secDir, chapterScope),
-          join(chapDir, chapterScope),
-        ];
-        for (const candidate of candidates) {
-          try { content = await readTextFile(candidate); break; } catch {}
-        }
-      } else {
-        const dir = existsSync(secDir) ? secDir : existsSync(chapDir) ? chapDir : resolvedPath;
-        const entries = await listDir(dir);
-        const texFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.tex')).sort((a, b) => a.name.localeCompare(b.name));
-        const parts = [];
-        for (const f of texFiles) {
-          try { parts.push(await readTextFile(join(dir, f.name))); } catch {}
-        }
-        content = parts.join('\n\n');
-      }
+      content = await readProjectContent(resolvedPath, chapterScope);
     }
 
     if (!content.trim()) {
