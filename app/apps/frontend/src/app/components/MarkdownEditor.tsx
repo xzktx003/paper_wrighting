@@ -9,7 +9,6 @@ import { searchKeymap } from '@codemirror/search';
 import { autocompletion, completionKeymap, CompletionContext } from '@codemirror/autocomplete';
 import { latexCompletions, bibtexCompletion } from './latexCompletions';
 
-// Ghost text widget for AI completion
 class GhostTextWidget extends WidgetType {
   constructor(readonly text: string) { super(); }
   toDOM() {
@@ -41,8 +40,12 @@ const ghostTextField = StateField.define<DecorationSet>({
 });
 
 let pendingGhostText: string | null = null;
+let completionAbortController: AbortController | null = null;
+let completionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-async function triggerAICompletion(view: EditorView) {
+const DEBOUNCE_MS = 300;
+
+function triggerAICompletion(view: EditorView): boolean {
   const cursor = view.state.selection.main.head;
   const doc = view.state.doc.toString();
   const textBefore = doc.slice(0, cursor);
@@ -50,31 +53,56 @@ async function triggerAICompletion(view: EditorView) {
 
   if (!textBefore.trim()) return true;
 
-  view.dispatch({ effects: setGhostText.of({ pos: cursor, text: '...' }) });
+  if (completionAbortController) {
+    completionAbortController.abort();
+    completionAbortController = null;
+  }
+  if (completionDebounceTimer) {
+    clearTimeout(completionDebounceTimer);
+  }
 
-  try {
-    const res = await fetch('/api/ai/complete', {
+  completionDebounceTimer = setTimeout(() => {
+    const controller = new AbortController();
+    completionAbortController = controller;
+
+    view.dispatch({ effects: setGhostText.of({ pos: cursor, text: '...' }) });
+
+    fetch('/api/ai/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ textBefore, textAfter }),
-    });
-    const data = await res.json();
-    if (data.ok && data.completion) {
-      const currentCursor = view.state.selection.main.head;
-      if (currentCursor === cursor) {
-        pendingGhostText = data.completion;
-        view.dispatch({ effects: setGhostText.of({ pos: cursor, text: data.completion }) });
-      }
-    } else {
-      view.dispatch({ effects: setGhostText.of(null) });
-    }
-  } catch {
-    view.dispatch({ effects: setGhostText.of(null) });
-  }
+      signal: controller.signal,
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (data.ok && data.completion) {
+          const currentCursor = view.state.selection.main.head;
+          if (currentCursor === cursor) {
+            pendingGhostText = data.completion;
+            view.dispatch({ effects: setGhostText.of({ pos: cursor, text: data.completion }) });
+          } else {
+            view.dispatch({ effects: setGhostText.of(null) });
+          }
+        } else {
+          view.dispatch({ effects: setGhostText.of(null) });
+        }
+      })
+      .catch(err => {
+        if (err.name === 'AbortError') return;
+        view.dispatch({ effects: setGhostText.of(null) });
+      })
+      .finally(() => {
+        if (completionAbortController === controller) {
+          completionAbortController = null;
+        }
+      });
+  }, DEBOUNCE_MS);
+
   return true;
 }
 
-function acceptGhostText(view: EditorView) {
+function acceptGhostText(view: EditorView): boolean {
   if (!pendingGhostText) return false;
   const cursor = view.state.selection.main.head;
   view.dispatch({
@@ -85,8 +113,12 @@ function acceptGhostText(view: EditorView) {
   return true;
 }
 
-function dismissGhostText(view: EditorView) {
+function dismissGhostText(view: EditorView): boolean {
   if (!pendingGhostText) return false;
+  if (completionAbortController) {
+    completionAbortController.abort();
+    completionAbortController = null;
+  }
   view.dispatch({ effects: setGhostText.of(null) });
   pendingGhostText = null;
   return true;
@@ -170,14 +202,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
           markdown({ base: markdownLanguage, codeLanguages: languages }),
           autocompletion({
             override: [
-              // BibTeX citation search (@)
               bibtexCompletion,
-              // LaTeX command completion (\)
               (context: CompletionContext) => {
                 const word = context.matchBefore(/\\[a-zA-Z]+/);
                 if (word) {
                   const typed = word.text.slice(1);
-                  const matches = latexCompletions.filter(c => 
+                  const matches = latexCompletions.filter(c =>
                     c.label.toLowerCase().startsWith(typed.toLowerCase())
                   ).slice(0, 10);
                   if (matches.length > 0) {
@@ -207,7 +237,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
               onScrollRef.current(scroller.scrollTop / maxScroll);
             },
             click: (event, view) => {
-              // SyncTeX: handle line number gutter clicks
               const target = event.target as HTMLElement;
               if (target.closest('.cm-lineNumbers') && onLineClickRef.current) {
                 const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
@@ -232,7 +261,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(
       const view = new EditorView({ state, parent: containerRef.current });
       viewRef.current = view;
 
-      return () => { view.destroy(); };
+      return () => {
+        if (completionAbortController) {
+          completionAbortController.abort();
+          completionAbortController = null;
+        }
+        if (completionDebounceTimer) {
+          clearTimeout(completionDebounceTimer);
+          completionDebounceTimer = null;
+        }
+        view.destroy();
+      };
     }, []);
 
     useEffect(() => {

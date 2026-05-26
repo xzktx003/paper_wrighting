@@ -3,32 +3,8 @@ import {
   listPresets, getPreset,
   STAGE_STATUS,
 } from '../services/pipeline/index.js';
-import { readTextFile, listDir } from '../services/fileManager.js';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { readProjectContent } from '../services/contentReader.js';
 import { resolveProjectPath } from './ai.js';
-
-async function readPipelineInput(resolvedPath, pipeline) {
-  const secDir = join(resolvedPath, 'sec');
-  const chapDir = join(resolvedPath, 'chapters');
-  const dir = existsSync(secDir) ? secDir : (existsSync(chapDir) ? chapDir : resolvedPath);
-
-  let content = '';
-  if (pipeline.chapterScope) {
-    try { content = await readTextFile(join(dir, pipeline.chapterScope)); } catch {}
-  } else {
-    try {
-      const entries = await listDir(dir);
-      const texFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.tex')).sort((a, b) => a.name.localeCompare(b.name));
-      const parts = [];
-      for (const f of texFiles) {
-        try { parts.push(`% === ${f.name} ===\n${await readTextFile(join(dir, f.name))}`); } catch {}
-      }
-      content = parts.join('\n\n');
-    } catch {}
-  }
-  return content;
-}
 
 export function registerPipelineV2Routes(fastify) {
   // List available pipeline presets
@@ -85,7 +61,7 @@ export function registerPipelineV2Routes(fastify) {
     }
 
     try {
-      const input = await readPipelineInput(pipeline.projectPath, pipeline);
+      const input = await readProjectContent(pipeline.projectPath, pipeline.chapterScope);
       const result = await pipeline.runCurrentStage(input);
       return {
         stage: result.stage,

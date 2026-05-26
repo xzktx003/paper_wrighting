@@ -1,0 +1,154 @@
+.collapseBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.collapseBtn:hover {
+  color: var(--accent);
+}
+
+.collapseBtnSmall {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  margin-left: auto;
+}
+
+.collapseBtnSmall:hover {
+  color: var(--accent);
+}
+
+.backBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  padding: 3px 6px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.backBtn:hover {
+  background: var(--hover);
+  color: var(--accent-strong);
+}
+
+.resizeHandle {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resizeHandle:hover {
+  background: var(--accent-soft);
+}
+
+.resizeIndicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 30px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.resizeHandle:hover .resizeIndicator,
+.resizeHandleActive .resizeIndicator {
+  background: var(--accent);
+}
+
+.terminalResize {
+  height: 5px;
+  cursor: row-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.terminalResize:hover {
+  background: var(--accent);
+}
+
+.terminalResizeGrip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.4;
+}
+
+.terminalBtn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+
+.terminalBtn:hover {
+  color: var(--text);
+}
+
+.terminalCloseBtn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+
+.terminalCloseBtn:hover {
+  color: var(--danger, #ef4444);
+}
+
+.collapsedPanel {
+  width: 36px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  background: var(--panel-muted);
+  gap: 8px;
+}
+
+.collapsedPanelRight {
+  width: 36px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  background: var(--panel-muted);
+  gap: 8px;
+}

@@ -6,6 +6,7 @@ import { CenterPanel } from './CenterPanel';
 import { RightPanel } from './RightPanel';
 import { TerminalPanel } from './TerminalPanel';
 import { useTheme, ThemeToggle, ThemeName, THEMES } from './ThemeToggle';
+import styles from './Layout.module.css';
 
 export function Layout() {
   const app = useApp();
@@ -48,43 +49,19 @@ export function Layout() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
-      {/* Main panels row */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {/* Left Panel */}
         {leftCollapsed ? (
-          <div style={{ width: '36px', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '10px', background: 'var(--panel-muted)', gap: '8px' }}>
-            <button
-              onClick={() => setLeftCollapsed(false)}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--muted)', padding: '4px', borderRadius: '4px', transition: 'color 0.15s' }}
-              title="Expand file tree"
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-            >
-              ▶
-            </button>
+          <div className={styles.collapsedPanel}>
+            <button className={styles.collapseBtn} onClick={() => setLeftCollapsed(false)} title="Expand file tree">▶</button>
           </div>
         ) : (
           <div className="zone-files" style={{ width: leftWidth, minWidth: 200, borderRight: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
             <div className="zone-header" style={{ height: '38px', display: 'flex', alignItems: 'center', padding: '0 10px', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, gap: '6px', position: 'relative' }}>
               <span className="zone-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-              <button
-                onClick={() => navigate('/projects')}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)', padding: '3px 6px', borderRadius: '6px', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-              >
-                ← Back
-              </button>
+              <button className={styles.backBtn} onClick={() => navigate('/projects')}>← Back</button>
               <ThemeToggle theme={theme} onThemeChange={setTheme} />
-              <button
-                onClick={() => setLeftCollapsed(true)}
-                style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--muted)', padding: '3px 5px', borderRadius: '4px', transition: 'color 0.15s' }}
-                title="Collapse"
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-              >
-                ◀
-              </button>
+              <button className={styles.collapseBtnSmall} onClick={() => setLeftCollapsed(true)} title="Collapse">◀</button>
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <LeftPanel
@@ -120,31 +97,15 @@ export function Layout() {
 
         {/* Right Panel */}
         {rightCollapsed ? (
-          <div style={{ width: '36px', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '10px', background: 'var(--panel-muted)', gap: '8px' }}>
-            <button
-              onClick={() => setRightCollapsed(false)}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--muted)', padding: '4px', borderRadius: '4px', transition: 'color 0.15s' }}
-              title="Expand conversations"
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-            >
-              ◀
-            </button>
+          <div className={styles.collapsedPanelRight}>
+            <button className={styles.collapseBtn} onClick={() => setRightCollapsed(false)} title="Expand conversations">◀</button>
           </div>
         ) : (
           <div className="zone-ai" style={{ width: rightWidth, minWidth: 300, borderLeft: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
             <div className="zone-header" style={{ height: '38px', display: 'flex', alignItems: 'center', padding: '0 12px', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, position: 'relative' }}>
               <span className="zone-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginRight: 8 }} />
               <span className="zone-label" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', letterSpacing: '0.02em' }}>AI Assistant</span>
-              <button
-                onClick={() => setRightCollapsed(true)}
-                style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--muted)', padding: '3px 5px', borderRadius: '4px', transition: 'color 0.15s' }}
-                title="Collapse"
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-              >
-                ▶
-              </button>
+              <button className={styles.collapseBtnSmall} onClick={() => setRightCollapsed(true)} title="Collapse">▶</button>
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <RightPanel
@@ -153,7 +114,6 @@ export function Layout() {
                 loading={app.convLoading}
                 chapters={app.project.config?.chapters || []}
                 skills={app.skills}
-                projectFiles={app.project.config?.files || []}
                 onSelect={app.selectConversation}
                 onClose={app.removeConversation}
                 onCreate={app.createConversation}
@@ -176,37 +136,18 @@ export function Layout() {
       {/* Global Terminal Panel (bottom) */}
       {app.terminalVisible && (
         <>
-          <div
-            onMouseDown={handleTerminalResize}
-            style={{ height: '5px', cursor: 'row-resize', background: 'var(--border)', flexShrink: 0, position: 'relative', transition: 'background 0.15s' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
-          >
-            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '30px', height: '3px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
+          <div className={styles.terminalResize} onMouseDown={handleTerminalResize}>
+            <div className={styles.terminalResizeGrip} />
           </div>
           <div style={{ height: terminalMaximized ? '100%' : terminalHeight, flex: terminalMaximized ? 1 : undefined, flexShrink: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
             <div style={{ height: '28px', background: 'var(--panel-muted)', display: 'flex', alignItems: 'center', padding: '0 12px', gap: '8px', flexShrink: 0 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 6px #00ff88', flexShrink: 0 }} />
               <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text)' }}>Terminal</span>
               <span style={{ color: 'var(--muted)', fontSize: '10px', marginLeft: 'auto', fontFamily: 'monospace' }}>{app.project.path || '/'}</span>
-              <button
-                onClick={() => setTerminalMaximized(!terminalMaximized)}
-                style={{ border: 'none', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '12px', padding: '0 4px', transition: 'color 0.15s' }}
-                title={terminalMaximized ? 'Restore' : 'Maximize'}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-              >
+              <button className={styles.terminalBtn} onClick={() => setTerminalMaximized(!terminalMaximized)} title={terminalMaximized ? 'Restore' : 'Maximize'}>
                 {terminalMaximized ? '⊡' : '⊞'}
               </button>
-              <button
-                onClick={app.toggleTerminal}
-                style={{ border: 'none', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '12px', padding: '0 4px', transition: 'color 0.15s' }}
-                title="Close terminal"
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger, #ef4444)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted)')}
-              >
-                ×
-              </button>
+              <button className={styles.terminalCloseBtn} onClick={app.toggleTerminal} title="Close terminal">×</button>
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <TerminalPanel cwd={app.project.path || '/'} />
@@ -251,11 +192,9 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
   return (
     <div
       onMouseDown={handleMouseDown}
-      style={{ width: '5px', cursor: 'col-resize', background: 'transparent', position: 'relative', flexShrink: 0, transition: 'background 0.15s' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-soft)')}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+      className={`${styles.resizeHandle} ${active ? styles.resizeHandleActive : ''}`}
     >
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '3px', height: '30px', borderRadius: '2px', background: active ? 'var(--accent)' : 'var(--border)', transition: 'background 0.15s' }} />
+      <div className={styles.resizeIndicator} />
     </div>
   );
 }

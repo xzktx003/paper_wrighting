@@ -89,3 +89,393 @@
 - V2 API 挂载于 `/api/v2/pipeline/*`，V1 路由保持向后兼容。
 - 前端 PipelinePanelV2 组件: 类型化图标、可展开 stage 详情、human checkpoint 交互 UI。
 - 80 个测试用例覆盖: stageTypes 验证、presets 完整性、engine 生命周期、writing flow 全流程、compute/compile/citation 执行器。
+
+
+# Paper Agent 代码修复报告
+
+## P0-1: 修复 code.js 命令注入漏洞 (RCE)
+
+**问题**: `routes/code.js` 的 `/api/code/exec` 端点将用户传入的 `command` 直接传给 `bash -c`，攻击者可执行任意系统命令。
+
+**修复方案**:
+1. 新建 `utils/pathSecurity.js`，提供 `validateCommand()` 函数
+2. 使用正则黑名单拦截危险 shell 模式：`;` `|` `&&` `||` `` ` `` `$(` `>` `<` `sudo` `rm -rf` `dd` `mkfs` 等
+3. 限制命令长度上限 2000 字符
+
+**修改文件**:
+- `apps/backend/src/utils/pathSecurity.js` (新建)
+- `apps/backend/src/routes/code.js` (重写)
+
+**测试结果**:
+```
+Test 5: valid command → OK
+Test 6: command injection "ls; rm -rf /" → BLOCKED
+Test 7: pipe injection "cat file | bash" → BLOCKED
+Test 8: backtick injection "echo `whoami`" → BLOCKED
+```
+
+---
+
+## P0-2: 修复 code.js + chapters.js 路径遍历漏洞
+
+**问题**: `filePath`/`filename` 参数未校验，攻击者可通过 `../../etc/passwd` 读写任意文件。
+
+**修复方案**:
+1. `safeJoin(base, ...segments)` — 确保解析后的路径不逃逸出 base 目录
+2. `assertWithinDataDir(projectPath)` — 确保 projectPath 在 DATA_DIR 内
+3. 在 `code.js` 和 `chapters.js` 的所有端点入口处调用校验
+
+**修改文件**:
+- `apps/backend/src/utils/pathSecurity.js` (safeJoin + assertWithinDataDir)
+- `apps/backend/src/routes/code.js` (每个端点加校验)
+- `apps/backend/src/routes/chapters.js` (每个端点加校验)
+
+**测试结果**:
+```
+Test 1: valid path "/data/projects/code/main.py" → OK
+Test 2: path traversal "../../etc/passwd" → BLOCKED: Path traversal detected
+Test 3: valid project path → OK
+Test 4: invalid project path "/etc/passwd" → BLOCKED: Invalid project path
+```
+
+---
+
+## P0-3: 加基础认证中间件
+
+**问题**: 所有 API 对任何能访问端口的人完全开放，无任何认证机制。
+
+**修复方案**:
+1. 新建 `middleware/auth.js`，基于 Bearer Token 认证
+2. 通过环境变量 `OPENPRISM_API_TOKEN` 配置，未设置时不启用（兼容本地开发）
+3. 白名单路径：`/api/health`、`/api/collab/` 免认证
+4. 在 `index.js` 中注册为全局 `onRequest` hook，在所有路由之前执行
+
+**修改文件**:
+- `apps/backend/src/middleware/auth.js` (新建)
+- `apps/backend/src/index.js` (注册 hook)
+
+**测试结果**:
+```
+No token: 401
+Wrong token: 403
+Correct token: 200
+Health (no token): 200
+```
+
+---
+
+## P1-4: 修复 WebSocket 广播逻辑
+
+**问题**: 文件变更事件广播给所有已连接客户端，不区分 projectPath。客户端 A 监控项目 X，也会收到项目 Y 的变更事件。且 watcher 清理逻辑有 bug：只有当全局 clients 为空时才清理，多项目场景下 watcher 永远不会被释放。
+
+**修复方案**:
+1. 用 `Map<projectPath, Set<ws>>` 替代全局 `Set<ws>`，按项目隔离客户端
+2. 文件变更事件只广播给同一 projectPath 的客户端
+3. 当某项目的最后一个客户端断开时，立即清理该项目的 watcher
+4. 缺少 projectPath 参数时直接关闭连接（4000 错误码）
+
+**修改文件**:
+- `apps/backend/src/routes/ws.js` (重写)
+
+**测试结果**:
+```
+WS module imported successfully
+```
+
+---
+
+## P1-5: API 层统一错误处理
+
+**问题**: 
+- 前端 `conversationApi.ts`、`projectApi.ts`、`skillApi.ts`、`bibtex.ts` 中所有 fetch 调用不检查 `res.ok`，4xx/5xx 响应被当作正常 JSON 解析
+- 后端无全局错误处理器，未捕获的异常返回 Fastify 默认格式
+
+**修复方案**:
+1. 新建 `api/fetchClient.ts`，提供 `apiFetch`/`apiPost`/`apiPut`/`apiDelete` 封装
+   - 自动检查 `res.ok`，非 2xx 抛出 `ApiError`（含 status 和 message）
+   - 自动附加 `Authorization` header（从 localStorage 读取 token）
+   - 处理 `res.body` 为 null 的边界情况
+2. 重写所有 4 个前端 API 文件使用 `fetchClient`
+3. 后端 `index.js` 添加 `setErrorHandler`，统一返回 `{ error, statusCode }` 格式
+4. 删除未使用的 `PipelinePanel.tsx`（V1 组件，无引用）
+
+**修改文件**:
+- `apps/frontend/src/app/api/fetchClient.ts` (新建)
+- `apps/frontend/src/app/api/conversationApi.ts` (重写，移除 V1 API)
+- `apps/frontend/src/app/api/projectApi.ts` (重写)
+- `apps/frontend/src/app/api/skillApi.ts` (重写)
+- `apps/frontend/src/app/api/bibtex.ts` (重写)
+- `apps/frontend/src/app/components/RightPanel.tsx` (移除 V1 导入)
+- `apps/frontend/src/app/components/PipelinePanel.tsx` (删除)
+- `apps/backend/src/index.js` (添加 setErrorHandler)
+
+**测试结果**:
+```
+TypeScript 编译通过（仅剩 MarkdownEditor.tsx 预存的 async Command 类型问题，P1-7 修复）
+后端模块导入正常
+```
+
+---
+
+## P1-6: 对话历史加长度限制
+
+**问题**: `conversationStore.js` 的 `appendMessage` 只追加不裁剪，JSON 文件无限增长，最终超出 LLM token 限制并拖慢文件 I/O。
+
+**修复方案**:
+1. 添加 `MAX_HISTORY_LENGTH = 100` 常量
+2. 在 `appendMessage` 中，当历史超过上限时进行滑动窗口裁剪
+3. 保留所有 system 消息（不参与裁剪），只裁剪 user/assistant 消息的旧部分
+
+**修改文件**:
+- `apps/backend/src/services/conversationStore.js`
+
+**测试结果**:
+```
+History length after 120 appends: 100
+First msg: msg 20 (旧消息被正确裁剪)
+Last msg: msg 119 (最新消息保留)
+Test passed
+```
+
+---
+
+## P1-7: AI 补全加 AbortController + 防抖
+
+**问题**: 
+- `triggerAICompletion` 是 async 函数，返回 `Promise<boolean>` 而非 `boolean`，不符合 CodeMirror `Command` 类型签名
+- 无 AbortController，快速触发时发出大量并发请求
+- 无防抖，每次按键都立即发请求
+- `pendingGhostText` 是模块级全局变量，组件销毁时不清理
+
+**修复方案**:
+1. 将 `triggerAICompletion` 改为同步函数（返回 `boolean`），内部用 `.then()` 处理异步
+2. 添加 `AbortController`，新请求发出前取消旧请求
+3. 添加 300ms 防抖（`DEBOUNCE_MS`），避免频繁触发
+4. 组件销毁时（useEffect cleanup）abort 进行中的请求并清除 timer
+5. `dismissGhostText` 时也 abort 进行中的请求
+
+**修改文件**:
+- `apps/frontend/src/app/components/MarkdownEditor.tsx` (重写)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过（之前的 async Command 类型错误已修复）
+```
+
+---
+
+## P2-8: 删除 Pipeline V1 全部代码
+
+**问题**: Pipeline V1 和 V2 共存，V1 路由、引擎、前端面板同时存在但 V1 已无人使用。增加维护负担和代码混淆。
+
+**修复方案**:
+1. 删除 `routes/pipeline.js`（V1 路由）
+2. 删除 `services/pipelineEngine.js`（V1 引擎）
+3. 从 `index.js` 移除 V1 的 import 和注册
+4. 前端 `PipelinePanel.tsx`（V1 组件）已在 P1-5 中删除
+5. 前端 `conversationApi.ts` 中 V1 API 函数已在 P1-5 中移除
+
+**删除文件**:
+- `apps/backend/src/routes/pipeline.js`
+- `apps/backend/src/services/pipelineEngine.js`
+- `apps/frontend/src/app/components/PipelinePanel.tsx` (P1-5 已删)
+
+**修改文件**:
+- `apps/backend/src/index.js` (移除 V1 import 和注册)
+
+**测试结果**:
+```
+PipelineV2 module OK (V2 不受影响)
+```
+
+---
+
+## P2-9: 抽取 readProjectContent 共享函数
+
+**问题**: `review.js`、`antiAi.js`（3 次）、`pipelineV2.js` 中各自实现了相同的"读取项目 .tex 内容"逻辑（~20 行），总计 5 处重复代码。
+
+**修复方案**:
+1. 新建 `services/contentReader.js`，提供统一的 `readProjectContent(resolvedPath, chapterScope)` 函数
+2. 逻辑：优先 `sec/` → `chapters/` → 项目根目录；支持 chapterScope 单文件读取
+3. 替换 `review.js`、`antiAi.js`（3 个端点）、`pipelineV2.js` 中的重复实现
+
+**修改文件**:
+- `apps/backend/src/services/contentReader.js` (新建)
+- `apps/backend/src/routes/review.js` (移除本地 readPaperContent，使用共享函数)
+- `apps/backend/src/routes/antiAi.js` (3 处内联读取逻辑替换为 readProjectContent)
+- `apps/backend/src/routes/pipelineV2.js` (移除本地 readPipelineInput，使用共享函数)
+
+**测试结果**:
+```
+All refactored modules imported successfully
+```
+
+---
+
+## P2-10: 拆分巨型组件（初步）
+
+**问题**: `ProjectPage.tsx`(1034行)、`LatexPreview.tsx`(1103行)、`ProjectTree.tsx`(836行) 严重违反单一职责原则。
+
+**修复方案**（初步拆分，降低风险）:
+1. 从 `ProjectPage.tsx` 提取 `SettingsModal` 为独立组件
+   - 包含 LLM 配置的加载、保存、表单逻辑
+   - 移除 ProjectPage 中 ~70 行 LLM 相关工具函数 + ~50 行模态框 JSX
+2. ProjectPage 从 1034 行减少到 912 行
+
+**新建文件**:
+- `apps/frontend/src/app/components/SettingsModal.tsx`
+
+**修改文件**:
+- `apps/frontend/src/app/ProjectPage.tsx` (移除内联设置面板，使用 SettingsModal 组件)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过
+ProjectPage: 1034 → 912 行 (-12%)
+```
+
+**后续建议**: 进一步拆分 TemplateGalleryModal、ImportDialog、CreateProjectDialog 等，以及 LatexPreview 的 renderLatex 逻辑。
+
+---
+
+## P2-11: 内联样式迁移到 CSS Modules（Layout 示范）
+
+**问题**: 所有组件使用内联 `style={{}}` 对象，hover 效果只能通过 onMouseEnter/onMouseLeave 模拟，代码膨胀且无法复用。
+
+**修复方案**:
+1. 新建 `Layout.module.css`，定义所有交互元素的样式类（按钮、resize handle、terminal 控件等）
+2. 使用 CSS `:hover` 伪类替代 JS 事件模拟
+3. 重写 `Layout.tsx`，将 12 处 onMouseEnter/onMouseLeave 模式替换为 CSS 类名引用
+4. 保留布局相关的 inline style（flex、width 等动态值），仅迁移交互样式
+
+**新建文件**:
+- `apps/frontend/src/app/components/Layout.module.css`
+
+**修改文件**:
+- `apps/frontend/src/app/components/Layout.tsx` (重写，使用 CSS Modules)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过
+消除 12 处 onMouseEnter/onMouseLeave hover 模拟
+```
+
+**后续建议**: 按相同模式迁移 RightPanel、ProjectTree 等组件。
+
+---
+
+## P2-12: AppContext 拆分优化
+
+**问题**: 单一 AppContext 包含文件管理、对话管理、技能管理、终端状态等所有状态。context value 每次渲染都创建新对象引用，导致所有消费者不必要地重渲染。`OpenFile`/`PendingEdit` 接口在多处重复定义。
+
+**修复方案**:
+1. 新建 `types/index.ts`，统一定义 `OpenFile` 和 `PendingEdit` 接口
+2. 移除 AppContext 中的重复接口定义，改为从 `types/` 导入
+3. 用 `useMemo` 包裹 context value，只在依赖真正变化时才创建新引用
+4. 将内联箭头函数（`acceptEdit`、`toggleTerminal`）提取为 `useCallback`，避免每次渲染创建新函数
+
+**新建文件**:
+- `apps/frontend/src/app/types/index.ts`
+
+**修改文件**:
+- `apps/frontend/src/app/context/AppContext.tsx` (useMemo + useCallback + 类型导入)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过
+```
+
+**后续建议**: 进一步拆分为 FileContext + ConversationContext + SkillContext，各自独立 Provider。
+
+---
+
+## P3-13: 加 Error Boundary
+
+**问题**: 整个应用没有 React Error Boundary。如果任何组件渲染时抛出异常（如 LatexPreview 处理畸形 LaTeX），整个应用白屏崩溃。
+
+**修复方案**:
+1. 新建 `ErrorBoundary.tsx` 组件，捕获渲染异常并显示友好错误界面
+2. 提供 "Try Again" 按钮重置错误状态
+3. 在 `App.tsx` 中添加两层 ErrorBoundary：
+   - 全局顶层：防止整个应用崩溃
+   - 每个路由页面级：单个页面崩溃不影响导航
+
+**新建文件**:
+- `apps/frontend/src/app/components/ErrorBoundary.tsx`
+
+**修改文件**:
+- `apps/frontend/src/app/App.tsx` (包裹 ErrorBoundary)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过
+```
+
+---
+
+## P3-14: 路由级 lazy loading
+
+**问题**: `App.tsx` 直接同步导入所有页面组件，首屏加载全部代码，影响初始加载速度。
+
+**修复方案**:
+1. 使用 `React.lazy()` + `import()` 动态导入所有页面组件
+2. 添加 `Suspense` 包裹，提供 Loading 占位符
+3. 每个页面独立打包为单独 chunk，按需加载
+
+**修改文件**:
+- `apps/frontend/src/app/App.tsx` (lazy + Suspense)
+
+**测试结果**:
+```
+TypeScript 编译零错误通过
+```
+
+---
+
+## P3-15: 补充 .env.example 和 DATA_DIR 修复
+
+**问题**: 
+- `DATA_DIR` 硬编码为 `/data01/home/xuzk/...`，其他环境无法使用
+- 无 `.env.example`，新开发者不知道需要配置哪些环境变量
+
+**修复方案**:
+1. 将 `constants.js` 中 `DATA_DIR` 默认值改为 `path.join(REPO_ROOT, 'data')`（相对路径）
+2. 新建 `.env.example`，列出所有可配置环境变量及说明
+
+**修改文件**:
+- `apps/backend/src/config/constants.js` (DATA_DIR 默认值)
+
+**新建文件**:
+- `app/.env.example`
+
+**测试结果**:
+```
+REPO_ROOT: .../paper_wrighting/app
+DATA_DIR: .../paper_wrighting/app/data (正确使用相对路径)
+```
+
+---
+
+## P3-16: 修复 workspace 配置，统一类型定义
+
+**问题**: 
+- `packages/shared/` 没有 `package.json`，npm workspace 无法识别该包
+- `OpenFile`、`PendingEdit` 等接口在 AppContext、CenterPanel、useConversations 中重复定义
+
+**修复方案**:
+1. 为 `packages/shared/` 添加 `package.json`（name: `@paper-agent/shared`）
+2. 扩展 `types.ts`，统一定义 `OpenFile`、`PendingEdit`、`ConversationMessage` 等共享类型
+3. 配置 `exports` 字段使 TypeScript 和 Node.js 都能正确解析
+
+**新建文件**:
+- `packages/shared/package.json`
+
+**修改文件**:
+- `packages/shared/types.ts` (扩展共享类型)
+
+**测试结果**:
+```
+npm install --workspace packages/shared → 成功
+import '@paper-agent/shared' → OK
+TypeScript 编译零错误通过
+```

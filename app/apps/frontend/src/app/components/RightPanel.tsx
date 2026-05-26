@@ -5,7 +5,6 @@ import { NewConversationDialog } from './NewConversationDialog';
 import { SkillPanel } from './SkillPanel';
 import { ReviewReportPanel } from './ReviewReportPanel';
 import { AntiAiPanel } from './AntiAiPanel';
-import { PipelinePanel } from './PipelinePanel';
 import { PipelinePanelV2 } from './PipelinePanelV2';
 import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';

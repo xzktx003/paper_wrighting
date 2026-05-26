@@ -1,8 +1,6 @@
 import { chatCompletion } from '../services/llmService.js';
 import { assemblePrompt } from '../services/skillEngine.js';
-import { readTextFile, listDir } from '../services/fileManager.js';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { readProjectContent } from '../services/contentReader.js';
 import { resolveProjectPath } from './ai.js';
 
 const REVIEW_JSON_SCHEMA = `{
@@ -33,27 +31,6 @@ const REVIEW_JSON_SCHEMA = `{
   ]
 }`;
 
-async function readPaperContent(resolvedPath, chapterScope) {
-  const secDir = join(resolvedPath, 'sec');
-  const chapDir = join(resolvedPath, 'chapters');
-  const dir = existsSync(secDir) ? secDir : chapDir;
-
-  if (chapterScope) {
-    try { return await readTextFile(join(dir, chapterScope)); } catch {}
-  }
-
-  const entries = await listDir(dir);
-  const texFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.tex')).sort((a, b) => a.name.localeCompare(b.name));
-  const parts = [];
-  for (const f of texFiles) {
-    try {
-      const content = await readTextFile(join(dir, f.name));
-      parts.push(`% === ${f.name} ===\n${content}`);
-    } catch {}
-  }
-  return parts.join('\n\n');
-}
-
 export function registerReviewRoutes(fastify) {
   fastify.post('/api/review/structured', async (request, reply) => {
     const { projectPath, chapterScope } = request.body;
@@ -67,7 +44,7 @@ export function registerReviewRoutes(fastify) {
 
     let content;
     try {
-      content = await readPaperContent(resolvedPath, chapterScope);
+      content = await readProjectContent(resolvedPath, chapterScope);
     } catch (err) {
       reply.code(500);
       return { error: `Failed to read paper content: ${err.message}` };

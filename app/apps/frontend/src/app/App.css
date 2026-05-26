@@ -3975,16 +3975,38 @@ textarea.input {
   color: #1a1a1a;
 }
 
-/* KaTeX math in dark themes */
-[data-theme="cyber-tech"] .katex,
-[data-theme="primer-dark"] .katex,
-[data-theme="dracula"] .katex {
-  color: var(--text);
+/* KaTeX math — ensure formulas are always clearly visible */
+.katex,
+.katex .mathnormal,
+.katex .mathit,
+.katex .mathrm,
+.katex .mathbf,
+.katex .amsrm,
+.katex .mathbb,
+.katex .mathcal,
+.katex .mathfrak,
+.katex .mathsf,
+.katex .mathtt,
+.katex .mord,
+.katex .mbin,
+.katex .mrel,
+.katex .mopen,
+.katex .mclose,
+.katex .mpunct,
+.katex .minner {
+  color: #1a1a1a;
 }
 
+/* KaTeX math in dark themes */
+[data-theme="cyber-tech"] .katex,
 [data-theme="cyber-tech"] .katex .mathnormal,
+[data-theme="cyber-tech"] .katex .mathit,
+[data-theme="primer-dark"] .katex,
 [data-theme="primer-dark"] .katex .mathnormal,
-[data-theme="dracula"] .katex .mathnormal {
+[data-theme="primer-dark"] .katex .mathit,
+[data-theme="dracula"] .katex,
+[data-theme="dracula"] .katex .mathnormal,
+[data-theme="dracula"] .katex .mathit {
   color: var(--text);
 }
 
