@@ -8,12 +8,23 @@ import { TerminalPanel } from './TerminalPanel';
 import { useTheme, ThemeToggle, ThemeName, THEMES } from './ThemeToggle';
 import styles from './Layout.module.css';
 
+const LEFT_PANEL_DEFAULT_WIDTH = 260;
+const RIGHT_PANEL_DEFAULT_WIDTH = 380;
+const LEFT_PANEL_MIN_WIDTH = 120;
+const RIGHT_PANEL_MIN_WIDTH = 180;
+const CENTER_PANEL_MIN_WIDTH = 360;
+const RESIZE_HANDLE_WIDTH = 5;
+
+function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
+  return Math.max(minWidth, Math.min(Math.max(minWidth, maxWidth), width));
+}
+
 export function Layout() {
   const app = useApp();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-  const [leftWidth, setLeftWidth] = useState(260);
-  const [rightWidth, setRightWidth] = useState(380);
+  const [leftWidth, setLeftWidth] = useState(LEFT_PANEL_DEFAULT_WIDTH);
+  const [rightWidth, setRightWidth] = useState(RIGHT_PANEL_DEFAULT_WIDTH);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(220);
@@ -56,7 +67,7 @@ export function Layout() {
             <button className={styles.collapseBtn} onClick={() => setLeftCollapsed(false)} title="Expand file tree">▶</button>
           </div>
         ) : (
-          <div className="zone-files" style={{ width: leftWidth, minWidth: 200, borderRight: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
+          <div className="zone-files" style={{ width: leftWidth, minWidth: LEFT_PANEL_MIN_WIDTH, borderRight: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
             <div className="zone-header" style={{ height: '38px', display: 'flex', alignItems: 'center', padding: '0 10px', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, gap: '6px', position: 'relative' }}>
               <span className="zone-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
               <button className={styles.backBtn} onClick={() => navigate('/projects')}>← Back</button>
@@ -74,7 +85,14 @@ export function Layout() {
           </div>
         )}
 
-        {!leftCollapsed && <ResizeHandle onResize={(delta) => setLeftWidth(w => Math.max(200, w + delta))} />}
+        {!leftCollapsed && (
+          <ResizeHandle
+            side="left"
+            leftWidth={leftWidth}
+            rightWidth={rightCollapsed ? 0 : rightWidth}
+            onResize={(width, maxWidth) => setLeftWidth(clampPanelWidth(width, LEFT_PANEL_MIN_WIDTH, maxWidth))}
+          />
+        )}
 
         {/* Center Panel */}
         <div className="zone-editor" style={{ flex: 1, overflow: 'hidden', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
@@ -93,7 +111,14 @@ export function Layout() {
           />
         </div>
 
-        {!rightCollapsed && <ResizeHandle onResize={(delta) => setRightWidth(w => Math.max(300, w - delta))} />}
+        {!rightCollapsed && (
+          <ResizeHandle
+            side="right"
+            leftWidth={leftCollapsed ? 0 : leftWidth}
+            rightWidth={rightWidth}
+            onResize={(width, maxWidth) => setRightWidth(clampPanelWidth(width, RIGHT_PANEL_MIN_WIDTH, maxWidth))}
+          />
+        )}
 
         {/* Right Panel */}
         {rightCollapsed ? (
@@ -101,7 +126,7 @@ export function Layout() {
             <button className={styles.collapseBtn} onClick={() => setRightCollapsed(false)} title="Expand conversations">◀</button>
           </div>
         ) : (
-          <div className="zone-ai" style={{ width: rightWidth, minWidth: 300, borderLeft: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
+          <div className="zone-ai" style={{ width: rightWidth, minWidth: RIGHT_PANEL_MIN_WIDTH, borderLeft: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
             <div className="zone-header" style={{ height: '38px', display: 'flex', alignItems: 'center', padding: '0 12px', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, position: 'relative' }}>
               <span className="zone-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginRight: 8 }} />
               <span className="zone-label" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', letterSpacing: '0.02em' }}>AI Assistant</span>
@@ -166,16 +191,22 @@ export function Layout() {
   );
 }
 
-function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
+function ResizeHandle({ side, leftWidth, rightWidth, onResize }: { side: 'left' | 'right'; leftWidth: number; rightWidth: number; onResize: (width: number, maxWidth: number) => void }) {
   const [active, setActive] = useState(false);
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setActive(true);
-    let lastX = e.clientX;
+    const startX = e.clientX;
+    const startWidth = side === 'left' ? leftWidth : rightWidth;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const otherSideWidth = side === 'left' ? rightWidth : leftWidth;
+    const statusBarBuffer = 24;
+    const visibleHandleCount = (leftWidth > 0 ? 1 : 0) + (rightWidth > 0 ? 1 : 0);
+    const maxWidth = viewportWidth - otherSideWidth - CENTER_PANEL_MIN_WIDTH - statusBarBuffer - visibleHandleCount * RESIZE_HANDLE_WIDTH;
     const handleMouseMove = (ev: MouseEvent) => {
-      const delta = ev.clientX - lastX;
-      lastX = ev.clientX;
-      onResize(delta);
+      const delta = ev.clientX - startX;
+      const nextWidth = side === 'left' ? startWidth + delta : startWidth - delta;
+      onResize(nextWidth, maxWidth);
     };
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);

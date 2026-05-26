@@ -1,5 +1,11 @@
 # Debug List
 
+## 2026-05-26 - Files/AI Assistant 分界线拖动范围过窄
+
+- 现象：Files 与编辑区、AI Assistant 与编辑区之间的横向分界线可拖动，但侧栏宽度被固定最小值限制，Files 最小 200px、AI Assistant 最小 300px，导致编辑区扩展空间不足；细分界线也不易抓取。
+- 根因：`Layout.tsx` 的拖拽逻辑只按增量更新侧栏宽度，并直接用较大的硬编码最小宽度截断；没有按视口宽度和编辑区最低宽度动态计算最大可拖动范围。
+- 修复：引入统一面板宽度常量和 `clampPanelWidth`，Files 最小宽度降至 120px、AI Assistant 降至 180px，同时保留编辑区 360px 最低宽度；分界线增加不可见抓取热区，提升拖动命中率。
+
 ## 2026-05-26 - Rendered 与 Split 使用两套预览实现
 
 - 现象：Split 模式右侧使用 `MarkdownPreview`/`LatexPreview`，Rendered 模式走独立 `RenderedDocumentEditor` 解析链路，导致同一 Markdown/LaTeX 文件在两个模式下可能显示与能力不一致。
