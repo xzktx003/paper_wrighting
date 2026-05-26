@@ -1,5 +1,11 @@
 # Debug List
 
+## 2026-05-26 - Workspace divider drag range too narrow
+
+- Symptom: Files/editor and editor/AI dividers dragged, but sidebars stopped at 200px/300px and limited editor expansion; the visible 5px handle was hard to grab.
+- Root cause: layout resize used fixed large minimums and delta-only updates, without viewport-aware max width or editor minimum protection.
+- Fix: add shared panel width constants, lower Files min to 120px and AI min to 180px, preserve a 360px editor minimum, and add an invisible wider resize hit area.
+
 ## 2026-05-26 - Rendered/Split preview divergence
 
 - Symptom: Split used `MarkdownPreview`/`LatexPreview`, while Rendered used a separate `RenderedDocumentEditor`, so the same source could render differently across modes.

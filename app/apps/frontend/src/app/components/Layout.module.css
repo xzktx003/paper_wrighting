@@ -55,6 +55,16 @@
   position: relative;
   flex-shrink: 0;
   transition: background 0.15s;
+  z-index: 3;
+}
+
+.resizeHandle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
 }
 
 .resizeHandle:hover {

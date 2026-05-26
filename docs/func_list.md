@@ -10,6 +10,7 @@
 - The editor file tree supports VS Code-style context actions for files and folders: copy path, copy, cut, paste, rename, and delete.
 - File/folder rename uses inline editing: right-click Rename turns the filename into an editable input field with Enter to confirm and Escape to cancel.
 - Files and folders can be dragged from the editor file tree into another folder, or onto the explicit project-root drop target, to move them inside the same project.
+- The horizontal workspace dividers support a wider drag range: the Files panel can shrink to 120px, the AI Assistant panel can shrink to 180px, and resizing keeps a protected editor minimum width instead of hard-stopping at the old wider sidebar limits.
 - The divider between the editor file tree and Skills panel can be dragged vertically to resize both areas.
 - The integrated terminal opens a project-bound tmux session, reattaches to the same session after closing/reopening or refreshing the page, and creates a new tmux session only if the previous one was killed.
 - Markdown preview resolves project image references such as `![caption](fig/chart.png)` through the project blob API.
