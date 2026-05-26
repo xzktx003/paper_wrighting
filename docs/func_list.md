@@ -31,7 +31,7 @@
 - `/api/config` returns only non-secret settings plus key-present flags; API keys are masked and are never echoed to the frontend.
 - The frontend settings panel writes updates through `/api/config` and does not persist LLM API keys, base URLs, or model names in browser localStorage.
 
-- Chapter editing supports three view modes: Source for plain CodeMirror source, Split for source plus preview, and Rendered for an Obsidian-like editable preview surface. Rendered mode displays compiled Markdown/LaTeX headings, paragraphs, lists, math, and images as normal document preview content; editable text blocks write changes back to the underlying source, while invalid or unsupported syntax remains visible as editable source fallback.
+- Chapter editing supports three view modes: Source for plain CodeMirror source, Split for source plus the rendered preview, and Rendered for the same rendered preview with the source pane hidden. Split and Rendered share the same Markdown/LaTeX preview implementation so both modes display consistent output.
 
 ## AI Assistant
 
