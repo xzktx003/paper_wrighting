@@ -541,22 +541,38 @@
   }
 
   /* Tables */
-  table {
+  table:not(.latex-tabular) {
     background: var(--panel);
     border-color: var(--border);
   }
 
-  th, td {
+  table:not(.latex-tabular) th,
+  table:not(.latex-tabular) td {
     border-color: var(--border);
     color: var(--text);
   }
 
-  th {
+  table:not(.latex-tabular) th {
     background: var(--panel-muted);
   }
 
-  tr:hover {
+  table:not(.latex-tabular) tr:hover {
     background: var(--hover);
+  }
+
+  .latex-preview-page,
+  .latex-preview-page table,
+  .latex-preview-page thead,
+  .latex-preview-page tbody,
+  .latex-preview-page tr,
+  .latex-preview-page th,
+  .latex-preview-page td {
+    background: #ffffff;
+    color: #1a1a1a;
+  }
+
+  .latex-preview-page tr:hover {
+    background: #ffffff;
   }
 }
 

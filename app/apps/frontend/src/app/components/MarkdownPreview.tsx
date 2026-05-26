@@ -2,7 +2,13 @@ import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
+import remarkFrontmatter from 'remark-frontmatter';
+import remarkDirective from 'remark-directive';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSlug from 'rehype-slug';
+import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import 'katex/dist/katex.min.css';
 import { resolveProjectAssetUrl } from '../utils/previewAssets';
 
@@ -51,8 +57,8 @@ export function MarkdownPreview({ content, projectId, currentFile = '', onScroll
       }}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={[remarkFrontmatter, remarkGfm, remarkMath, remarkBreaks, remarkDirective]}
+        rehypePlugins={[rehypeRaw, rehypeKatex, rehypeSlug, [rehypeAutolinkHeadings, { behavior: 'wrap' }]]}
         components={{
           img: ({ src, alt, ...props }) => (
             <img
@@ -117,7 +123,17 @@ export function MarkdownPreview({ content, projectId, currentFile = '', onScroll
               borderCollapse: 'collapse', 
               width: '100%', 
               color: '#1a1a1a',
+              background: '#ffffff',
             }} {...props}>{children}</table>
+          ),
+          tbody: ({ children, ...props }) => (
+            <tbody style={{ background: '#ffffff', color: '#1a1a1a' }} {...props}>{children}</tbody>
+          ),
+          thead: ({ children, ...props }) => (
+            <thead style={{ background: '#ffffff', color: '#1a1a1a' }} {...props}>{children}</thead>
+          ),
+          tr: ({ children, ...props }) => (
+            <tr style={{ background: '#ffffff', color: '#1a1a1a' }} {...props}>{children}</tr>
           ),
           th: ({ children, ...props }) => (
             <th style={{ 
@@ -131,6 +147,7 @@ export function MarkdownPreview({ content, projectId, currentFile = '', onScroll
             <td style={{ 
               border: '1px solid #ccc', 
               padding: '8px',
+              background: '#ffffff',
               color: '#1a1a1a',
             }} {...props}>{children}</td>
           ),

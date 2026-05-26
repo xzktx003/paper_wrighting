@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { resolveProjectAssetUrl, resolveProjectPath, isImagePath } from '../apps/frontend/src/app/utils/previewAssets.ts';
 import { renderLatex } from '../apps/frontend/src/app/components/LatexPreview.tsx';
 import {
@@ -58,6 +59,51 @@ describe('preview asset resolution', () => {
 
     expect(html).toContain('/api/projects/project-1/blob?path=img%2Ffig-fram.png');
     expect(html).not.toContain('sec%2Fimg');
+  });
+
+  it('renders LaTeX table backgrounds as white even under dark themes', () => {
+    const html = renderLatex(String.raw`
+\begin{table}
+\caption{Review summary}
+\begin{tabular}{ll}
+\\toprule
+Aspect & Score \\
+\midrule
+Clarity & Good \\
+\bottomrule
+\end{tabular}
+\end{table}
+`);
+
+    expect(html).toContain('class="latex-tabular"');
+    expect(html).toContain('Review summary');
+    const css = readFileSync(new URL('../apps/frontend/src/app/App.css', import.meta.url), 'utf8');
+    expect(css).toContain('table:not(.latex-tabular)');
+    expect(css).toContain('.latex-preview-page td');
+    expect(css).toContain('background: #ffffff');
+  });
+
+  it('renders common official LaTeX preview constructs', () => {
+    const html = renderLatex(String.raw`
+\newcommand{\tool}{Paper Agent}
+\section{Intro}
+See \href{https://example.com}{docs} and \url{https://example.org}.
+\begin{longtable}{lc}
+\caption{Long results}\\
+Name & Value \\
+\hline
+\\tool & $x^2$ \\
+\end{longtable}
+\begin{align}
+a &= b + c \\
+d &= e
+\end{align}
+`);
+
+    expect(html).toContain('Paper Agent');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('Long results');
+    expect(html).toContain('class="katex-display"');
   });
 
   it('builds a complete nested project file tree', () => {

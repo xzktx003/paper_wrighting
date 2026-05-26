@@ -1,5 +1,17 @@
 # Debug List
 
+## 2026-05-26 - 赛博科技主题下预览表格底色错误
+
+- 现象：打开 `reviews/review_summary.md` 预览并切换到“赛博科技”主题后，表格继承全局暗色主题的 `table/th/td/tr:hover` 样式，导致论文/评审预览区域的表格底色不是白色。
+- 根因：`App.css` 中赛博主题对所有 `table`、`th`、`td`、`tr:hover` 做了全局暗色覆盖，覆盖了预览组件模拟纸张的白色底色。
+- 修复：将赛博主题表格覆盖限定为非 `.latex-tabular` 表格，并为 `.latex-preview-page` 的表格相关节点显式固定白底深字；Markdown 表格渲染也显式给 `table/thead/tbody/tr/td` 设置白底，避免暗色主题渗透。
+
+## 2026-05-26 - 预览编译语法覆盖不足
+
+- 现象：相较常见官方预览能力，仓库 Markdown/LaTeX 预览缺少部分 Markdown 扩展与 LaTeX 论文常用结构支持，例如 raw HTML、heading anchor、longtable/tabularx、链接、简单宏展开、更多数学环境等。
+- 根因：Markdown 预览只启用 GFM/math/KaTeX；LaTeX 预览依赖轻量正则渲染，已覆盖基础结构但缺少若干官方预览常见语法分支。
+- 修复：Markdown 增加 frontmatter、soft breaks、directive、raw HTML、slug/autolink headings 支持；LaTeX 增加简单零参数宏展开、flush/字号环境、tabularx/tabulary/array/longtable、table-only 命令清理、更多 math 环境、URL/href 和更多文字格式支持，并添加回归测试。
+
 ## 2026-05-26 - 右键文件夹上传文件被传到同级目录而非文件夹内
 
 - 现象：在 Files 面板右键点击文件夹 → Upload，文件被上传到与文件夹同级的位置（如右击 `img/` 传文件，文件出现在 `img/` 旁边而非 `img/` 内部）。
