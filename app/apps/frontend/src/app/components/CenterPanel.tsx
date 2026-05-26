@@ -38,7 +38,7 @@ interface Props {
   onRejectEdit?: (editId: string) => void;
 }
 
-type PreviewTab = 'pdf' | 'fig' | 'diff';
+type PreviewTab = 'pdf' | 'diff';
 
 export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [editorViewMode, setEditorViewMode] = useState<'source' | 'split' | 'live'>('split');
@@ -240,13 +240,11 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
           ) : activeIsPdf ? (
             <div style={{ flex: 1, minWidth: 0, background: 'var(--paper)', overflow: 'hidden' }}>
               {projectId ? (
-                <object
-                  data={`/api/projects/${encodeURIComponent(projectId)}/blob?${new URLSearchParams({ path: activeFile.filename }).toString()}`}
+                <embed
+                  src={`/api/projects/${encodeURIComponent(projectId)}/blob?${new URLSearchParams({ path: activeFile.filename }).toString()}`}
                   type="application/pdf"
                   style={{ width: '100%', height: '100%', border: 0 }}
-                >
-                  <div style={{ padding: 24, color: 'var(--muted)', fontSize: 13 }}>PDF preview is not available in this browser.</div>
-                </object>
+                />
               ) : (
                 <div style={{ color: 'var(--muted)', fontSize: 13 }}>PDF preview is available for project files.</div>
               )}
@@ -296,7 +294,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                   <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#f5f5f0' }}>
                     {/* Preview tab bar */}
                     <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, padding: '0 8px' }}>
-                      {(['pdf', 'fig', 'diff'] as PreviewTab[]).map(tab => (
+                      {(['pdf', 'diff'] as PreviewTab[]).map(tab => (
                         <button
                           key={tab}
                           onClick={() => setPreviewTab(tab)}
@@ -341,18 +339,6 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                             scrollRatio={previewScrollRatio}
                           />
                         )
-                      )}
-                      {previewTab === 'fig' && (
-                        <div style={{ padding: '16px', color: 'var(--muted)', fontSize: '12px' }}>
-                          {projectId ? (
-                            <div>
-                              <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Figures in project</p>
-                              <p style={{ margin: 0, opacity: 0.7 }}>Figures referenced in the document will appear here after compilation.</p>
-                            </div>
-                          ) : (
-                            <p style={{ margin: 0 }}>No project loaded.</p>
-                          )}
-                        </div>
                       )}
                       {previewTab === 'diff' && (
                         <div style={{ padding: '12px' }}>
