@@ -289,12 +289,14 @@ const latexStyles = `
   margin: 8px auto;
   font-size: 13px;
   color: #1a1a1a;
+  background: #ffffff;
 }
 .latex-preview-page table.latex-tabular td,
 .latex-preview-page table.latex-tabular th {
   padding: 4px 10px;
   text-align: center;
   border-color: #ccc;
+  background: #ffffff;
   color: #1a1a1a;
 }
 .latex-preview-page table.latex-tabular .hline-top { border-top: 1.5px solid #333; }
@@ -372,6 +374,8 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
   // Remove comments (but not \%)
   text = text.replace(/(?<!\\)%.*$/gm, '');
 
+  text = expandSimpleLatexMacros(text);
+
   // Remove preamble commands
   text = text.replace(/\\(documentclass|usepackage|bibliography|bibliographystyle|maketitle|newcommand|renewcommand|def|let|setlength|addtolength|setcounter|pagestyle|thispagestyle|DeclareMathOperator)\b[^\n]*/g, '');
   text = text.replace(/\\begin\{document\}/g, '');
@@ -385,6 +389,13 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
 
   // Handle abstract
   text = text.replace(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/g, '<div class="latex-abstract"><div class="abstract-title">Abstract</div>$1</div>');
+
+  // Handle common layout environments
+  text = text.replace(/\\begin\{flushleft\}([\s\S]*?)\\end\{flushleft\}/g, '<div style="text-align:left">$1</div>');
+  text = text.replace(/\\begin\{flushright\}([\s\S]*?)\\end\{flushright\}/g, '<div style="text-align:right">$1</div>');
+  text = text.replace(/\\begin\{(small|footnotesize|scriptsize|tiny)\}([\s\S]*?)\\end\{\1\}/g, '<span style="font-size:11px">$2</span>');
+  text = text.replace(/\\begin\{(large|Large)\}([\s\S]*?)\\end\{\1\}/g, '<span style="font-size:16px">$2</span>');
+  text = text.replace(/\\begin\{(LARGE|huge|Huge)\}([\s\S]*?)\\end\{\1\}/g, '<span style="font-size:20px">$2</span>');
 
   // Handle sections with numbering
   text = text.replace(/\\section\*\{([^}]*)\}/g, '<h2>$1</h2>');
@@ -446,8 +457,14 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
     return renderTableEnv(body, counters.table);
   });
 
-  // Handle standalone tabular
-  text = text.replace(/\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}/g, (_, colspec, body) => renderTabular(colspec, body));
+  // Handle standalone tabular-like environments
+  text = text.replace(/\\begin\{(?:tabular|tabularx|tabulary|array)\}(?:\{[^}]*\})?\{([^}]*)\}([\s\S]*?)\\end\{(?:tabular|tabularx|tabulary|array)\}/g, (_, colspec, body) => renderTabular(colspec, body));
+  text = text.replace(/\\begin\{longtable\}\{([^}]*)\}([\s\S]*?)\\end\{longtable\}/g, (_, colspec, body) => {
+    const captionMatch = body.match(/\\caption\{([^}]*)\}/);
+    const caption = captionMatch?.[1]?.trim() || '';
+    const captionHtml = caption ? `<p class="latex-caption"><strong>Table:</strong> ${caption}</p>` : '';
+    return `<div class="latex-table-wrap">${captionHtml}${renderTabular(colspec, stripTableOnlyCommands(body))}</div>`;
+  });
 
   // Handle standalone includegraphics
   text = text.replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g, (_, imagePath) => renderImage(imagePath, '', options));
@@ -489,7 +506,7 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
     return renderMathBlock(math, counters.equation);
   });
   text = text.replace(/\\begin\{(equation)\*\}([\s\S]*?)\\end\{\1\*\}/g, (_, _env, math) => renderMathBlock(math));
-  text = text.replace(/\\begin\{(align|gather|multline|eqnarray)\*?\}([\s\S]*?)\\end\{\1\*?\}/g, (_, _env, math) => renderMathBlock(math));
+  text = text.replace(/\\begin\{(align|aligned|gather|gathered|multline|split|eqnarray|cases|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\*?\}([\s\S]*?)\\end\{\1\*?\}/g, (_, _env, math) => renderMathBlock(math));
 
   // Handle inline math: $...$
   text = text.replace(/\$([^$\n]+?)\$/g, (_, math) => renderMathInline(math));
@@ -502,6 +519,13 @@ export function renderLatex(tex: string, options: RenderOptions = {}): string {
   text = text.replace(/\\underline\{([^}]*)\}/g, '<u>$1</u>');
   text = text.replace(/\\texttt\{([^}]*)\}/g, '<code style="font-family:\'Computer Modern Typewriter\',monospace;font-size:12px;background:#f5f5f5;padding:1px 3px;border-radius:2px">$1</code>');
   text = text.replace(/\\textsc\{([^}]*)\}/g, '<span style="font-variant:small-caps">$1</span>');
+  text = text.replace(/\\(?:textsf|sffamily)\{([^}]*)\}/g, '<span style="font-family:sans-serif">$1</span>');
+  text = text.replace(/\\(?:textrm|rmfamily)\{([^}]*)\}/g, '<span style="font-family:serif">$1</span>');
+  text = text.replace(/\\(?:mathbf|bfseries)\{([^}]*)\}/g, '<strong>$1</strong>');
+  text = text.replace(/\\(?:mathit|itshape)\{([^}]*)\}/g, '<em>$1</em>');
+  text = text.replace(/\\sout\{([^}]*)\}/g, '<s>$1</s>');
+  text = text.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, '<a href="$1" target="_blank" rel="noreferrer">$2</a>');
+  text = text.replace(/\\url\{([^}]*)\}/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>');
   text = text.replace(/\\text\{([^}]*)\}/g, '$1');
 
   // Handle font size commands
@@ -584,7 +608,8 @@ function renderFigureEnv(body: string, num: number, options: RenderOptions): str
 function renderTableEnv(body: string, num: number): string {
   const captionMatch = body.match(/\\caption\{([^}]*)\}/);
   const caption = captionMatch?.[1]?.trim() || '';
-  const tabularMatch = body.match(/\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}/);
+  const tabularMatch = body.match(/\\begin\{(?:tabular|tabularx|tabulary|array)\}(?:\{[^}]*\})?\{([^}]*)\}([\s\S]*?)\\end\{(?:tabular|tabularx|tabulary|array)\}/)
+    || body.match(/\\begin\{longtable\}\{([^}]*)\}([\s\S]*?)\\end\{longtable\}/);
 
   const captionHtml = caption
     ? `<p class="latex-caption"><strong>Table ${num}:</strong> ${caption}</p>`
@@ -599,6 +624,7 @@ function renderTableEnv(body: string, num: number): string {
 }
 
 function renderTabular(_colspec: string, body: string): string {
+  body = stripTableOnlyCommands(body);
   const rows = body.trim().split('\\\\');
   let html = '<table class="latex-tabular">';
 
@@ -635,6 +661,7 @@ function renderTabular(_colspec: string, body: string): string {
       .replace(/\\toprule\b(?:\[[^\]]*\])?/g, '')
       .replace(/\\midrule\b(?:\[[^\]]*\])?/g, '')
       .replace(/\\bottomrule\b/g, '')
+      .replace(/\\cline\s*\{[^}]*\}/g, '')
       .replace(/\\cmidrule\s*(?:\([^)]*\))?\s*\{[^}]*\}/g, '')
       .replace(/\\addlinespace\b/g, '')
       .replace(/\\hline/g, '')
@@ -745,6 +772,32 @@ function renderTabular(_colspec: string, body: string): string {
 
   html += '</table>';
   return html;
+}
+
+function stripTableOnlyCommands(body: string): string {
+  return body
+    .replace(/\\caption\{[^}]*\}/g, '')
+    .replace(/\\label\{[^}]*\}/g, '')
+    .replace(/\\(endfirsthead|endhead|endfoot|endlastfoot)\b/g, '')
+    .replace(/\\tablefirsthead\{[^}]*\}/g, '')
+    .replace(/\\tablehead\{[^}]*\}/g, '')
+    .replace(/\\tabletail\{[^}]*\}/g, '')
+    .replace(/\\tablelasttail\{[^}]*\}/g, '')
+    .replace(/\\rowcolor(?:\[[^\]]*\])?\{[^}]*\}/g, '')
+    .replace(/\\cellcolor(?:\[[^\]]*\])?\{[^}]*\}/g, '')
+    .replace(/\\arraystretch\b/g, '');
+}
+
+function expandSimpleLatexMacros(source: string): string {
+  const macros: Array<{ name: string; body: string }> = [];
+  let text = source.replace(/\\(?:re)?newcommand\{\\([A-Za-z]+)\}(?:\[0\])?\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g, (_m, name, body) => {
+    macros.push({ name, body });
+    return '';
+  });
+  for (const macro of macros) {
+    text = text.replace(new RegExp(`\\\\+${macro.name}\\b`, 'g'), () => macro.body);
+  }
+  return text;
 }
 
 // Split row by & but preserve content within braces
@@ -1075,6 +1128,8 @@ function renderMathBlock(math: string, eqNum?: number): string {
       .replace(/\\label\{[^}]*\}/g, '')
       .replace(/\\nonumber/g, '')
       .replace(/\\notag/g, '')
+      .replace(/&/g, '')
+      .replace(/<br\/>/g, String.raw`\\`)
       .trim();
     const html = katex.renderToString(cleaned, { displayMode: true, throwOnError: false, trust: true });
     const numHtml = eqNum ? `<span style="float:right;color:#333">(${eqNum})</span>` : '';

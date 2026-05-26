@@ -13,7 +13,9 @@
 - The divider between the editor file tree and Skills panel can be dragged vertically to resize both areas.
 - The integrated terminal opens a project-bound tmux session, reattaches to the same session after closing/reopening or refreshing the page, and creates a new tmux session only if the previous one was killed.
 - Markdown preview resolves project image references such as `![caption](fig/chart.png)` through the project blob API.
+- Markdown preview now covers more official-preview-compatible syntax: GFM tables/task lists/strikethrough/autolinks, math, soft line breaks, frontmatter, raw HTML, directives, heading anchors, and project-relative images. Preview content keeps paper-white backgrounds for tables in dark/cyber themes.
 - LaTeX preview renders `\includegraphics{fig/chart}` and figure captions using project images, with extensionless image paths resolved by the backend.
+- LaTeX preview supports broader paper-preview constructs: common section/title/abstract/list/quote/verbatim/theorem/proof/figure/table environments, `tabular`/`tabularx`/`tabulary`/`array`/`longtable`-style tables, booktabs and simple merged cells, common math environments, code listings/minted, simple zero-argument macros, common text formatting, URLs/links, citations/references, and paper-white table/page rendering under cyber/dark themes.
 - The editor file tree shows the complete project directory tree, including root files and folders such as `appendix/`, `tab/`, `img/`, `.sty`, `.bib`, `.tex`, and `.pdf` files.
 
 ## Project Management
