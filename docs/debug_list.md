@@ -1,5 +1,11 @@
 # Debug List
 
+## 2026-05-26 - Rendered 与 Split 使用两套预览实现
+
+- 现象：Split 模式右侧使用 `MarkdownPreview`/`LatexPreview`，Rendered 模式走独立 `RenderedDocumentEditor` 解析链路，导致同一 Markdown/LaTeX 文件在两个模式下可能显示与能力不一致。
+- 根因：视图模式同时承担“布局切换”和“渲染引擎切换”两种职责，Rendered 不是隐藏源码栏，而是替换成另一套预览系统。
+- 修复：新增统一 `RenderedPreviewPane`，由 Split 与 Rendered 共同复用；Rendered 模式只隐藏源码编辑器，预览内容仍走与 Split 相同的 Markdown/LaTeX 预览实现。
+
 ## 2026-05-26 - 赛博科技主题下预览表格底色错误
 
 - 现象：打开 `reviews/review_summary.md` 预览并切换到“赛博科技”主题后，表格继承全局暗色主题的 `table/th/td/tr:hover` 样式，导致论文/评审预览区域的表格底色不是白色。

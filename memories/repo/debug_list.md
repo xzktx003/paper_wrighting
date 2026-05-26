@@ -1,5 +1,11 @@
 # Debug List
 
+## 2026-05-26 - Rendered/Split preview divergence
+
+- Symptom: Split used `MarkdownPreview`/`LatexPreview`, while Rendered used a separate `RenderedDocumentEditor`, so the same source could render differently across modes.
+- Root cause: editor view mode switched both layout and rendering engine; Rendered was not simply “preview without source”.
+- Fix: add shared `RenderedPreviewPane`; Split and Rendered both use it, with Rendered only hiding the source pane.
+
 ## 2026-05-22 - Restart script resolved app paths under `scripts/`
 
 - Symptom: `sh scripts/restart.sh` tried to enter `scripts/app/apps/frontend` and `scripts/app/apps/backend`, then reported success against an already-running service.

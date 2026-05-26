@@ -1,8 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
-import { RenderedDocumentEditor } from './RenderedDocumentEditor';
-import { MarkdownPreview } from './MarkdownPreview';
-import { LatexPreview } from './LatexPreview';
+import { RenderedPreviewPane } from './RenderedPreviewPane';
 import { DrawioEditor } from './DrawioEditor';
 import { InlineDiffViewer } from './InlineDiffViewer';
 import { getPaperAgentProjectId, isImagePath, isPdfPath, isPreviewableTextPath, isDrawioPath } from '../utils/previewAssets';
@@ -41,7 +39,7 @@ interface Props {
 type PreviewTab = 'pdf' | 'diff';
 
 export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
-  const [editorViewMode, setEditorViewMode] = useState<'source' | 'split' | 'live'>('split');
+  const [editorViewMode, setEditorViewMode] = useState<'source' | 'split' | 'rendered'>('split');
   const [editorRatio, setEditorRatio] = useState(0.5);
   const [previewScrollRatio, setPreviewScrollRatio] = useState<number | undefined>(undefined);
   const [editorScrollRatio, setEditorScrollRatio] = useState<number | undefined>(undefined);
@@ -57,6 +55,8 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
   const activeIsPdf = !!activeFile && isPdfPath(activeFile.filename);
   const activeIsText = !!activeFile && isPreviewableTextPath(activeFile.filename);
   const activeIsDrawio = !!activeFile && isDrawioPath(activeFile.filename);
+  const showSource = activeFile?.type === 'chapter' && (editorViewMode === 'source' || editorViewMode === 'split');
+  const showPreview = activeFile?.type === 'chapter' && (editorViewMode === 'split' || editorViewMode === 'rendered');
 
   // SyncTeX: jump from source line to PDF position
   const handleSyncTeXJump = useCallback(async (line: number) => {
@@ -154,14 +154,14 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
         ))}
         {activeFile && activeFile.type === 'chapter' && (
           <div style={{ marginLeft: '8px', display: 'inline-flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden', background: 'var(--paper)' }} title="Editor view mode">
-            {(['source', 'split', 'live'] as const).map((mode) => (
+            {(['source', 'split', 'rendered'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setEditorViewMode(mode)}
                 style={{
                   fontSize: '11px',
                   border: 'none',
-                  borderRight: mode === 'live' ? 'none' : '1px solid var(--border)',
+                  borderRight: mode === 'rendered' ? 'none' : '1px solid var(--border)',
                   padding: '3px 9px',
                   cursor: 'pointer',
                   background: editorViewMode === mode ? 'var(--accent-soft)' : 'transparent',
@@ -171,7 +171,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                   textTransform: 'capitalize',
                 }}
               >
-                {mode === 'live' ? 'Rendered' : mode}
+                {mode === 'rendered' ? 'Rendered' : mode}
               </button>
             ))}
           </div>
@@ -262,16 +262,8 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
             </div>
           ) : (
             <>
-              <div style={{ width: editorViewMode === 'split' && activeFile.type === 'chapter' ? `${editorRatio * 100}%` : '100%', overflow: 'hidden' }}>
-                {editorViewMode === 'live' && activeFile.type === 'chapter' ? (
-                  <RenderedDocumentEditor
-                    content={activeFile.content}
-                    onChange={(c) => onFileChange(activeFileIndex, c)}
-                    format={activeFile.filename.endsWith('.tex') ? 'latex' : 'markdown'}
-                    projectId={projectId}
-                    currentFile={activeFile.filename}
-                  />
-                ) : (
+              {showSource && (
+                <div style={{ width: showPreview ? `${editorRatio * 100}%` : '100%', overflow: 'hidden' }}>
                   <MarkdownEditor
                     content={activeFile.content}
                     onChange={(c) => onFileChange(activeFileIndex, c)}
@@ -279,9 +271,9 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                     scrollRatio={editorViewMode === 'split' ? editorScrollRatio : undefined}
                     onLineClick={handleSyncTeXJump}
                   />
-                )}
-              </div>
-              {editorViewMode === 'split' && activeFile.type === 'chapter' && (
+                </div>
+              )}
+              {showSource && showPreview && (
                 <>
                   <div
                     onMouseDown={handleEditorPreviewResize}
@@ -291,6 +283,9 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                   >
                     <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '3px', height: '30px', borderRadius: '2px', background: 'var(--muted)', opacity: 0.4 }} />
                   </div>
+                </>
+              )}
+              {showPreview && (
                   <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#f5f5f0' }}>
                     {/* Preview tab bar */}
                     <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, padding: '0 8px' }}>
@@ -322,23 +317,14 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                     {/* Preview content */}
                     <div style={{ flex: 1, overflow: 'auto' }}>
                       {previewTab === 'pdf' && (
-                        activeFile.filename.endsWith('.tex') ? (
-                          <LatexPreview
-                            content={activeFile.content}
-                            projectId={projectId}
-                            currentFile={activeFile.filename}
-                            onScroll={handlePreviewScroll}
-                            scrollRatio={previewScrollRatio}
-                          />
-                        ) : (
-                          <MarkdownPreview
-                            content={activeFile.content}
-                            projectId={projectId}
-                            currentFile={activeFile.filename}
-                            onScroll={handlePreviewScroll}
-                            scrollRatio={previewScrollRatio}
-                          />
-                        )
+                        <RenderedPreviewPane
+                          content={activeFile.content}
+                          filename={activeFile.filename}
+                          projectId={projectId}
+                          currentFile={activeFile.filename}
+                          onScroll={handlePreviewScroll}
+                          scrollRatio={previewScrollRatio}
+                        />
                       )}
                       {previewTab === 'diff' && (
                         <div style={{ padding: '12px' }}>
@@ -379,7 +365,6 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                       )}
                     </div>
                   </div>
-                </>
               )}
             </>
           )}

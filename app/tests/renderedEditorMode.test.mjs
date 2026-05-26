@@ -4,14 +4,25 @@ import { join } from 'path';
 import { parseRenderedDocument } from '../apps/frontend/src/app/components/RenderedDocumentEditor.tsx';
 
 describe('rendered editor mode', () => {
-  it('routes Rendered mode to the editable rendered document editor instead of CodeMirror source widgets', async () => {
+  it('routes Split and Rendered modes through the same preview pane and only hides source in Rendered', async () => {
     const center = await readFile(join(process.cwd(), 'apps/frontend/src/app/components/CenterPanel.tsx'), 'utf8');
-    expect(center).toContain("useState<'source' | 'split' | 'live'>('split')");
-    expect(center).toContain("(['source', 'split', 'live'] as const)");
-    expect(center).toContain("mode === 'live' ? 'Rendered' : mode");
-    expect(center).toContain('<RenderedDocumentEditor');
-    expect(center).toContain("format={activeFile.filename.endsWith('.tex') ? 'latex' : 'markdown'}");
+    expect(center).toContain("useState<'source' | 'split' | 'rendered'>('split')");
+    expect(center).toContain("(['source', 'split', 'rendered'] as const)");
+    expect(center).toContain("mode === 'rendered' ? 'Rendered' : mode");
+    expect(center).toContain("editorViewMode === 'source' || editorViewMode === 'split'");
+    expect(center).toContain("editorViewMode === 'split' || editorViewMode === 'rendered'");
+    expect(center).toContain('<RenderedPreviewPane');
+    expect(center).not.toContain('<RenderedDocumentEditor');
     expect(center).not.toContain('renderMode={editorViewMode ===');
+  });
+
+  it('uses MarkdownPreview and LatexPreview as the single rendered preview implementation', async () => {
+    const previewPane = await readFile(join(process.cwd(), 'apps/frontend/src/app/components/RenderedPreviewPane.tsx'), 'utf8');
+    expect(previewPane).toContain("import { MarkdownPreview } from './MarkdownPreview'");
+    expect(previewPane).toContain("import { LatexPreview } from './LatexPreview'");
+    expect(previewPane).toContain("filename.endsWith('.tex')");
+    expect(previewPane).toContain('<LatexPreview');
+    expect(previewPane).toContain('<MarkdownPreview');
   });
 
   it('keeps Source mode as plain CodeMirror without live preview decorations', async () => {
