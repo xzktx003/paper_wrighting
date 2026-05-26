@@ -373,6 +373,7 @@ export function registerProjectRoutes(fastify) {
     };
     const contentType = contentTypes[ext] || 'application/octet-stream';
     reply.header('Content-Type', contentType);
+    reply.header('Content-Disposition', ext === '.pdf' ? 'inline' : 'inline');
     return reply.send(buffer);
   });
 

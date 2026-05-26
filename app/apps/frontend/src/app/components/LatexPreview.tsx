@@ -645,58 +645,113 @@ function renderAlgorithmEnv(body: string, num?: number, noNumber?: boolean): str
 }
 
 function renderAlgorithmicEnv(body: string): string {
-  let html = '<div class="latex-algorithmic" style="font-family:\'Computer Modern Typewriter\',monospace;font-size:13px;line-height:1.5">';
-  
-  // Process algorithmic commands
+  let html = '<div class="latex-algorithmic" style="font-family:\'Computer Modern Typewriter\',monospace;font-size:13px;line-height:1.6">';
+
   const lines = body.split('\n');
-  for (const line of lines) {
-    let processed = line.trim();
+  let indentLevel = 0;
+  let lineNum = 0;
+
+  for (const rawLine of lines) {
+    let processed = rawLine.trim();
     if (!processed) continue;
-    
-    // State/Require/Ensure
-    processed = processed.replace(/\\(State|Require|Ensure|Loop|While|For|If|EndIf|EndFor|EndWhile|EndLoop)\b/g, 
-      '<span style="color:#0066cc;font-weight:600">\\$1</span>');
-    
-    // Comments
-    processed = processed.replace(/\\Comment\{([^}]*)\}/g, 
-      '<span style="color:#888;font-style:italic">// $1</span>');
-    processed = processed.replace(/\\State\{([^}]*)\}/g, 
-      '<div style="margin:4px 0;padding-left:8px;border-left:2px solid #ddd"><span style="color:#333">$1</span></div>');
-    processed = processed.replace(/\\Line\{([^}]*)\}/g, 
-      '<div style="margin:4px 0;padding-left:8px">$1</div>');
-    processed = processed.replace(/\\Return\b/g, 
-      '<span style="color:#cc0000;font-weight:600">return</span>');
-    processed = processed.replace(/\\Output\{([^}]*)\}/g, 
-      '<div style="margin:4px 0;padding-left:8px"><span style="color:#006600">Output:</span> $1</div>');
-    processed = processed.replace(/\\Input\{([^}]*)\}/g, 
-      '<div style="margin:4px 0;padding-left:8px"><span style="color:#006600">Input:</span> $1</div>');
-    processed = processed.replace(/\\And\b/g, 
-      '<span style="color:#0066cc">∧</span>');
-    processed = processed.replace(/\\Or\b/g, 
-      '<span style="color:#0066cc">∨</span>');
-    processed = processed.replace(/\\Not\b/g, 
-      '<span style="color:#0066cc">¬</span>');
-    processed = processed.replace(/\\gets\b/g, 
-      '<span style="color:#cc6600">←</span>');
-    processed = processed.replace(/\\to\b/g, 
-      '<span style="color:#cc6600">→</span>');
-    processed = processed.replace(/\\leq\b/g, '≤');
-    processed = processed.replace(/\\geq\b/g, '≥');
-    processed = processed.replace(/\\neq\b/g, '≠');
-    processed = processed.replace(/\\infty/g, '∞');
-    
-    // Remove remaining \ commands that weren't handled
-    processed = processed.replace(/\\[a-zA-Z]+\{[^}]*\}/g, (match) => {
-      const inner = match.match(/\{([^}]*)\}/)?.[1] || '';
-      return `<span style="color:#555">${escapeHtml(inner)}</span>`;
+    lineNum++;
+
+    // ── Protect inline math ──
+    const mathSegments: string[] = [];
+    processed = processed.replace(/\$([^$\n]+?)\$/g, (_m, math) => {
+      try {
+        mathSegments.push(katex.renderToString(math.trim(), { displayMode: false, throwOnError: false, trust: true }));
+      } catch { mathSegments.push(math); }
+      return `\x00MATH${mathSegments.length - 1}\x00`;
     });
-    processed = processed.replace(/\\[a-zA-Z]+/g, '');
-    
-    if (processed) {
-      html += processed + '\n';
+    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (_m, math) => {
+      try {
+        mathSegments.push(katex.renderToString(math.trim(), { displayMode: true, throwOnError: false, trust: true }));
+      } catch { mathSegments.push(math); }
+      return `\x00MATH${mathSegments.length - 1}\x00`;
+    });
+
+    // ── Strip env tags & label ──
+    processed = processed.replace(/\\begin\{algorithmic\}(\[[^\]]*\])?/gi, '');
+    processed = processed.replace(/\\end\{algorithmic\}/gi, '');
+    processed = processed.replace(/\\begin\{algorithm\}(\[[^\]]*\])?/gi, '');
+    processed = processed.replace(/\\end\{algorithm\}/gi, '');
+    processed = processed.replace(/\\label\{[^}]*\}/g, '');
+
+    // ── Detect end-block keywords BEFORE processing (decrease indent) ──
+    const endBlockRe = /\\(ENDWHILE|ENDFOR|ENDIF|ENDLOOP|UNTIL)\b/gi;
+    if (endBlockRe.test(processed)) {
+      indentLevel = Math.max(0, indentLevel - 1);
+    }
+
+    // ── Remove \STATE and leading backslashes ──
+    processed = processed.replace(/\\STATE\b\s*/gi, '');
+
+    // ── Replace structural commands ──
+    processed = processed.replace(/\\WHILE\s*\{/gi, '<b style="color:#0066cc">while</b> (');
+    processed = processed.replace(/\\IF\s*\{/gi, '<b style="color:#0066cc">if</b> (');
+    processed = processed.replace(/\\FOR\s*\{/gi, '<b style="color:#0066cc">for</b> (');
+    processed = processed.replace(/\\ELSIF\s*\{/gi, '<b style="color:#0066cc">else if</b> (');
+    processed = processed.replace(/\\LOOP\s*\{/gi, '<b style="color:#0066cc">loop</b> (');
+    processed = processed.replace(/\\REPEAT\b/gi, '<b style="color:#0066cc">repeat</b>');
+    processed = processed.replace(/\\UNTIL\b\s*\{/gi, '<b style="color:#0066cc">until</b> (');
+    processed = processed.replace(/\\RETURN\b\s*/gi, '<b style="color:#cc0000">return</b> ');
+    processed = processed.replace(/\\PRINT\b\s*/gi, '<b style="color:#cc0000">print</b> ');
+    processed = processed.replace(/\\REQUIRE\s*/gi, '<b style="color:#006600">Require:</b> ');
+    processed = processed.replace(/\\ENSURE\s*/gi, '<b style="color:#006600">Ensure:</b> ');
+
+    // ── Colorize end-block keywords ──
+    processed = processed.replace(/\\(ENDWHILE|ENDFOR|ENDIF|ENDLOOP)\b/gi,
+      '<b style="color:#0066cc">$1</b>');
+    processed = processed.replace(/\\ELSE\b/gi, '<b style="color:#0066cc">else</b>');
+
+    // ── Operators ──
+    processed = processed.replace(/\\GETS\b/gi, '←');
+    processed = processed.replace(/\\TO\b/gi, ' to ');
+    processed = processed.replace(/\\DOWNTO\b/gi, ' downto ');
+    processed = processed.replace(/\\AND\b/gi, '∧');
+    processed = processed.replace(/\\OR\b/gi, '∨');
+    processed = processed.replace(/\\NOT\b/gi, '¬');
+    processed = processed.replace(/\\XOR\b/gi, '⊕');
+
+    // ── Comment ──
+    processed = processed.replace(/\\Comment\s*\{([^}]*)\}/gi,
+      ' <span style="color:#888;font-style:italic">▷ $1</span>');
+
+    // ── \CALL{name}{args} ──
+    processed = processed.replace(/\\CALL\s*\{([^}]*)\}\s*\{([^}]*)\}/gi,
+      '<b style="color:#0066cc">$1</b>($2)');
+
+    // ── Text formatting ──
+    processed = processed.replace(/\\textbf\s*\{([^}]*)\}/g, '<strong>$1</strong>');
+    processed = processed.replace(/\\textit\s*\{([^}]*)\}/g, '<em>$1</em>');
+    processed = processed.replace(/\\emph\s*\{([^}]*)\}/g, '<em>$1</em>');
+    processed = processed.replace(/\\texttt\s*\{([^}]*)\}/g, '<code style="background:#f0f0f0;padding:1px 3px;border-radius:2px">$1</code>');
+
+    // ── Cleanup remaining \commands ──
+    processed = processed.replace(/\\[a-zA-Z]+\*?\s*\{([^}]*)\}/g, (_m, inner) => escapeHtml(inner));
+    processed = processed.replace(/\\[a-zA-Z]+(\{[^}]*\})?/gi, (_m, brace) => brace ? brace.slice(1, -1) : '');
+
+    // ── Restore math ──
+    processed = processed.replace(/\x00MATH(\d+)\x00/g, (_m, idx) => mathSegments[parseInt(idx)] || '');
+
+    // ── Compute left padding ──
+    const pad = 16 + indentLevel * 24;
+
+    if (processed.trim()) {
+      html += `<div style="display:flex;align-items:baseline;margin:2px 0;padding-left:${pad}px">`
+            + `<span style="flex-shrink:0;width:20px;text-align:right;color:#999;font-size:11px;margin-right:8px">${lineNum}</span>`
+            + `<span style="flex:1">${processed.trim()}</span>`
+            + `</div>`;
+    }
+
+    // ── Detect start-block keywords AFTER rendering (increase indent for NEXT line) ──
+    const startBlockRe = /\\(WHILE|FOR|IF|LOOP|REPEAT)\b/gi;
+    if (startBlockRe.test(rawLine)) {
+      indentLevel++;
     }
   }
-  
+
   html += '</div>';
   return html;
 }
