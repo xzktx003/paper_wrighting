@@ -100,10 +100,10 @@ async function buildContextMessages(conv, resolvedPath, projectConfig) {
   try {
     if (conv.context_scope.type === 'chapter' && conv.context_scope.file) {
       // Accept any project-relative file path: try direct path first, then sec/, then chapters/
-      const fileName = conv.context_scope.file.replace(/^\/+/, '');
+      const fileName = String(conv.context_scope.file || '').replace(/^\/+/, '');
       let chapterContent = '';
-      // If path contains a slash, treat as direct project-relative path
-      if (fileName.includes('/')) {
+      // If path already contains a directory prefix (sec/ or chapters/), use as-is
+      if (fileName.startsWith('sec/') || fileName.startsWith('chapters/')) {
         chapterContent = await readTextFile(safeJoin(resolvedPath, fileName)).catch(() => '');
       } else {
         // Bare filename: try sec/ then chapters/ for backward compat
@@ -320,15 +320,17 @@ export function registerAIRoutes(fastify) {
 export async function executeTool(name, input, projectPath) {
   switch (name) {
     case 'read_chapter': {
-      // Try sec/ first (original format), then chapters/ (new format)
+      // Accept any project-relative path: if already has sec/ or chapters/ prefix, use as-is;
+      // otherwise try sec/ then chapters/ for backward compat
       const filename = String(input.filename || '').replace(/^\/+/, '');
-      const secPath = filename.startsWith('sec/') ? join(projectPath, filename) : join(projectPath, 'sec', filename);
-      const chapPath = filename.startsWith('chapters/') ? join(projectPath, filename) : join(projectPath, 'chapters', filename);
-      try {
-        return await readTextFile(secPath);
-      } catch {
-        return await readTextFile(chapPath);
+      if (filename.startsWith('sec/') || filename.startsWith('chapters/')) {
+        return await readTextFile(safeJoin(projectPath, filename)).catch(() => '');
       }
+      // Bare filename: try sec/ then chapters/
+      const secPath = join(projectPath, 'sec', filename);
+      const chapPath = join(projectPath, 'chapters', filename);
+      try { return await readTextFile(secPath); } catch { /* fall through */ }
+      return await readTextFile(chapPath);
     }
     case 'list_chapters': {
       const secDir = join(projectPath, 'sec');

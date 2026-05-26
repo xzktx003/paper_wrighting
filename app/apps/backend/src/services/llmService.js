@@ -220,7 +220,7 @@ async function openaiChatWithTools({ systemPrompt, messages, tools, onToolUse, m
 
 /* ── Streaming variants ─────────────────────────────── */
 
-async function anthropicChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal }) {
+async function anthropicChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal, round = 0 }) {
   if (!anthropicClient) throw new Error('Anthropic not initialized.');
   const useModel = model || anthropicClient._defaultModel;
   const params = { model: useModel, max_tokens: 8192, system: systemPrompt, messages, stream: true };
@@ -270,18 +270,26 @@ async function anthropicChatCompletionStream({ systemPrompt, messages, tools, mo
       if (onToolResult) onToolResult(block.name, result);
       toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
     }
+    const assistantContent = [];
+    if (fullText) assistantContent.push({ type: 'text', text: fullText });
+    assistantContent.push(...toolUseBlocks.map(b => ({ type: 'tool_use', id: b.id, name: b.name, input: b.input })));
+
     const newMessages = [
       ...messages,
-      { role: 'assistant', content: toolUseBlocks.map(b => ({ type: 'tool_use', id: b.id, name: b.name, input: b.input })) },
+      { role: 'assistant', content: assistantContent },
       { role: 'user', content: toolResults },
     ];
-    return anthropicChatCompletionStream({ systemPrompt, messages: newMessages, tools, model, onToken, onToolUse, onToolResult, signal });
+    
+    if (round >= (Number(process.env.OPENPRISM_MAX_TOOL_ROUNDS) || 6)) return { fullText };
+    
+    const nextRes = await anthropicChatCompletionStream({ systemPrompt, messages: newMessages, tools, model, onToken, onToolUse, onToolResult, signal, round: round + 1 });
+    return { fullText: fullText + (nextRes.fullText || '') };
   }
 
   return { fullText };
 }
 
-async function openaiChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal }) {
+async function openaiChatCompletionStream({ systemPrompt, messages, tools, model, onToken, onToolUse, onToolResult, signal, round = 0 }) {
   if (!openaiClient) throw new Error('OpenAI-compatible provider not initialized.');
   const useModel = model || openaiClient._defaultModel;
   const oaiMessages = buildOpenAIMessages(systemPrompt, messages);
@@ -315,32 +323,34 @@ async function openaiChatCompletionStream({ systemPrompt, messages, tools, model
   }
 
   if (toolCallsMap.size > 0 && onToolUse) {
-    const assistantMsg = {
-      role: 'assistant', content: fullText || null,
-      tool_calls: Array.from(toolCallsMap.values()).map(tc => ({
-        id: tc.id, type: 'function',
-        function: { name: tc.name, arguments: tc.arguments },
-      })),
-    };
-    const newOaiMessages = [...oaiMessages, assistantMsg];
+    const assistantContent = [];
+    if (fullText) assistantContent.push({ type: 'text', text: fullText });
+    
+    const toolResults = [];
     for (const [, tc] of toolCallsMap) {
       let input = {};
       try { input = JSON.parse(tc.arguments); } catch { input = { raw: tc.arguments }; }
+      
+      assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input });
+
       let result;
       try { result = await onToolUse(tc.name, input); }
       catch (err) { result = `Tool error (${tc.name}): ${err.message || String(err)}`; }
       if (onToolResult) onToolResult(tc.name, result);
-      newOaiMessages.push({ role: 'tool', tool_call_id: tc.id, content: typeof result === 'string' ? result : JSON.stringify(result) });
+      
+      toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
     }
-    const followUp = await openaiClient.chat.completions.create({
-      model: useModel, messages: newOaiMessages, max_tokens: 8192,
-      ...(oaiTools ? { tools: oaiTools } : {}),
-    });
-    const followContent = followUp.choices?.[0]?.message?.content;
-    if (followContent) {
-      fullText += followContent;
-      if (onToken) onToken(followContent);
-    }
+
+    const newMessages = [
+      ...messages,
+      { role: 'assistant', content: assistantContent },
+      { role: 'user', content: toolResults },
+    ];
+    
+    if (round >= (Number(process.env.OPENPRISM_MAX_TOOL_ROUNDS) || 6)) return { fullText };
+    
+    const nextRes = await openaiChatCompletionStream({ systemPrompt, messages: newMessages, tools, model, onToken, onToolUse, onToolResult, signal, round: round + 1 });
+    return { fullText: fullText + (nextRes.fullText || '') };
   }
 
   return { fullText };
