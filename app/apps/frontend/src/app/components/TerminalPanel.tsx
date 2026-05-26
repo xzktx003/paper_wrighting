@@ -81,6 +81,8 @@ export function TerminalPanel({ cwd }: Props) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'data') {
         term.write(msg.data);
+      } else if (msg.type === 'replay') {
+        term.write(msg.data);
       }
     };
 
