@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { safeJoin } from '../../../utils/pathUtils.js';
+import { safeJoin } from '../../../utils/pathSecurity.js';
 import { ensureDir, listFilesRecursive } from '../../../utils/fsUtils.js';
 
 /**

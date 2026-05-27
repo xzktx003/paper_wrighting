@@ -311,10 +311,24 @@ export function runAgent(payload: {
 export function compileProject(payload: {
   projectId: string;
   mainFile: string;
-  engine: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic';
+  engine?: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic' | 'auto';
 }) {
-  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; availableEngines?: string[] }>(
+  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; pdfUrl?: string; availableEngines?: string[] }>(
     `/api/compile`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export function compileFullPaper(payload: {
+  projectId: string;
+  engine?: 'pdflatex' | 'xelatex' | 'lualatex' | 'latexmk' | 'tectonic' | 'auto';
+  editorMode?: 'markdown' | 'latex';
+}) {
+  return request<{ ok: boolean; pdf?: string; log?: string; status?: number; engine?: string; error?: string; mode?: string; mainFile?: string; generatedMain?: boolean; pdfUrl?: string; availableEngines?: string[] }>(
+    `/api/compile/full-paper`,
     {
       method: 'POST',
       body: JSON.stringify(payload)

@@ -4,7 +4,7 @@ import { appendMessage, getConversation } from '../services/conversationStore.js
 import { readTextFile, writeTextFile, listDir } from '../services/fileManager.js';
 import { executeScript } from '../services/codeExecutor.js';
 import { join, resolve } from 'path';
-import { safeJoin } from '../utils/pathUtils.js';
+import { safeJoin } from '../utils/pathSecurity.js';
 import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import { getProjectRoot } from '../services/projectService.js';

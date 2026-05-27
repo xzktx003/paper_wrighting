@@ -4,7 +4,7 @@ import { RenderedPreviewPane } from './RenderedPreviewPane';
 import { DrawioEditor } from './DrawioEditor';
 import { InlineDiffViewer } from './InlineDiffViewer';
 import { getPaperAgentProjectId, isImagePath, isPdfPath, isPreviewableTextPath, isDrawioPath } from '../utils/previewAssets';
-import { compileProject, syncTexSourceToPdf } from '../../api/client';
+import { compileProject, compileFullPaper, syncTexSourceToPdf } from '../../api/client';
 
 interface OpenFile {
   filename: string;
@@ -31,6 +31,8 @@ interface Props {
   onToggleTerminal: () => void;
   terminalVisible: boolean;
   projectPath?: string;
+  editorMode?: 'markdown' | 'latex';
+  chaptersCount?: number;
   pendingEdits?: PendingEdit[];
   onAcceptEdit?: (editId: string) => void;
   onRejectEdit?: (editId: string) => void;
@@ -38,14 +40,17 @@ interface Props {
 
 type PreviewTab = 'pdf' | 'diff';
 
-export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
+export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSelect, onTabClose, onToggleTerminal, terminalVisible, projectPath, editorMode = 'latex', chaptersCount = 0, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [editorViewMode, setEditorViewMode] = useState<'source' | 'split' | 'rendered'>('split');
   const [editorRatio, setEditorRatio] = useState(0.5);
   const [previewScrollRatio, setPreviewScrollRatio] = useState<number | undefined>(undefined);
   const [editorScrollRatio, setEditorScrollRatio] = useState<number | undefined>(undefined);
   const [syncScrollEnabled, setSyncScrollEnabled] = useState(true);
   const [compiling, setCompiling] = useState(false);
-  const [compileResult, setCompileResult] = useState<{ ok: boolean; log?: string; error?: string; availableEngines?: string[] } | null>(null);
+  const [compileResult, setCompileResult] = useState<{ ok: boolean; log?: string; error?: string; engine?: string; pdfUrl?: string; availableEngines?: string[] } | null>(null);
+  const [compilingAll, setCompilingAll] = useState(false);
+  const [compileAllResult, setCompileAllResult] = useState<{ ok: boolean; log?: string; error?: string; mainFile?: string; generatedMain?: boolean; engine?: string; pdfUrl?: string; availableEngines?: string[] } | null>(null);
+  const [compiledPdfUrl, setCompiledPdfUrl] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<PreviewTab>('pdf');
   const editorAreaRef = useRef<HTMLDivElement>(null);
   const scrollSourceRef = useRef<'editor' | 'preview' | null>(null);
@@ -119,8 +124,11 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
     setCompiling(true);
     setCompileResult(null);
     try {
-      const result = await compileProject({ projectId, mainFile: activeFile?.filename || 'main.tex', engine: 'pdflatex' });
+      const result = await compileProject({ projectId, mainFile: activeFile?.filename || 'main.tex', engine: 'auto' });
       setCompileResult(result);
+      if (result.ok && result.pdfUrl) {
+        setCompiledPdfUrl(`${result.pdfUrl}&_t=${Date.now()}`);
+      }
     } catch (e: any) {
       setCompileResult({ ok: false, error: e.message });
     } finally {
@@ -128,13 +136,31 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
     }
   }, [projectId, compiling, activeFile?.filename]);
 
+  const handleCompileAll = useCallback(async () => {
+    if (!projectId || compilingAll) return;
+    setCompilingAll(true);
+    setCompileAllResult(null);
+    try {
+      const result = await compileFullPaper({ projectId, engine: 'auto', editorMode });
+      setCompileAllResult(result);
+      if (result.ok && result.pdfUrl) {
+        // Add cache-busting timestamp so the browser fetches the fresh PDF
+        setCompiledPdfUrl(`${result.pdfUrl}&_t=${Date.now()}`);
+      }
+    } catch (e: any) {
+      setCompileAllResult({ ok: false, error: e.message });
+    } finally {
+      setCompilingAll(false);
+    }
+  }, [projectId, compilingAll, editorMode]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
       {/* Tab bar */}
       <div style={{ height: '38px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: '2px', overflow: 'auto', flexShrink: 0, background: 'var(--panel-muted)' }}>
         {(openFiles || []).map((file, i) => (
           <div
-            key={file.filename}
+            key={`${file.filename}-${i}`}
             onClick={() => onTabSelect(i)}
             style={{
               padding: '5px 14px',
@@ -217,9 +243,27 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
             {compiling ? 'Compiling...' : 'Compile'}
           </button>
         )}
-        <button onClick={onToggleTerminal} style={{ marginLeft: 'auto', fontSize: '11px', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px 8px', borderRadius: '4px', transition: 'color 0.15s' }}>
-          {terminalVisible ? '▼ Terminal' : '▲ Terminal'}
-        </button>
+        {activeFile && activeFile.type === 'chapter' && chaptersCount > 1 && (
+          <button
+            onClick={handleCompileAll}
+            disabled={compilingAll || !projectId}
+            title={`Compile full paper (${chaptersCount} chapters) into a single PDF`}
+            style={{
+              marginLeft: '4px',
+              fontSize: '11px',
+              border: '1px solid var(--accent)',
+              borderRadius: '6px',
+              padding: '3px 8px',
+              cursor: compilingAll || !projectId ? 'wait' : 'pointer',
+              background: compilingAll ? 'var(--accent-soft)' : 'var(--accent)',
+              color: '#fff',
+              fontWeight: 600,
+              transition: 'all 0.15s',
+            }}
+          >
+            {compilingAll ? 'Compiling All...' : compileAllResult?.ok ? `View PDF` : `Compile All (${chaptersCount})`}
+          </button>
+        )}
       </div>
 
       {/* Editor + Preview area */}
@@ -316,7 +360,35 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                     </div>
                     {/* Preview content */}
                     <div style={{ flex: 1, overflow: 'auto' }}>
-                      {previewTab === 'pdf' && (
+                      {previewTab === 'pdf' && compiledPdfUrl ? (
+                        // Show compiled PDF when available (Overleaf-style)
+                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                          <div style={{ padding: '6px 12px', background: 'var(--panel-muted)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                              ✓ Compiled PDF ({compileAllResult?.engine || 'pdflatex'})
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                onClick={() => window.open(compiledPdfUrl, '_blank')}
+                                style={{ padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--paper)', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer' }}
+                              >
+                                Open in Tab
+                              </button>
+                              <button
+                                onClick={() => setCompiledPdfUrl(null)}
+                                style={{ padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--paper)', color: 'var(--text-secondary)', fontSize: '10px', cursor: 'pointer' }}
+                              >
+                                × Clear
+                              </button>
+                            </div>
+                          </div>
+                          <embed
+                            src={compiledPdfUrl}
+                            type="application/pdf"
+                            style={{ flex: 1, width: '100%', border: 0 }}
+                          />
+                        </div>
+                      ) : previewTab === 'pdf' ? (
                         <RenderedPreviewPane
                           content={activeFile.content}
                           filename={activeFile.filename}
@@ -325,7 +397,7 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
                           onScroll={handlePreviewScroll}
                           scrollRatio={previewScrollRatio}
                         />
-                      )}
+                      ) : null}
                       {previewTab === 'diff' && (
                         <div style={{ padding: '12px' }}>
                           {pendingEdits.filter(e => e.status === 'pending').length === 0 ? (
@@ -415,6 +487,49 @@ export function CenterPanel({ openFiles, activeFileIndex, onFileChange, onTabSel
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
             {compileResult.log || compileResult.error}
+          </div>
+        </div>
+      )}
+
+      {/* Compile All result popup */}
+      {compileAllResult && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: compileResult ? '510px' : '20px',
+            width: '480px',
+            maxHeight: '360px',
+            background: 'var(--panel)',
+            border: `1px solid ${compileAllResult.ok ? 'var(--success, #10b981)' : 'var(--danger, #ef4444)'}`,
+            borderRadius: '8px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{
+            padding: '10px 14px',
+            background: compileAllResult.ok ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            borderBottom: `1px solid ${compileAllResult.ok ? 'var(--success, #10b981)' : 'var(--danger, #ef4444)'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: compileAllResult.ok ? 'var(--success, #10b981)' : 'var(--danger, #ef4444)' }}>
+              {compileAllResult.ok ? `Full Paper Compiled (${compileAllResult.engine || 'pdflatex'})` : 'Full Paper Compile Failed'}
+            </span>
+            <button
+              onClick={() => setCompileAllResult(null)}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--muted)' }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+            {compileAllResult.log || compileAllResult.error}
           </div>
         </div>
       )}

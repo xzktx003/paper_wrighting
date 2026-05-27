@@ -35,6 +35,8 @@ import { registerSyncTeXRoutes } from './routes/synctex.js';
 import { registerReviewRoutes } from './routes/review.js';
 import { registerAntiAiRoutes } from './routes/antiAi.js';
 import { registerPipelineV2Routes } from './routes/pipelineV2.js';
+import { registerCitationVerificationRoutes } from './routes/citationVerification.js';
+import { registerMcpRoutes } from './routes/mcp.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerAuthHook } from './middleware/auth.js';
@@ -86,6 +88,8 @@ registerSyncTeXRoutes(fastify);
 registerReviewRoutes(fastify);
 registerAntiAiRoutes(fastify);
 registerPipelineV2Routes(fastify);
+registerCitationVerificationRoutes(fastify);
+registerMcpRoutes(fastify);
 
 // Config endpoints
 fastify.get('/api/config', async () => publicAppConfig(appConfig));

@@ -6,13 +6,18 @@ import unzipper from 'unzipper';
 import crypto from 'crypto';
 import { DATA_DIR, TEMPLATE_DIR } from '../config/constants.js';
 import { ensureDir, readJson, writeJson, copyDir, listFilesRecursive } from '../utils/fsUtils.js';
-import { safeJoin, sanitizeUploadPath } from '../utils/pathUtils.js';
+import { safeJoin, sanitizeUploadPath } from '../utils/pathSecurity.js';
 import { isTextFile } from '../utils/texUtils.js';
 import { getProjectRoot } from '../services/projectService.js';
 import { downloadArxivSource, extractArxivId } from '../services/arxivService.js';
 import { getLang, t } from '../i18n/index.js';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.pdf', '.eps'];
+
+function downloadFileName(relPath, fallbackName) {
+  const base = path.basename(relPath || '') || fallbackName || 'download';
+  return base.replace(/[\r\n"]/g, '_');
+}
 
 // Per-project lock to prevent concurrent project.json writes
 const projectLocks = new Map();
@@ -374,6 +379,28 @@ export function registerProjectRoutes(fastify) {
     const contentType = contentTypes[ext] || 'application/octet-stream';
     reply.header('Content-Type', contentType);
     reply.header('Content-Disposition', ext === '.pdf' ? 'inline' : 'inline');
+    return reply.send(buffer);
+  });
+
+  fastify.get('/api/projects/:id/download', async (req, reply) => {
+    const { id } = req.params;
+    const { path: filePath = '' } = req.query;
+    const projectRoot = await getProjectRoot(id);
+    const relPath = sanitizeUploadPath(filePath) || '';
+    const abs = safeJoin(projectRoot, relPath);
+    const info = await fs.stat(abs);
+
+    if (info.isDirectory()) {
+      const archiveName = `${downloadFileName(relPath, id)}.tar.gz`;
+      reply.header('Content-Type', 'application/gzip');
+      reply.header('Content-Disposition', `attachment; filename="${archiveName}"`);
+      const entries = relPath ? [relPath] : ['.'];
+      return reply.send(tar.c({ gzip: true, cwd: projectRoot, portable: true }, entries));
+    }
+
+    const buffer = await fs.readFile(abs);
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', `attachment; filename="${downloadFileName(relPath, id)}"`);
     return reply.send(buffer);
   });
 

@@ -5,8 +5,8 @@ import unzipper from 'unzipper';
 import { readTemplateManifest, addTemplateToManifest } from '../services/templateService.js';
 import { TEMPLATE_DIR } from '../config/constants.js';
 import { ensureDir } from '../utils/fsUtils.js';
-import { sanitizeUploadPath } from '../utils/pathUtils.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { sanitizeUploadPath } from '../utils/pathSecurity.js';
+import { safeJoin } from '../utils/pathSecurity.js';
 
 export function registerHealthRoutes(fastify) {
   fastify.get('/api/health', async () => ({ ok: true }));

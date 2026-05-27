@@ -20,8 +20,8 @@ vi.mock('../apps/backend/src/utils/fsUtils.js', () => ({
   ensureDir: vi.fn(async () => {}),
 }));
 
-// Mock pathUtils
-vi.mock('../apps/backend/src/utils/pathUtils.js', () => ({
+// Mock pathSecurity
+vi.mock('../apps/backend/src/utils/pathSecurity.js', () => ({
   safeJoin: vi.fn((base, rel) => path.join(base, rel)),
 }));
 
@@ -42,8 +42,13 @@ vi.mock('fs', async (importOriginal) => {
         if (filePath.endsWith('.aux')) {
           return '';
         }
+        if (filePath.endsWith('.tex')) {
+          return '\\documentclass{article}\\begin{document}content\\end{document}';
+        }
         return '';
       }),
+      writeFile: vi.fn(async () => {}),
+      copyFile: vi.fn(async () => {}),
       rm: vi.fn(async () => {}),
     },
   };
@@ -246,8 +251,8 @@ describe('compileService', () => {
         engine: 'pdflatex',
       });
 
-      // Advance time past the 120s timeout
-      await vi.advanceTimersByTimeAsync(120_000);
+      // Advance time past the 240s timeout
+      await vi.advanceTimersByTimeAsync(240_000);
 
       const result = await compilePromise;
 

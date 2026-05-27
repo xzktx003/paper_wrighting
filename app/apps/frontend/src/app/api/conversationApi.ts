@@ -215,3 +215,52 @@ export async function pausePipelineV2(pipelineId: string) {
 export async function resumePipelineV2(pipelineId: string) {
   return apiPost(`${BASE}/v2/pipeline/${pipelineId}/resume`, {});
 }
+
+// ── Citation Verification API ──
+
+export interface CitationResult {
+  key: string;
+  type: string;
+  doi: string | null;
+  title: string | null;
+  status: 'verified' | 'title_match' | 'doi_not_found' | 'unverifiable';
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  matchedTitle?: string;
+  matchedYear?: number;
+  matchedJournal?: string;
+  sources: Array<{ source: string; verified: boolean; error?: string }>;
+}
+
+export interface VerificationReport {
+  totalEntries: number;
+  verified: number;
+  titleMatch: number;
+  doiNotFound: number;
+  unverifiable: number;
+  results: CitationResult[];
+  summary: string;
+}
+
+export interface CrossCheckResult {
+  citedKeys: string[];
+  bibKeys: string[];
+  missingInBib: string[];
+  uncitedInBib: string[];
+}
+
+export interface FullCitationReport extends VerificationReport, CrossCheckResult {}
+
+/** Verify all BibTeX entries against academic databases */
+export async function verifyCitations(projectPath: string, bibFile?: string): Promise<FullCitationReport> {
+  return apiPost(`${BASE}/citations/verify`, { projectPath, bibFile });
+}
+
+/** Verify .tex citations and cross-check with .bib */
+export async function verifyTexCitations(projectPath: string, texFile?: string, bibFile?: string): Promise<FullCitationReport> {
+  return apiPost(`${BASE}/citations/verify-tex`, { projectPath, texFile, bibFile });
+}
+
+/** Quick cross-check without external API calls */
+export async function crossCheckCitations(projectPath: string, texFile?: string, bibFile?: string): Promise<CrossCheckResult> {
+  return apiPost(`${BASE}/citations/cross-check`, { projectPath, texFile, bibFile });
+}

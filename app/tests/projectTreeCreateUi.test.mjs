@@ -50,3 +50,13 @@ describe('ProjectTree copy path action', () => {
     expect(source).not.toContain('navigator.clipboard?.writeText(node.path)');
   });
 });
+
+describe('ProjectTree download action', () => {
+  it('exposes a context-menu download action for files and folders', async () => {
+    const source = await readFile(join(process.cwd(), 'apps/frontend/src/app/components/ProjectTree.tsx'), 'utf8');
+    expect(source).toContain('Download');
+    expect(source).toContain('/api/projects/${encodeURIComponent(projectId)}/download');
+    expect(source).toContain('link.download = getBaseName(node.path)');
+    expect(source).toContain('Downloading ${node.path}');
+  });
+});

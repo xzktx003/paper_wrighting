@@ -19,7 +19,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
-        <Routes>
+        <Routes future={{ v7_relativeSplatPath: true }}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/projects" element={<ErrorBoundary><ProjectPage /></ErrorBoundary>} />
           <Route path="/editor/:projectId" element={<ErrorBoundary><EditorPage /></ErrorBoundary>} />

@@ -105,6 +105,8 @@ export function Layout() {
             terminalVisible={app.terminalVisible}
             onToggleTerminal={app.toggleTerminal}
             projectPath={app.project.path || undefined}
+            editorMode={app.project.config?.editor_mode}
+            chaptersCount={app.project.config?.chapters?.length || 0}
             pendingEdits={app.pendingEdits}
             onAcceptEdit={app.acceptEdit}
             onRejectEdit={app.rejectEdit}
@@ -179,6 +181,37 @@ export function Layout() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Floating Terminal Toggle Button (bottom-right) */}
+      {!app.terminalVisible && (
+        <button
+          onClick={app.toggleTerminal}
+          title="Open Terminal"
+          style={{
+            position: 'fixed',
+            bottom: 36,
+            right: 16,
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            border: '1px solid var(--border)',
+            background: 'var(--panel)',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 100,
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--panel)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+        >
+          {'>_'}
+        </button>
       )}
 
       {/* Status Bar */}

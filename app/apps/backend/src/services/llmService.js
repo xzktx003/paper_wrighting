@@ -13,6 +13,8 @@ import Anthropic from '@anthropic-ai/sdk';
 let currentProvider = null;
 let currentLLMConfig = { endpoint: '', apiKey: '', model: '' };
 
+const MAX_FULLTEXT_CHARS = 1_000_000; // 1000K character safety limit
+
 /* ── Anthropic provider ───────────────────────────────── */
 
 let anthropicClient = null;
@@ -243,8 +245,10 @@ async function anthropicChatCompletionStream({ systemPrompt, messages, tools, mo
       }
     } else if (event.type === 'content_block_delta') {
       if (event.delta.type === 'text_delta') {
-        fullText += event.delta.text;
-        if (onToken) onToken(event.delta.text);
+        if (fullText.length < MAX_FULLTEXT_CHARS) {
+          fullText += event.delta.text;
+          if (onToken) onToken(event.delta.text);
+        }
       }
       if (event.delta.type === 'input_json_delta') {
         currentToolInput += event.delta.partial_json;
@@ -305,8 +309,10 @@ async function openaiChatCompletionStream({ systemPrompt, messages, tools, model
     const delta = chunk.choices?.[0]?.delta;
     if (!delta) continue;
     if (delta.content) {
-      fullText += delta.content;
-      if (onToken) onToken(delta.content);
+      if (fullText.length < MAX_FULLTEXT_CHARS) {
+        fullText += delta.content;
+        if (onToken) onToken(delta.content);
+      }
     }
     if (delta.tool_calls) {
       for (const tc of delta.tool_calls) {

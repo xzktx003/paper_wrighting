@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { ChatOpenAI } from '@langchain/openai';
 import { resolveLLMConfig, normalizeBaseURL } from '../../llmService.js';
-import { safeJoin } from '../../../utils/pathUtils.js';
+import { safeJoin } from '../../../utils/pathSecurity.js';
 import { writeFileWithSnapshot, stripCodeFences } from '../utils.js';
 
 /**

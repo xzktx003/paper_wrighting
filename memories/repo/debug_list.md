@@ -1,5 +1,11 @@
 # Debug List
 
+## 2026-05-27 - Citation verification engine: three core bugs fixed
+
+- **Bug 1 — arXiv DOI not supported by CrossRef**: `10.48550/arXiv.*` DOIs return 404 on CrossRef. Fixed by adding arXiv API as 4th data source, auto-detecting the DOI prefix.
+- **Bug 2 — Title search false positives**: Fake titles matched via fuzzy search. Fixed by adding Levenshtein-based `titleSimilarity()` with threshold ≥0.75 and year cross-validation.
+- **Bug 3 — Semantic Scholar 429 rate limiting**: Concurrent requests triggered 429. Fixed by adding S2 request queue (1.2s interval) + exponential backoff retry (max 3) + serial batch verification.
+
 ## 2026-05-26 - Workspace divider drag range too narrow
 
 - Symptom: Files/editor and editor/AI dividers dragged, but sidebars stopped at 200px/300px and limited editor expansion; the visible 5px handle was hard to grab.

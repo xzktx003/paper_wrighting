@@ -6,6 +6,7 @@
 - Project creation and import create a root-level `docs/` folder for free-form notes, ideas, outlines, and draft documents.
 - Existing projects receive `docs/` automatically the next time their file tree is opened. `fig/` is no longer created automatically; image folders only appear when imported or created by the user.
 - The project file tree supports arbitrary files under `docs/`; users can create, upload, edit, rename, and delete those files through the existing project file APIs.
+- The project file tree context menu supports downloading files directly and downloading folders as `.tar.gz` archives.
 - The project file tree blank/root context menu supports Paste, New File, New Folder, and Upload; folder context menus target child creation/upload/paste inside that folder; file context menus do not show create actions. New files are created empty, opened immediately, and existing paths are not overwritten.
 - The editor file tree supports VS Code-style context actions for files and folders: copy path, copy, cut, paste, rename, and delete.
 - File/folder rename uses inline editing: right-click Rename turns the filename into an editable input field with Enter to confirm and Escape to cancel.
@@ -110,3 +111,22 @@
 - `POST /api/pipeline/:id/advance` advances to the next stage (approved=true) or retries with feedback (approved=false).
 - PipelinePanel displays: stage progress ring (○/⟳/✓/✗), stage details, output preview (Markdown for polish, ReviewReport for review), feedback textarea, Approve & Next / Revise & Retry buttons.
 - Triggered from the "⚡ Pipeline" tab in the right panel.
+
+## Citation Verification Engine
+
+- `POST /api/citations/verify` verifies all BibTeX entries against CrossRef, Semantic Scholar, and OpenAlex APIs.
+- `POST /api/citations/verify-tex` extracts `\cite{}` commands from .tex content, cross-checks with .bib, and verifies each cited entry against academic databases.
+- `POST /api/citations/cross-check` performs fast local cross-check between .tex and .bib without external API calls (finds missing/uncited entries).
+- Verification strategy: DOI-based verification (CrossRef + Semantic Scholar) → title-based fuzzy search (CrossRef + OpenAlex) → unverifiable fallback.
+- Confidence levels: high (2+ APIs confirm), medium (1 API confirms), low (title match only), none (unverifiable).
+- CitationVerificationPanel UI: summary cards, tabbed views (Summary/Verified/Missing/Uncited), expandable citation items with source details.
+- Integrated into RightPanel as "📚 Citations" tab.
+
+## MCP (Model Context Protocol) Server
+
+- Standard MCP JSON-RPC 2.0 protocol implementation at `POST /api/mcp`.
+- SSE transport at `GET /api/mcp/sse` with message delivery at `POST /api/mcp/message`.
+- Service discovery endpoint at `GET /api/mcp/info` returns available tools and configuration examples.
+- 7 registered MCP tools: `paper_search`, `verify_citations`, `cross_check_citations`, `compile_latex`, `read_project_file`, `ai_polish`, `ai_review`.
+- Compatible with Claude Desktop, Cursor, Copilot, and other MCP clients.
+- Configuration examples provided for Claude Desktop (`mcpServers` SSE config) and Cursor (HTTP POST config).
