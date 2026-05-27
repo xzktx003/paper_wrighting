@@ -53,6 +53,7 @@ export async function createProject(projectPath, config) {
 export async function addChapter(projectPath, filename) {
   const config = await loadProject(projectPath);
   const filePath = join(projectPath, 'chapters', filename);
+  await mkdir(join(projectPath, 'chapters'), { recursive: true });
   const title = filename.replace(/^\d+-/, '').replace('.md', '').replace(/-/g, ' ');
   await writeFile(filePath, `# ${title}\n\n`, 'utf-8');
   config.chapters = config.chapters || [];

@@ -45,11 +45,11 @@ describe('AI code tools', () => {
   });
 
   it('rejects code path traversal attempts', async () => {
-    await expect(executeTool('write_code', { path: '../outside.py', content: 'bad' }, projectRoot)).rejects.toThrow(/Invalid path/);
+    await expect(executeTool('write_code', { path: '../outside.py', content: 'bad' }, projectRoot)).rejects.toThrow(/Path traversal/);
     await expect(access(join(projectRoot, 'outside.py'))).rejects.toThrow();
 
     await writeFile(join(projectRoot, 'outside.py'), 'secret', 'utf8');
-    await expect(executeTool('read_code', { path: '../outside.py' }, projectRoot)).rejects.toThrow(/Invalid path/);
-    await expect(executeTool('run_code', { script: '../outside.py' }, projectRoot)).rejects.toThrow(/Invalid path/);
+    await expect(executeTool('read_code', { path: '../outside.py' }, projectRoot)).rejects.toThrow(/Path traversal/);
+    await expect(executeTool('run_code', { script: '../outside.py' }, projectRoot)).rejects.toThrow(/Path traversal/);
   });
 });

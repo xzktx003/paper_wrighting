@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getProjectRoot } from '../../projectService.js';
-import { safeJoin } from '../../../utils/pathUtils.js';
+import { safeJoin } from '../../../utils/pathSecurity.js';
 import { listFilesRecursive } from '../../../utils/fsUtils.js';
 import { isTextFile } from '../../../utils/texUtils.js';
 

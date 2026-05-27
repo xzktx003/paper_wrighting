@@ -1,5 +1,25 @@
 # Debug List
 
+## 2026-05-27 - 引用验证引擎三个核心 Bug 修复
+
+- **Bug 1 — arXiv DOI 不被 CrossRef 支持**:
+  - 现象：`10.48550/arXiv.1706.03762` 格式的 DOI 在 CrossRef 返回 404，导致真实论文被标为 "doi_not_found"
+  - 根因：arXiv 自注册的 DOI (`10.48550`) 不在 CrossRef 索引中
+  - 修复：增加 arXiv API (`export.arxiv.org/api/query`) 作为第四数据源；检测到 `10.48550/arXiv.*` 前缀时自动切换到 arXiv API 查询，解析 Atom XML 获取标题/年份/作者
+  - 验证结果：`vaswani2017attention` 从 ❌ doi_not_found → ✅ verified (confidence: high)
+
+- **Bug 2 — 标题搜索误报严重**:
+  - 现象："A Completely Fake Paper That Does Not Exist At All" 被 CrossRef/OpenAlex 标题搜索匹配为 "verified"
+  - 根因：API 返回关键词模糊匹配的 Top-N 结果，未验证标题精确匹配
+  - 修复：增加 `titleSimilarity()` 函数（归一化 Levenshtein 编辑距离），阈值 ≥0.75 才算 verified；同时增加年份交叉校验（偏差 >1 年降级）
+  - 验证结果：假标题相似度 0.188 < 0.75 → 正确标记为 unverifiable
+
+- **Bug 3 — Semantic Scholar 429 限流**:
+  - 现象：并发请求 S2 时全部返回 HTTP 429
+  - 根因：S2 免费层限流 1 req/sec，无请求队列
+  - 修复：增加 S2 请求队列（最小间隔 1.2s）+ 指数退避重试（1s→2s→4s，最多 3 次）+ 支持 `SEMANTIC_SCHOLAR_API_KEY` 环境变量；批量验证改为串行执行
+  - 验证结果：4 个条目串行验证 15s 完成，无 429 错误
+
 ## 2026-05-26 - Files/AI Assistant 分界线拖动范围过窄
 
 - 现象：Files 与编辑区、AI Assistant 与编辑区之间的横向分界线可拖动，但侧栏宽度被固定最小值限制，Files 最小 200px、AI Assistant 最小 300px，导致编辑区扩展空间不足；细分界线也不易抓取。

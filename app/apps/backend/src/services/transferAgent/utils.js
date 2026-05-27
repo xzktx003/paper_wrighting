@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { ensureDir } from '../../utils/fsUtils.js';
-import { safeJoin } from '../../utils/pathUtils.js';
+import { safeJoin } from '../../utils/pathSecurity.js';
 
 // ---------------------------------------------------------------------------
 // Shared text helpers

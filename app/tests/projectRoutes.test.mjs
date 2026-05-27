@@ -137,6 +137,35 @@ describe('Project routes', () => {
     expect(res.headers['content-type']).toContain('image/png');
   });
 
+  it('downloads files and folders from managed projects', async () => {
+    const projectId = `download-${crypto.randomUUID()}`;
+    projectIds.push(projectId);
+    await mkdir(join(DATA_DIR, projectId, 'docs'), { recursive: true });
+    await writeFile(join(DATA_DIR, projectId, 'project.json'), JSON.stringify({
+      id: projectId,
+      name: 'Download Project',
+      createdAt: new Date().toISOString(),
+    }));
+    await writeFile(join(DATA_DIR, projectId, 'docs', 'note.md'), '# note\n');
+
+    const fileRes = await fastify.inject({
+      method: 'GET',
+      url: `/api/projects/${projectId}/download?path=${encodeURIComponent('docs/note.md')}`,
+    });
+    expect(fileRes.statusCode).toBe(200);
+    expect(fileRes.headers['content-disposition']).toContain('attachment; filename="note.md"');
+    expect(fileRes.body).toBe('# note\n');
+
+    const folderRes = await fastify.inject({
+      method: 'GET',
+      url: `/api/projects/${projectId}/download?path=${encodeURIComponent('docs')}`,
+    });
+    expect(folderRes.statusCode).toBe(200);
+    expect(folderRes.headers['content-type']).toContain('application/gzip');
+    expect(folderRes.headers['content-disposition']).toContain('docs.tar.gz');
+    expect(folderRes.rawPayload.length).toBeGreaterThan(0);
+  });
+
   it('creates files and folders through the project file API without overwriting existing paths', async () => {
     const projectId = `create-file-${crypto.randomUUID()}`;
     projectIds.push(projectId);

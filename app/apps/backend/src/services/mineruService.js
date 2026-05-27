@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { MINERU_API_BASE, MINERU_POLL_INTERVAL_MS, MINERU_MAX_POLL_ATTEMPTS } from '../config/constants.js';
 import { ensureDir } from '../utils/fsUtils.js';
-import { safeJoin } from '../utils/pathUtils.js';
+import { safeJoin } from '../utils/pathSecurity.js';
 
 const MINERU_MAX_FILE_BYTES = 200 * 1024 * 1024;
 

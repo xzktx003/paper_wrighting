@@ -92,7 +92,9 @@ describe('Compute Executor', () => {
 
     const result = await executeComputeStage(stage, baseContext);
     expect(result.status).toBe(STAGE_STATUS.FAILED);
-    expect(result.error).toContain('ENOENT');
+    // Sandbox validation rejects unknown executables before spawn
+    expect(result.error).toContain('not in the allowed list');
+    expect(result.metadata.sandboxRejected).toBe(true);
   });
 
   it('uses custom cwd from config', async () => {

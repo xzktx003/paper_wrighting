@@ -1,10 +1,22 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 
 const BASE = 'http://localhost:8787';
+
+// Compute DATA_DIR to match the backend's constants.js calculation
+// constants.js: REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..')
+// DATA_DIR = path.resolve(REPO_ROOT, '..', 'papers')
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = join(__filename, '..');
+// The test file is in app/tests/, constants.js is in app/apps/backend/src/config/
+// Going up from app/tests/ to app/ is one '..', but constants goes up 4 from config/
+// Both resolve to the same repo root
+const REPO_ROOT = join(__dirname, '..', 'apps', 'backend', 'src', 'config', '..', '..', '..', '..');
+const DATA_DIR = process.env.OPENPRISM_DATA_DIR || join(REPO_ROOT, '..', 'papers');
 
 describe('Backend API Integration', () => {
   describe('Health', () => {
@@ -57,7 +69,12 @@ describe('Backend API Integration', () => {
     let projectPath;
 
     beforeAll(async () => {
-      projectPath = await mkdtemp(join(tmpdir(), 'api-paper-test-'));
+      await mkdir(DATA_DIR, { recursive: true });
+      projectPath = await mkdtemp(join(DATA_DIR, 'api-paper-test-'));
+    });
+
+    afterAll(async () => {
+      if (projectPath && existsSync(projectPath)) await rm(projectPath, { recursive: true, force: true });
     });
 
     it('POST /api/paper/create creates a project', async () => {
@@ -97,7 +114,8 @@ describe('Backend API Integration', () => {
     let projectPath;
 
     beforeAll(async () => {
-      projectPath = await mkdtemp(join(tmpdir(), 'api-ch-test-'));
+      await mkdir(DATA_DIR, { recursive: true });
+      projectPath = await mkdtemp(join(DATA_DIR, 'api-ch-test-'));
       await mkdir(join(projectPath, 'chapters'), { recursive: true });
       await writeFile(join(projectPath, 'chapters', 'ch1.md'), '# Chapter 1\n\nContent here.');
       await writeFile(join(projectPath, 'paper.yaml'), YAML.stringify({
@@ -105,6 +123,10 @@ describe('Backend API Integration', () => {
         chapters: [{ file: 'ch1.md', skills: [] }],
         global_skills: [],
       }));
+    });
+
+    afterAll(async () => {
+      if (projectPath && existsSync(projectPath)) await rm(projectPath, { recursive: true, force: true });
     });
 
     it('POST /api/chapters/read reads chapter content', async () => {
@@ -149,8 +171,13 @@ describe('Backend API Integration', () => {
     let projectPath;
 
     beforeAll(async () => {
-      projectPath = await mkdtemp(join(tmpdir(), 'api-code-test-'));
+      await mkdir(DATA_DIR, { recursive: true });
+      projectPath = await mkdtemp(join(DATA_DIR, 'api-code-test-'));
       await mkdir(join(projectPath, 'code'), { recursive: true });
+    });
+
+    afterAll(async () => {
+      if (projectPath && existsSync(projectPath)) await rm(projectPath, { recursive: true, force: true });
     });
 
     it('POST /api/code/exec runs a command', async () => {
@@ -167,6 +194,11 @@ describe('Backend API Integration', () => {
 
   describe('Conversations', () => {
     const projectId = 'test-conv-api-' + Date.now();
+    const projectPath = join(DATA_DIR, projectId);
+
+    beforeAll(async () => {
+      await mkdir(projectPath, { recursive: true });
+    });
 
     it('POST /api/conversations/:projectId creates conversation', async () => {
       const res = await fetch(`${BASE}/api/conversations/${projectId}`, {

@@ -1,4 +1,5 @@
 import { watchDirectory, unwatchDirectory } from '../services/fileManager.js';
+import { assertWithinDataDir } from '../utils/pathSecurity.js';
 
 const projectClients = new Map();
 
@@ -9,6 +10,14 @@ export function registerWsRoutes(fastify) {
 
     if (!projectPath) {
       ws.close(4000, 'projectPath query parameter required');
+      return;
+    }
+
+    // Validate project path is within DATA_DIR
+    try {
+      assertWithinDataDir(projectPath);
+    } catch {
+      ws.close(4003, 'Invalid project path');
       return;
     }
 

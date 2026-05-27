@@ -50,3 +50,10 @@ export function validateCommand(command) {
   }
   return command;
 }
+
+export function sanitizeUploadPath(filename) {
+  if (!filename) return '';
+  const normalized = filename.replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = normalized.split('/').filter((part) => part && part !== '.' && part !== '..');
+  return parts.join('/');
+}

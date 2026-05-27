@@ -108,6 +108,19 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
     setStatus(copied ? `Copied path: ${pathToCopy}` : `Failed to copy path: ${pathToCopy}`);
   };
 
+  const downloadItem = (node: FileTreeNode) => {
+    if (!projectId) return setStatus('File operations are only available for managed projects.');
+    const params = new URLSearchParams({ path: normalizeProjectPath(node.path) });
+    const url = `/api/projects/${encodeURIComponent(projectId)}/download?${params.toString()}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = getBaseName(node.path);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setStatus(`Downloading ${node.path}`);
+  };
+
   const deleteItem = async (node: FileTreeNode) => {
     if (!projectId) return setStatus('File operations are only available for managed projects.');
     const ok = window.confirm(`Delete ${node.path}?`);
@@ -338,12 +351,19 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
                 border: 'none',
                 cursor: uploading ? 'wait' : 'pointer',
                 color: 'var(--muted)',
-                fontSize: '14px',
-                padding: '0 4px',
+                fontSize: '11px',
+                padding: '1px 4px',
                 lineHeight: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                borderRadius: '3px',
+                transition: 'color 0.15s, background 0.15s',
               }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-strong)'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
             >
-              {uploading ? '⏳' : '↑'}
+              {uploading ? '⏳ Uploading...' : '↑ Upload'}
             </button>
           )}
         </div>
@@ -418,6 +438,7 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
           node={contextMenu.node}
           clipboardItem={clipboardItem}
           onCopyPath={copyPath}
+          onDownload={downloadItem}
           onCopy={(node) => setClipboardItem({ path: node.path, type: node.type, action: 'copy' })}
           onCut={(node) => setClipboardItem({ path: node.path, type: node.type, action: 'cut' })}
           onRename={(node) => void renameItem(node)}
@@ -596,6 +617,7 @@ interface ContextMenuProps {
   node: FileTreeNode | null;
   clipboardItem: (ClipboardTreeItem & { action: 'copy' | 'cut' }) | null;
   onCopyPath: (node: FileTreeNode) => void;
+  onDownload: (node: FileTreeNode) => void;
   onCopy: (node: FileTreeNode) => void;
   onCut: (node: FileTreeNode) => void;
   onRename: (node: FileTreeNode) => void;
@@ -607,7 +629,7 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onCopy, onCut, onRename, onCreateFile, onCreateFolder, onUpload, onPaste, onDelete, onClose }: ContextMenuProps) {
+function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onDownload, onCopy, onCut, onRename, onCreateFile, onCreateFolder, onUpload, onPaste, onDelete, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPos, setAdjustedPos] = useState({ x, y });
 
@@ -672,6 +694,7 @@ function ContextMenu({ x, y, node, clipboardItem, onCopyPath, onCopy, onCut, onR
       {node && (
         <>
           <MenuItem label="Copy Path" onClick={() => run(() => void onCopyPath(node))} />
+          <MenuItem label="Download" onClick={() => run(() => onDownload(node))} />
           <MenuItem label="Copy" onClick={() => run(() => onCopy(node))} />
           <MenuItem label="Cut" onClick={() => run(() => onCut(node))} />
           <MenuItem label="Rename" onClick={() => run(() => onRename(node))} />

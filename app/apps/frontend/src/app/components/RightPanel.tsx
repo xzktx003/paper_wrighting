@@ -6,10 +6,11 @@ import { SkillPanel } from './SkillPanel';
 import { ReviewReportPanel } from './ReviewReportPanel';
 import { AntiAiPanel } from './AntiAiPanel';
 import { PipelinePanelV2 } from './PipelinePanelV2';
-import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero } from '../api/conversationApi';
+import { CitationVerificationPanel } from './CitationVerificationPanel';
+import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero, verifyTexCitations, crossCheckCitations } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';
 
-type TabType = 'chat' | 'skills' | 'review' | 'anti-ai' | 'pipeline';
+type TabType = 'chat' | 'skills' | 'review' | 'anti-ai' | 'pipeline' | 'citations';
 
 interface AttachedImage {
   id: string;
@@ -51,35 +52,51 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   const [deepLoading, setDeepLoading] = useState(false);
   const [gptzeroReport, setGptzeroReport] = useState<any>(null);
   const [gptzeroLoading, setGptzeroLoading] = useState(false);
+  const [citationReport, setCitationReport] = useState<any>(null);
+  const [citationLoading, setCitationLoading] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleRunReview = useCallback(async () => {
     if (!projectPath) return;
     setReviewLoading(true);
-    try { const r = await structuredReview(projectPath, activeFile); setReviewReport(r); } catch {}
+    try { const r = await structuredReview(projectPath); setReviewReport(r); } catch {}
     setReviewLoading(false);
-  }, [projectPath, activeFile]);
+  }, [projectPath]);
 
   const handleRunAntiAi = useCallback(async () => {
     if (!projectPath) return;
     setAntiAiLoading(true);
-    try { const r = await detectAntiAi(projectPath, undefined, activeFile); setAntiAiReport(r); } catch {}
+    try { const r = await detectAntiAi(projectPath); setAntiAiReport(r); } catch {}
     setAntiAiLoading(false);
-  }, [projectPath, activeFile]);
+  }, [projectPath]);
 
   const handleRunDeepDetection = useCallback(async () => {
     if (!projectPath) return;
     setDeepLoading(true);
-    try { const r = await detectAntiAiDeep(projectPath, undefined, activeFile); setDeepReport(r); } catch {}
+    try { const r = await detectAntiAiDeep(projectPath); setDeepReport(r); } catch {}
     setDeepLoading(false);
-  }, [projectPath, activeFile]);
+  }, [projectPath]);
 
   const handleRunGPTZero = useCallback(async () => {
     if (!projectPath) return;
     setGptzeroLoading(true);
-    try { const r = await detectAntiAiGPTZero(projectPath, undefined, activeFile); setGptzeroReport(r); } catch {}
+    try { const r = await detectAntiAiGPTZero(projectPath); setGptzeroReport(r); } catch {}
     setGptzeroLoading(false);
+  }, [projectPath]);
+
+  const handleRunCitationVerification = useCallback(async () => {
+    if (!projectPath) return;
+    setCitationLoading(true);
+    try { const r = await verifyTexCitations(projectPath, activeFile); setCitationReport(r); } catch {}
+    setCitationLoading(false);
+  }, [projectPath, activeFile]);
+
+  const handleRunCrossCheck = useCallback(async () => {
+    if (!projectPath) return;
+    setCitationLoading(true);
+    try { const r = await crossCheckCitations(projectPath, activeFile); setCitationReport((prev: any) => ({ ...prev, ...r })); } catch {}
+    setCitationLoading(false);
   }, [projectPath, activeFile]);
 
   const handleSend = () => {
@@ -150,6 +167,7 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
           { key: 'chat', label: '💬 Chat' },
           { key: 'skills', label: '🧩 Skills' },
           { key: 'review', label: '📋 Review' },
+          { key: 'citations', label: '📚 Citations' },
           { key: 'anti-ai', label: '🔍 Anti-AI' },
           { key: 'pipeline', label: '⚡ Pipeline' },
         ] as const).map(tab => (
@@ -331,6 +349,10 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
       ) : activeTab === 'anti-ai' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
           <AntiAiPanel report={antiAiReport} deepReport={deepReport} gptzeroReport={gptzeroReport} loading={antiAiLoading} deepLoading={deepLoading} gptzeroLoading={gptzeroLoading} onRunDetection={handleRunAntiAi} onRunDeepDetection={handleRunDeepDetection} onRunGPTZero={handleRunGPTZero} />
+        </div>
+      ) : activeTab === 'citations' ? (
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <CitationVerificationPanel report={citationReport} loading={citationLoading} onRunVerification={handleRunCitationVerification} onRunCrossCheck={handleRunCrossCheck} projectPath={projectPath} />
         </div>
       ) : activeTab === 'pipeline' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>

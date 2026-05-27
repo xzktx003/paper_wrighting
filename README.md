@@ -35,6 +35,10 @@
 |:---:|:---:|:---:|
 | Multi-user real-time editing<br>Cursor sync & online management | AI Review Report / Consistency<br>Missing Citations / Compile Summary | |
 
+| 📚 Citation Verification | 🔌 MCP Server | |
+|:---:|:---:|:---:|
+| CrossRef / Semantic Scholar / OpenAlex<br>Triple-DB verify + hallucination detection | Standard MCP protocol<br>7 tools exposed | |
+
 ---
 
 <a href="#-quick-start" target="_self">
@@ -53,6 +57,10 @@
 </div>
 
 ## 📢 News
+
+> [!TIP]
+> 🆕 <strong>2025-05 · Citation Verification & MCP Protocol</strong><br>
+> New citation verification engine integrating CrossRef, Semantic Scholar, and OpenAlex APIs — detects hallucinated citations with DOI-based and title-fuzzy verification. MCP (Model Context Protocol) server now available, exposing 7 core tools (paper_search, verify_citations, compile_latex, etc.) compatible with Claude Desktop, Cursor, and Copilot.
 
 > [!TIP]
 > 🆕 <strong>2025-05 · Anti-AI Detection & Pipeline</strong><br>
@@ -83,6 +91,10 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Tools mode**: multi-step tools, cross-file work, and controlled `code/` operations
 - **Tasks**: polish, rewrite, restructure, translate, custom
 - **Autocomplete**: Option/Alt + / or Cmd/Ctrl + Space, Tab to accept
+- **Vision analysis**: paste images in chat (Ctrl+V or 🖼️ button) for multimodal AI understanding
+- **SSE streaming**: real-time token-by-token streaming for AI responses, supports Anthropic and OpenAI-compatible providers
+- **Auto context injection**: new conversations automatically inject current chapter content or full paper structure overview
+- **Inline diff preview**: Agent/Tools edits shown with line-by-line color coding (green for additions, red for deletions), accept or reject with one click
 
 ### ✍️ Compile & Preview
 
@@ -90,6 +102,8 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Preview toolbar**: zoom, fit width, 100%, download PDF
 - **Compile log**: error parsing + one-click diagnose + jump to error
 - **Views**: PDF / Figures / Diff
+- **Markdown preview**: GFM tables / task lists / strikethrough / math / project image resolution
+- **LaTeX preview**: supports `\includegraphics`, figure captions, math environments, code listings, and common layout constructs
 
 ### 📚 Template System
 
@@ -109,6 +123,8 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 
 - **Projects panel**: manage multiple projects
 - **File tree**: create/rename/delete/upload/drag
+- **VS Code-style actions**: right-click for copy path, copy, cut, paste, inline rename
+- **Integrated terminal**: project-bound tmux session, auto-reattach after close/refresh
 - **BibTeX**: quick create `references.bib`
 
 ### ⚙️ Configuration
@@ -117,11 +133,13 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Env-backed settings**: LLM provider, key, base URL, and model are stored in repository `.env` and API keys are masked in the UI
 - **TexLive config**: customizable TexLive resources
 - **Language switch**: toggle 中文/English in the top bar
+- **Editor themes**: Basic Light / GitHub Dark / Dracula / Cyber Tech (zone-specific coloring: cyan for Files, green for Terminal, purple for AI Assistant, blue for Editor)
 
 ### 🔍 Search & Reading
 
 - **WebSearch**: online search with summaries
 - **PaperSearch**: academic paper search with citation info
+- **BibTeX citation search**: type `@` + keywords in the editor to search CrossRef academic database, displays paper title, authors, year, journal, and DOI, one-click insert formatted BibTeX entry
 
 ### 📊 Charts & Recognition
 
@@ -160,6 +178,25 @@ Paper Agent is a local-first LaTeX + AI workspace for academic writing, optimize
 - **Cursor & selection sync**: each user's cursor displayed in a distinct color, visible in real time
 - **Online user list**: collaboration panel shows currently connected users and their status
 - **Invite to collaborate**: invite others via link or token to join the editing session
+
+### 📚 Citation Verification Engine
+
+- **Triple-database verification**: integrates CrossRef, Semantic Scholar, and OpenAlex APIs
+- **DOI-based verification**: citations with DOI are verified directly against APIs; 2+ API confirmations = "verified"
+- **Title fuzzy search**: citations without DOI are matched via title search across CrossRef and OpenAlex
+- **Confidence levels**: high (multi-API), medium (single API), low (title match), none (unverifiable)
+- **Cross-reference check**: automatically detects .tex citations missing from .bib, and .bib entries never cited
+- **Hallucination detection**: identifies AI-fabricated references to prevent academic misconduct
+- **Batch verification**: concurrent API calls with rate limiting
+- Integrated into the right panel as "📚 Citations" tab with interactive result views
+
+### 🔌 MCP Protocol Standard
+
+- **Standard MCP protocol**: JSON-RPC 2.0 implementation compatible with all MCP clients
+- **Dual transport**: HTTP POST (`POST /api/mcp`) + SSE streaming (`GET /api/mcp/sse`)
+- **7 MCP tools**: paper_search, verify_citations, cross_check_citations, compile_latex, read_project_file, ai_polish, ai_review
+- **Service discovery**: `GET /api/mcp/info` returns tool list and client configuration examples
+- **Compatible clients**: Claude Desktop, Cursor, GitHub Copilot, and other MCP-compatible tools
 
 ---
 
@@ -529,7 +566,9 @@ paper_wrighting/
 │   │   │   ├── app/TransferPanel.tsx  # Template transfer UI
 │   │   │   ├── app/components/AntiAiPanel.tsx  # Anti-AI detection panel
 │   │   │   ├── app/components/PipelinePanelV2.tsx  # Pipeline panel
-│   │   │   ├── api/client.ts  # API calls
+│   │   │   ├── app/components/CitationVerificationPanel.tsx  # Citation verification panel
+│   │   │   ├── app/api/client.ts  # API calls
+│   │   │   ├── app/api/conversationApi.ts  # Conversation/citation API
 │   │   │   └── latex/         # TexLive integration
 │   └── backend/            # Fastify backend
 │       └── src/
@@ -538,11 +577,15 @@ paper_wrighting/
 │           │   ├── transfer.js     # Transfer API endpoints
 │           │   ├── antiAi.js       # Anti-AI detection endpoints
 │           │   ├── review.js       # Peer review endpoint
-│           │   └── pipelineV2.js   # Pipeline workflow endpoints
+│           │   ├── pipelineV2.js   # Pipeline workflow endpoints
+│           │   ├── citationVerification.js  # Citation verification endpoints
+│           │   └── mcp.js          # MCP protocol endpoints
 │           └── services/
 │               ├── llmService.js           # LLM call service
 │               ├── gptzeroService.js       # GPTZero Playwright detection
 │               ├── mineruService.js        # MinerU API integration
+│               ├── citationVerificationService.js  # Citation verification service
+│               ├── mcpServer.js            # MCP protocol server
 │               ├── pipeline/              # Pipeline engine
 │               │   ├── pipelineEngine.js  # Core pipeline engine
 │               │   ├── presets.js         # Preset pipeline templates
@@ -586,8 +629,16 @@ paper_wrighting/
 <td><strong>⚡ Pipeline 2.0</strong></td>
 <td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
 <td>Multi-stage workflow engine with 5 typed executors (AI / Human / Compile / Citation / Compute), 5 built-in preset templates, pause/resume/retry/skip controls</td>
+</tr><tr>
+<td><strong>📚 Citation Verification</strong></td>
+<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
+<td>CrossRef / Semantic Scholar / OpenAlex triple-database verification, DOI + title fuzzy search, .tex ↔ .bib cross-check, hallucination detection</td>
 </tr>
 <tr>
+<td><strong>🔌 MCP Protocol</strong></td>
+<td><img src="https://img.shields.io/badge/✅-Done-success?style=flat-square" alt="Done"/></td>
+<td>Standard MCP JSON-RPC 2.0, 7 tools (paper_search / verify_citations / compile_latex etc.), compatible with Claude Desktop / Cursor / Copilot</td>
+</tr><tr>
 <td><strong>🌐 Serverless Collaboration</strong></td>
 <td><img src="https://img.shields.io/badge/⏳-Planned-yellow?style=flat-square" alt="Planned"/></td>
 <td>Local collaboration without a public server: built-in tunnel integration (ngrok / Cloudflare Tunnel) and WebRTC-based P2P direct connection</td>
