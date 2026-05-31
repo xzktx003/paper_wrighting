@@ -332,11 +332,18 @@ export async function downloadFile(body: {
     throw new Error(`Request failed: ${response.status}`);
   }
 
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="(.+?)"/);
+  const filename =
+    filenameMatch?.[1] ??
+    body.path.split("/").filter(Boolean).pop() ??
+    "download";
+
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = body.path.split("/").filter(Boolean).pop() ?? "download";
+  anchor.download = filename;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();

@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 
+import { ZipArchive } from "archiver";
 import multipart from "@fastify/multipart";
 import type { FastifyInstance } from "fastify";
 
@@ -213,17 +214,57 @@ export async function registerFilesystemRoutes(
     "/api/fs/download",
     async (request, reply) => {
       try {
-        const stream = request.body.sshTarget
-          ? await sftpService.createReadStream(
-              request.body.sshTarget,
-              request.body.path,
-            )
-          : localFsService.createReadStream(request.body.path);
+        const targetPath = request.body.path;
+        const sshTarget = request.body.sshTarget;
+        const basename = path.basename(targetPath);
 
-        const filename = path.basename(request.body.path);
+        if (sshTarget) {
+          const isDir = await sftpService.isDirectory(sshTarget, targetPath);
+          if (isDir) {
+            reply.header(
+              "Content-Disposition",
+              `attachment; filename="${basename}.zip"`,
+            );
+            reply.header("Content-Type", "application/zip");
+            const archive = new ZipArchive({ zlib: { level: 5 } });
+            const entries = await sftpService.listRecursive(sshTarget, targetPath);
+            for (const entry of entries) {
+              const relativePath = path.relative(targetPath, entry.path);
+              const stream = await sftpService.createReadStream(sshTarget, entry.path);
+              archive.append(stream, { name: relativePath });
+            }
+            archive.finalize();
+            return reply.send(archive);
+          }
+
+          const stream = await sftpService.createReadStream(sshTarget, targetPath);
+          reply.header(
+            "Content-Disposition",
+            `attachment; filename="${basename}"`,
+          );
+          reply.header("Content-Type", "application/octet-stream");
+          return reply.send(stream);
+        }
+
+        const resolvedPath = localFsService.resolvePath(targetPath);
+        const stats = await stat(resolvedPath);
+
+        if (stats.isDirectory()) {
+          reply.header(
+            "Content-Disposition",
+            `attachment; filename="${basename}.zip"`,
+          );
+          reply.header("Content-Type", "application/zip");
+          const archive = new ZipArchive({ zlib: { level: 5 } });
+          archive.directory(resolvedPath, false);
+          archive.finalize();
+          return reply.send(archive);
+        }
+
+        const stream = localFsService.createReadStream(targetPath);
         reply.header(
           "Content-Disposition",
-          `attachment; filename="${filename}"`,
+          `attachment; filename="${basename}"`,
         );
         reply.header("Content-Type", "application/octet-stream");
         return reply.send(stream);

@@ -321,6 +321,45 @@ export class SftpService {
     );
   }
 
+  async isDirectory(target: SshTarget, inputPath: string): Promise<boolean> {
+    const remotePath = await this.resolveRemotePath(target, inputPath);
+    return this.withConnection(target, async (client) =>
+      withSftp(client, async (sftp) => {
+        const stats = await sftpStat(sftp, remotePath);
+        return (stats.mode & 0o40000) !== 0;
+      }),
+    );
+  }
+
+  async listRecursive(
+    target: SshTarget,
+    inputPath: string,
+  ): Promise<Array<{ path: string }>> {
+    const remotePath = await this.resolveRemotePath(target, inputPath);
+    const results: Array<{ path: string }> = [];
+
+    await this.withConnection(target, async (client) =>
+      withSftp(client, async (sftp) => {
+        const walk = async (dir: string) => {
+          const items = await sftpReaddir(sftp, dir);
+          for (const item of items) {
+            if (item.filename === "." || item.filename === "..") continue;
+            const fullPath = `${dir}/${item.filename}`;
+            const isDir = (item.attrs.mode & 0o40000) !== 0;
+            if (isDir) {
+              await walk(fullPath);
+            } else {
+              results.push({ path: fullPath });
+            }
+          }
+        };
+        await walk(remotePath);
+      }),
+    );
+
+    return results;
+  }
+
   async rename(
     target: SshTarget,
     fromPath: string,
