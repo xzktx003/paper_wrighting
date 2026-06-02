@@ -3,7 +3,8 @@ import { mkdir, stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 
-import { ZipArchive } from "archiver";
+import * as archiverModule from "archiver";
+import type archiver from "archiver";
 import multipart from "@fastify/multipart";
 import type { FastifyInstance } from "fastify";
 
@@ -23,6 +24,14 @@ interface FilesystemRouteOptions {
   localFsService: LocalFsService;
   sftpService: SftpService;
 }
+
+type ZipArchiveConstructor = new (
+  options?: archiver.ArchiverOptions,
+) => archiver.Archiver;
+
+const { ZipArchive } = archiverModule as unknown as {
+  ZipArchive: ZipArchiveConstructor;
+};
 
 function parseMaybeSshTarget(value: string | undefined): SshTarget | undefined {
   if (!value) {
@@ -227,17 +236,26 @@ export async function registerFilesystemRoutes(
             );
             reply.header("Content-Type", "application/zip");
             const archive = new ZipArchive({ zlib: { level: 5 } });
-            const entries = await sftpService.listRecursive(sshTarget, targetPath);
+            const entries = await sftpService.listRecursive(
+              sshTarget,
+              targetPath,
+            );
             for (const entry of entries) {
               const relativePath = path.relative(targetPath, entry.path);
-              const stream = await sftpService.createReadStream(sshTarget, entry.path);
+              const stream = await sftpService.createReadStream(
+                sshTarget,
+                entry.path,
+              );
               archive.append(stream, { name: relativePath });
             }
             archive.finalize();
             return reply.send(archive);
           }
 
-          const stream = await sftpService.createReadStream(sshTarget, targetPath);
+          const stream = await sftpService.createReadStream(
+            sshTarget,
+            targetPath,
+          );
           reply.header(
             "Content-Disposition",
             `attachment; filename="${basename}"`,
@@ -319,7 +337,9 @@ export async function registerFilesystemRoutes(
           if (sshTarget) {
             await sftpService.ensureDirectory(sshTarget, parentDir);
           } else {
-            await mkdir(localFsService.resolvePath(parentDir), { recursive: true });
+            await mkdir(localFsService.resolvePath(parentDir), {
+              recursive: true,
+            });
           }
         }
 

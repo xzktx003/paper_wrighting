@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { delimiter, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import test from "node:test";
 
@@ -160,6 +161,14 @@ test("launch prefers the resolved copilot binary on PATH for shell sessions", as
 });
 
 test("launch does not surface npm config warnings before local Copilot starts", async () => {
+  const originalPath = process.env.PATH;
+  const originalPlaywrightTest = process.env.PLAYWRIGHT_TEST;
+  const playwrightBin = resolve(process.cwd(), "..", "..", ".playwright-bin");
+  process.env.PATH = [playwrightBin, originalPath]
+    .filter(Boolean)
+    .join(delimiter);
+  process.env.PLAYWRIGHT_TEST = "1";
+
   const registry = new AgentSessionRegistry();
   const runtimeManager = new PtyRuntimeManager(registry);
 
@@ -174,15 +183,17 @@ test("launch does not surface npm config warnings before local Copilot starts", 
     const outputText = await waitForOutputMatch(
       registry,
       session.id,
-      /GitHub Copilot|Unknown env config/,
+      /GitHub Copilot|fake-copilot-start|Unknown env config/,
       10000,
     );
 
     assert.doesNotMatch(outputText, /Unknown env config/);
-    assert.match(outputText, /GitHub Copilot/);
+    assert.match(outputText, /GitHub Copilot|fake-copilot-start/);
   } finally {
     runtimeManager.kill(session.id);
     registry.remove(session.id);
+    process.env.PATH = originalPath;
+    process.env.PLAYWRIGHT_TEST = originalPlaywrightTest;
   }
 });
 

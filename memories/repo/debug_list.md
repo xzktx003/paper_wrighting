@@ -17,11 +17,14 @@
 - 远端 `10.30.0.24` 上从看板启动 Copilot 会话时，看起来像“tmux 创建失败”，实际是主机把 `copilot` 解析到了缺少 `index.js` 的 `~/.nvm/.../bin/copilot` node shim：修复为远端 Copilot 启动命令优先尝试健康的 `copilot`，命中损坏 shim 时回退到 `node ../lib/node_modules/@github/copilot/npm-loader.js` 直接拉起 CLI。
 - 远端 `10.30.0.24` 上直接创建 shell tmux 时，默认名 `10.30.0.24_shell_tmux` 会被旧版 tmux 3.0a 直接拒绝并报 `bad session name`：根因是 tmux 模式默认名仍保留 `.`；修复为 tmux 模式下把 host label 里的 `.` 也归一化成 `_`，生成 `10_30_0_24_shell_tmux` 这类 tmux-safe 名称。
 - 文件浏览器创建弹窗在输入清空时意外关闭：把草稿字符串误当作弹窗开关；修复为显式维护弹窗状态。
+- 服务端构建在文件下载路由处报 `archiver` 没有导出 `ZipArchive`，改默认导入后 Node ESM 又报 no default export：根因是 `archiver` v8 运行时导出 `ZipArchive`，但当前类型声明仍按旧 `export = archiver` 函数形态暴露；修复为 namespace runtime import，并在类型层显式声明 `ZipArchive` 构造器。
 - StrictMode 下 WebSocket cleanup 造成假断开提示：CONNECTING 阶段过早 close；修复为等到 `onopen` 后再关闭。
 - Playwright 只复用前端导致坏后端环境被误复用：修复为前后端分别做健康检查。
 - Playwright Chromium 缺系统库时浏览器测试无法启动：沉淀了本地 `.deb` + `LD_LIBRARY_PATH` 的 rootless workaround。
 - idle cleanup timer 未 `.unref()` 导致 `pnpm -r test` 不退出：修复为统一 `.unref()` 并补 `hasRef() === false` 回归。
 - `awaiting_input` 单测在高负载下偶发超时：修复策略是收紧测试 override，而不是改全局默认值。
+- `awaiting-input timer retries when the first idle check fires early` 测试在 timer `.unref()` 纪律下失败：测试 mock 的 `setTimeout` 返回数字句柄，没有实现生产代码需要的 `unref()`；修复为假 timeout 提供并断言 `unref()`，继续覆盖早触发重试逻辑。
+- `launch does not surface npm config warnings before local Copilot starts` 单测稳定超时：测试依赖当前机器真实 `copilot` 启动文案，没有显式使用仓库 `.playwright-bin/copilot` stub；修复为测试内启用 `PLAYWRIGHT_TEST=1` 并把 stub 目录加入 `PATH`，只断言启动输出不含 `Unknown env config`。
 - kanban 里的内嵌 VS Code Web 在自签 HTTPS 下会出现 PNG 预览 / webview 打不开：根因是 code-server 的 webview / 图片预览链路依赖 service worker，而浏览器不会为不受信任的自签证书注册这些 service worker。修复为让 `restart-dev.sh` 在可用时优先用 `mkcert` 生成受信任本地证书，并在回退到 OpenSSL 自签证书时输出明确告警。
 - shell 逻辑默认依赖 zsh 导致兼容性问题：修复为优先 `SHELL`，再回退到 `bash -> zsh -> sh`。
 - tmux 路径只支持单一路径导致不同机器行为不稳：修复为支持 `TMUX_BINARY`、Homebrew 常见路径和 `PATH` 自动探测。

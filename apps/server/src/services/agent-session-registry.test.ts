@@ -84,24 +84,39 @@ test("awaiting-input timer retries when the first idle check fires early", () =>
 
   let now = 1_000;
   let nextHandle = 1;
-  const scheduled = new Map<number, { callback: () => void; delay: number }>();
+  type FakeTimeout = NodeJS.Timeout & {
+    id: number;
+    unrefCalled: boolean;
+  };
+  const scheduled = new Map<
+    FakeTimeout,
+    { callback: () => void; delay: number }
+  >();
 
   Date.now = () => now;
   globalThis.setTimeout = ((callback: () => void, delay?: number) => {
-    const handle = nextHandle++;
+    const handle = {
+      id: nextHandle++,
+      unrefCalled: false,
+      unref(this: FakeTimeout) {
+        this.unrefCalled = true;
+        return this;
+      },
+    } as unknown as FakeTimeout;
     scheduled.set(handle, {
       callback,
       delay: Number(delay ?? 0),
     });
-    return handle as unknown as NodeJS.Timeout;
-  }) as typeof setTimeout;
+    return handle;
+  }) as unknown as typeof setTimeout;
   globalThis.clearTimeout = ((handle: NodeJS.Timeout) => {
-    scheduled.delete(handle as unknown as number);
+    scheduled.delete(handle as FakeTimeout);
   }) as typeof clearTimeout;
 
-  const fireTimeout = (handle: number) => {
+  const fireTimeout = (handle: FakeTimeout) => {
     const timeout = scheduled.get(handle);
-    assert.ok(timeout, `expected timeout ${handle} to be scheduled`);
+    assert.ok(timeout, `expected timeout ${handle.id} to be scheduled`);
+    assert.equal(handle.unrefCalled, true);
     scheduled.delete(handle);
     timeout.callback();
   };
