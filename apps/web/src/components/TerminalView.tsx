@@ -234,10 +234,6 @@ export function TerminalView({
         return;
       }
 
-      if (!isProtectedExternalFocusTarget(target)) {
-        return;
-      }
-
       lastExternalPointerIntentAt = Date.now();
       rememberExternalUserIntent();
     };

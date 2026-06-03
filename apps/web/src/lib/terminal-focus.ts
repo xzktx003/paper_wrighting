@@ -29,21 +29,9 @@ interface ExternalFocusPromotionOptions {
 export function hasIntentionalExternalFocus(
   options: IntentionalExternalFocusOptions,
 ): boolean {
-  const externalOwnsFocus =
-    options.lastExternalUserIntentAt > 0 &&
-    options.lastExternalUserIntentAt >= options.lastTerminalIntentAt;
-
-  if (options.activeElementProtected) {
-    return externalOwnsFocus;
-  }
-
-  if (!options.activeElementIsDocumentBody || !externalOwnsFocus) {
-    return false;
-  }
-
   return (
-    options.now - options.lastExternalUserIntentAt <
-    options.externalFocusGraceMs
+    options.lastExternalUserIntentAt > 0 &&
+    options.lastExternalUserIntentAt >= options.lastTerminalIntentAt
   );
 }
 
