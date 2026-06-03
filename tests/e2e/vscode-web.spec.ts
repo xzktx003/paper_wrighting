@@ -239,6 +239,88 @@ test("vscode split view keeps editor focus after clicking back from the terminal
   }
 });
 
+test("vscode split view keeps editor focus after terminal editor round trip", async ({
+  page,
+  request,
+}) => {
+  const sessionName = `vscode-web-roundtrip-${Date.now()}`;
+  const firstEditorMarker = `editor-first-${Date.now()}`;
+  const terminalMarker = `terminal-middle-${Date.now()}`;
+  const secondEditorMarker = `editor-second-${Date.now()}`;
+  let sessionId: string | undefined;
+
+  await page.route("**/api/agent-sessions/*/vscode-web", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "code-server",
+        url: `data:text/html,${encodeURIComponent(
+          "<html><body><textarea id=editor autofocus style='width:100%;height:180px'></textarea></body></html>",
+        )}`,
+        reused: false,
+        workingDirectory: "/tmp/vscode-roundtrip",
+      }),
+    });
+  });
+
+  try {
+    sessionId = await launchMockSession(request, sessionName, "/tmp/project-a");
+
+    await focusSession(page, sessionName);
+    await page.getByTestId("vscode-toggle").click();
+
+    const editorTextarea = page
+      .frameLocator(`iframe[title="VS Code - ${sessionName}"]`)
+      .locator("#editor");
+    await editorTextarea.click();
+    await page.keyboard.type(firstEditorMarker);
+    await expect(editorTextarea).toHaveValue(firstEditorMarker);
+
+    const terminalScreen = page.locator(
+      ".focus-main .terminal-view .xterm-screen",
+    );
+    await expect(terminalScreen).toBeVisible({ timeout: 15_000 });
+    await terminalScreen.click({ position: { x: 90, y: 50 } });
+
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document.activeElement?.classList.contains(
+              "xterm-helper-textarea",
+            ) ?? false,
+        ),
+      )
+      .toBeTruthy();
+
+    await page.keyboard.type(terminalMarker);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".focus-main .xterm-rows")).toContainText(
+      `stdin:${terminalMarker}`,
+      { timeout: 10_000 },
+    );
+
+    await editorTextarea.click();
+    await page.keyboard.type(secondEditorMarker);
+    await expect
+      .poll(async () => editorTextarea.inputValue())
+      .toContain(secondEditorMarker);
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          (title) =>
+            document.activeElement instanceof HTMLIFrameElement &&
+            document.activeElement.title === title,
+          `VS Code - ${sessionName}`,
+        ),
+      )
+      .toBeTruthy();
+  } finally {
+    await deleteSessionIfPresent(request, sessionId);
+  }
+});
+
 test("vscode split view does not steal focus back after the user clicks the terminal", async ({
   page,
   request,

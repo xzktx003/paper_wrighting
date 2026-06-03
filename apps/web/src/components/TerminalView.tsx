@@ -86,6 +86,7 @@ export function TerminalView({
     let handlePointerDownCapture: (() => void) | null = null;
     let handleTerminalFocusIn: ((event: FocusEvent) => void) | null = null;
     let handleTerminalFocusOut: ((event: FocusEvent) => void) | null = null;
+    let handleWindowBlur: (() => void) | null = null;
     let handleWindowFocus: (() => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
@@ -287,6 +288,7 @@ export function TerminalView({
           lastExternalUserIntentAt,
           lastTerminalIntentAt,
           now,
+          targetIsFrame: target instanceof HTMLIFrameElement,
           targetIsHovered: targetMatchesHover(target),
         })
       ) {
@@ -294,6 +296,10 @@ export function TerminalView({
       }
 
       rememberExternalUserIntent();
+    };
+
+    const rememberActiveExternalFocusIfUserDriven = (): void => {
+      rememberExternalFocusIfUserDriven(document.activeElement);
     };
 
     const isIntentionalExternalFocus = (): boolean => {
@@ -323,8 +329,11 @@ export function TerminalView({
       // When called passively (not from a direct user click on the terminal),
       // don't steal focus from intentional text-entry surfaces, iframes, or
       // open dialogs.
-      if (!unlockInput && isIntentionalExternalFocus()) {
-        return;
+      if (!unlockInput) {
+        rememberActiveExternalFocusIfUserDriven();
+        if (isIntentionalExternalFocus()) {
+          return;
+        }
       }
 
       if (unlockInput) {
@@ -688,6 +697,18 @@ export function TerminalView({
         scheduleTerminalFocusReport();
       };
 
+      handleWindowBlur = () => {
+        rememberActiveExternalFocusIfUserDriven();
+
+        timeoutIds.push(
+          window.setTimeout(() => {
+            if (!disposed) {
+              rememberActiveExternalFocusIfUserDriven();
+            }
+          }, 0),
+        );
+      };
+
       handleDocumentPointerDownCapture = (event) => {
         rememberExternalPointerIntent(event.target);
       };
@@ -711,6 +732,7 @@ export function TerminalView({
       container.addEventListener("mousedown", handleMouseDownCapture, true);
       container.addEventListener("focusin", handleTerminalFocusIn, true);
       container.addEventListener("focusout", handleTerminalFocusOut, true);
+      window.addEventListener("blur", handleWindowBlur);
       window.addEventListener("focus", handleWindowFocus);
       document.addEventListener(
         "pointerdown",
@@ -801,6 +823,9 @@ export function TerminalView({
       }
       if (handleWindowFocus) {
         window.removeEventListener("focus", handleWindowFocus);
+      }
+      if (handleWindowBlur) {
+        window.removeEventListener("blur", handleWindowBlur);
       }
       window.clearTimeout(connectTimeoutId);
       for (const timeoutId of timeoutIds) {

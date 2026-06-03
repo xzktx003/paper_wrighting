@@ -145,6 +145,7 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
         lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 200,
         now: 500,
+        targetIsFrame: false,
         targetIsHovered: false,
       }),
       false,
@@ -160,6 +161,7 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
         lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 200,
         now: 500,
+        targetIsFrame: false,
         targetIsHovered: false,
       }),
       true,
@@ -175,6 +177,7 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
         lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 200,
         now: 500,
+        targetIsFrame: false,
         targetIsHovered: false,
       }),
       false,
@@ -190,6 +193,7 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
         lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 200,
         now: 500,
+        targetIsFrame: false,
         targetIsHovered: true,
       }),
       true,
@@ -205,6 +209,39 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
         lastExternalUserIntentAt: 100,
         lastTerminalIntentAt: 200,
         now: 500,
+        targetIsFrame: false,
+        targetIsHovered: false,
+      }),
+      false,
+    );
+  });
+
+  it("promotes hovered iframe focus even without parent document pointerdown", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: false,
+        lastExternalPointerIntentAt: 0,
+        lastExternalUserIntentAt: 100,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsFrame: true,
+        targetIsHovered: true,
+      }),
+      true,
+    );
+  });
+
+  it("does not promote passive iframe focus when the pointer is not over it", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: false,
+        lastExternalPointerIntentAt: 0,
+        lastExternalUserIntentAt: 100,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsFrame: true,
         targetIsHovered: false,
       }),
       false,

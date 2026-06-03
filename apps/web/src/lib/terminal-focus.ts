@@ -23,6 +23,7 @@ interface ExternalFocusPromotionOptions {
   lastExternalUserIntentAt: number;
   lastTerminalIntentAt: number;
   now: number;
+  targetIsFrame: boolean;
   targetIsHovered: boolean;
 }
 
@@ -50,6 +51,10 @@ export function shouldPromoteExternalFocusToUserIntent(
   }
 
   if (options.hasFreshUserActivation && options.targetIsHovered) {
+    return true;
+  }
+
+  if (options.targetIsFrame && options.targetIsHovered) {
     return true;
   }
 
