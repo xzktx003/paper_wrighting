@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { shouldRepairPassiveTerminalFocus } from "./terminal-focus.js";
+import {
+  hasIntentionalExternalFocus,
+  shouldPromoteExternalFocusToUserIntent,
+  shouldRepairPassiveTerminalFocus,
+} from "./terminal-focus.js";
 
 describe("shouldRepairPassiveTerminalFocus", () => {
   it("repairs focus when the terminal was the user's most recent focus target", () => {
@@ -11,7 +15,7 @@ describe("shouldRepairPassiveTerminalFocus", () => {
         helperAvailable: true,
         helperFocused: false,
         intentionalExternalFocus: false,
-        lastProtectedExternalFocusAt: 10,
+        lastExternalUserIntentAt: 10,
         lastTerminalIntentAt: 20,
       }),
       true,
@@ -25,7 +29,7 @@ describe("shouldRepairPassiveTerminalFocus", () => {
         helperAvailable: true,
         helperFocused: false,
         intentionalExternalFocus: true,
-        lastProtectedExternalFocusAt: 20,
+        lastExternalUserIntentAt: 20,
         lastTerminalIntentAt: 30,
       }),
       false,
@@ -39,7 +43,7 @@ describe("shouldRepairPassiveTerminalFocus", () => {
         helperAvailable: true,
         helperFocused: false,
         intentionalExternalFocus: false,
-        lastProtectedExternalFocusAt: 30,
+        lastExternalUserIntentAt: 30,
         lastTerminalIntentAt: 20,
       }),
       false,
@@ -53,7 +57,7 @@ describe("shouldRepairPassiveTerminalFocus", () => {
         helperAvailable: true,
         helperFocused: true,
         intentionalExternalFocus: false,
-        lastProtectedExternalFocusAt: 0,
+        lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 20,
       }),
       false,
@@ -67,10 +71,143 @@ describe("shouldRepairPassiveTerminalFocus", () => {
         helperAvailable: true,
         helperFocused: false,
         intentionalExternalFocus: false,
-        lastProtectedExternalFocusAt: 0,
+        lastExternalUserIntentAt: 0,
         lastTerminalIntentAt: 0,
       }),
       true,
+    );
+  });
+});
+
+describe("hasIntentionalExternalFocus", () => {
+  it("does not let passive protected focus override a newer terminal click", () => {
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: false,
+        activeElementProtected: true,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 100,
+        lastTerminalIntentAt: 200,
+        now: 300,
+      }),
+      false,
+    );
+  });
+
+  it("keeps a real external editor click protected after the terminal was focused", () => {
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: false,
+        activeElementProtected: true,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 300,
+        lastTerminalIntentAt: 200,
+        now: 350,
+      }),
+      true,
+    );
+  });
+
+  it("protects the body handoff grace only for the current external owner", () => {
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: true,
+        activeElementProtected: false,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 300,
+        lastTerminalIntentAt: 200,
+        now: 500,
+      }),
+      true,
+    );
+
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: true,
+        activeElementProtected: false,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 300,
+        lastTerminalIntentAt: 400,
+        now: 500,
+      }),
+      false,
+    );
+  });
+});
+
+describe("shouldPromoteExternalFocusToUserIntent", () => {
+  it("does not promote a passive external focus after the user clicks the terminal", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: false,
+        lastExternalPointerIntentAt: 0,
+        lastExternalUserIntentAt: 0,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsHovered: false,
+      }),
+      false,
+    );
+  });
+
+  it("promotes external focus when it follows an external pointer intent", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: false,
+        lastExternalPointerIntentAt: 450,
+        lastExternalUserIntentAt: 0,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsHovered: false,
+      }),
+      true,
+    );
+  });
+
+  it("does not promote focus from terminal click activation alone", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: true,
+        lastExternalPointerIntentAt: 0,
+        lastExternalUserIntentAt: 0,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsHovered: false,
+      }),
+      false,
+    );
+  });
+
+  it("promotes iframe focus when user activation lands on the iframe", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: true,
+        lastExternalPointerIntentAt: 0,
+        lastExternalUserIntentAt: 0,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsHovered: true,
+      }),
+      true,
+    );
+  });
+
+  it("does not reuse an older external pointer after the user clicks the terminal", () => {
+    assert.equal(
+      shouldPromoteExternalFocusToUserIntent({
+        externalFocusGraceMs: 750,
+        hasFreshUserActivation: false,
+        lastExternalPointerIntentAt: 150,
+        lastExternalUserIntentAt: 100,
+        lastTerminalIntentAt: 200,
+        now: 500,
+        targetIsHovered: false,
+      }),
+      false,
     );
   });
 });

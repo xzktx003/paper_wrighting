@@ -5,7 +5,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 import { buildTerminalWebSocketUrl } from "../lib/api";
-import { shouldRepairPassiveTerminalFocus } from "../lib/terminal-focus";
+import {
+  hasIntentionalExternalFocus,
+  shouldPromoteExternalFocusToUserIntent,
+  shouldRepairPassiveTerminalFocus,
+} from "../lib/terminal-focus";
 import { stripTerminalResponsePayload } from "../lib/terminal-input";
 
 interface TerminalViewProps {
@@ -88,12 +92,12 @@ export function TerminalView({
       | null = null;
     let handleDocumentFocusInCapture: ((event: FocusEvent) => void) | null =
       null;
-    let handleDocumentKeyDownCapture:
-      | ((event: KeyboardEvent) => void)
-      | null = null;
+    let handleDocumentKeyDownCapture: ((event: KeyboardEvent) => void) | null =
+      null;
     let disposed = false;
     let closeAfterOpen = false;
-    let lastProtectedExternalFocusAt = 0;
+    let lastExternalPointerIntentAt = 0;
+    let lastExternalUserIntentAt = 0;
     let lastTerminalIntentAt = 0;
 
     const ensureInputOwner = () => {
@@ -194,6 +198,10 @@ export function TerminalView({
         return false;
       }
 
+      if (active.closest('[inert], [aria-hidden="true"]')) {
+        return false;
+      }
+
       return (
         active instanceof HTMLIFrameElement ||
         active instanceof HTMLInputElement ||
@@ -205,7 +213,17 @@ export function TerminalView({
       );
     };
 
-    const rememberProtectedExternalFocus = (
+    const nextIntentTimestamp = (current: number, competing: number) =>
+      Math.max(Date.now(), current + 1, competing + 1);
+
+    const rememberExternalUserIntent = (): void => {
+      lastExternalUserIntentAt = nextIntentTimestamp(
+        lastExternalUserIntentAt,
+        lastTerminalIntentAt,
+      );
+    };
+
+    const rememberExternalPointerIntent = (
       target: EventTarget | null,
     ): void => {
       if (!(target instanceof HTMLElement)) {
@@ -220,34 +238,85 @@ export function TerminalView({
         return;
       }
 
-      lastProtectedExternalFocusAt = Date.now();
+      lastExternalPointerIntentAt = Date.now();
+      rememberExternalUserIntent();
     };
 
     const rememberTerminalIntent = (): void => {
-      lastTerminalIntentAt = Date.now();
+      lastTerminalIntentAt = nextIntentTimestamp(
+        lastTerminalIntentAt,
+        lastExternalUserIntentAt,
+      );
+    };
+
+    const targetMatchesHover = (target: HTMLElement): boolean => {
+      try {
+        return target.matches(":hover");
+      } catch {
+        return false;
+      }
+    };
+
+    const hasFreshUserActivation = (): boolean => {
+      const activation = (
+        navigator as Navigator & {
+          userActivation?: { isActive?: boolean };
+        }
+      ).userActivation;
+
+      return activation?.isActive === true;
+    };
+
+    const rememberExternalFocusIfUserDriven = (
+      target: EventTarget | null,
+    ): void => {
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      if (target.closest(".terminal-view")) {
+        return;
+      }
+
+      if (!isProtectedExternalFocusTarget(target)) {
+        return;
+      }
+
+      const now = Date.now();
+      if (
+        !shouldPromoteExternalFocusToUserIntent({
+          externalFocusGraceMs: EXTERNAL_FOCUS_GRACE_MS,
+          hasFreshUserActivation: hasFreshUserActivation(),
+          lastExternalPointerIntentAt,
+          lastExternalUserIntentAt,
+          lastTerminalIntentAt,
+          now,
+          targetIsHovered: targetMatchesHover(target),
+        })
+      ) {
+        return;
+      }
+
+      rememberExternalUserIntent();
     };
 
     const isIntentionalExternalFocus = (): boolean => {
       const active = document.activeElement as HTMLElement | null;
-      if (isProtectedExternalFocusTarget(active)) {
-        return true;
-      }
 
-      if (!active || active === document.body) {
-        return (
-          Date.now() - lastProtectedExternalFocusAt < EXTERNAL_FOCUS_GRACE_MS
-        );
-      }
-
-      // NOTE: HTMLButtonElement is intentionally NOT in this whitelist.
+      // NOTE: HTMLButtonElement is intentionally NOT a protected target.
       // Kanban buttons (sidebar collapse, focus-back-to-grid, action toolbar
-      // entries, etc.) are transient triggers — they do not accept text
-      // input, so the terminal must be allowed to reclaim focus right away.
-      // If we leave a button focused, syncTerminalFocusReport reports
-      // CSI O (focus-out) to the embedded TUI and Copilot CLI silently
-      // drops the next keystrokes ("input dies after I click any button"
-      // regression). See tests/e2e/copilot-focus.spec.ts.
-      return false;
+      // entries, etc.) are transient triggers; they do not accept text input.
+      // Leaving a button focused makes syncTerminalFocusReport emit CSI O and
+      // Copilot CLI can drop the next keystrokes. See
+      // tests/e2e/copilot-focus.spec.ts.
+      return hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: !active || active === document.body,
+        activeElementProtected: isProtectedExternalFocusTarget(active),
+        externalFocusGraceMs: EXTERNAL_FOCUS_GRACE_MS,
+        lastExternalUserIntentAt,
+        lastTerminalIntentAt,
+        now: Date.now(),
+      });
     };
 
     const focusInteractiveTerminal = (unlockInput = false) => {
@@ -256,15 +325,15 @@ export function TerminalView({
       }
 
       // When called passively (not from a direct user click on the terminal),
-      // don't steal focus from intentional interactive elements such as buttons,
-      // inputs, or open dialogs.
+      // don't steal focus from intentional text-entry surfaces, iframes, or
+      // open dialogs.
       if (!unlockInput && isIntentionalExternalFocus()) {
         return;
       }
 
       if (unlockInput) {
         term.options.disableStdin = false;
-        lastProtectedExternalFocusAt = 0;
+        rememberTerminalIntent();
       }
       ensureInputOwner();
       term.focus();
@@ -545,7 +614,7 @@ export function TerminalView({
             helperAvailable: helperTextarea !== null,
             helperFocused: document.activeElement === helperTextarea,
             intentionalExternalFocus: isIntentionalExternalFocus(),
-            lastProtectedExternalFocusAt,
+            lastExternalUserIntentAt,
             lastTerminalIntentAt,
           })
         ) {
@@ -624,17 +693,21 @@ export function TerminalView({
       };
 
       handleDocumentPointerDownCapture = (event) => {
-        rememberProtectedExternalFocus(event.target);
+        rememberExternalPointerIntent(event.target);
       };
 
       handleDocumentFocusInCapture = (event) => {
-        rememberProtectedExternalFocus(event.target);
+        rememberExternalFocusIfUserDriven(event.target);
       };
 
       handleDocumentKeyDownCapture = (event) => {
         const target = event.target as HTMLElement | null;
-        if (target && isProtectedExternalFocusTarget(target)) {
-          lastProtectedExternalFocusAt = Date.now();
+        if (
+          target &&
+          !target.closest(".terminal-view") &&
+          isProtectedExternalFocusTarget(target)
+        ) {
+          rememberExternalUserIntent();
         }
       };
 
@@ -649,11 +722,7 @@ export function TerminalView({
         true,
       );
       document.addEventListener("focusin", handleDocumentFocusInCapture, true);
-      document.addEventListener(
-        "keydown",
-        handleDocumentKeyDownCapture,
-        true,
-      );
+      document.addEventListener("keydown", handleDocumentKeyDownCapture, true);
       intervalIds.push(
         window.setInterval(
           repairPassiveFocusDrift,

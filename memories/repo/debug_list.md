@@ -5,6 +5,7 @@
 - 从终端切到文件浏览器编辑器或 VS Code 后，输入过程中焦点仍会被终端抢走：终端只看当前 `activeElement`，交接瞬间看到 `body` 就误抢；同时 VS Code 抽屉把 `reused` 变化当成新实例；修复为增加外部输入焦点保护窗口，并忽略 `reused` 单独变化。
 - VS Code 分栏开着时，用户已经点回终端，过一会输入仍会“死掉”：`TerminalView` 只在离散 blur/focus 事件上补救，没有覆盖 iframe 生命周期造成的被动失焦；修复为记录最近一次终端/外部焦点意图，并仅在“最近一次是终端”时启用轻量焦点修复守护。
 - 终端已经可输入时，空闲一阵后仍可能再次失焦：被动焦点修复把“从未有外部输入控件接管过焦点”的场景也判成了不该归还终端，导致活动终端的默认输入 owner 身份没有被守住；修复为在没有受保护外部焦点记录时，默认继续修复活动终端 helper textarea 的焦点。
+- VS Code / 文件浏览器分栏打开时，用户点回终端后仍可能被后台 iframe 或编辑器程序化 `focus()` 抢走：`TerminalView` 把当前 `activeElement` 是 iframe/input 直接视为外部用户意图，隐藏保活面板也还可聚焦；修复为用最近一次用户意图决定焦点所有权，只有外部指针/键盘输入/带用户激活的 iframe focus 能接管，非 active 侧栏面板加 `inert` 并隐藏时 blur 内部焦点。
 - 远端文件浏览在真实 SSH 主机上统一报 `All configured authentication methods failed`：终端链路依赖系统 `ssh`，能吃到默认私钥；SFTP 链路直接用 `ssh2`，之前只在 `identityFile` 显式存在时才带私钥，导致未写 `IdentityFile` 的主机全部认证失败。修复为 SFTP 认证支持显式 key、标准默认私钥回退，并兼容 `SSH_AUTH_SOCK`。
 - 远端 SSH 会话在线时，文件浏览器首屏偶发空白并报 `write ECONNRESET` / `No response from server`：`SftpService` 在连接还没 `ready` 时就把连接放进池里，UI 初始化打出的并发 `/api/fs/list` 会抢到半初始化连接。修复为复用连接前必须等待 `ready`，并在连接失败时及时把坏连接移出池。
 - 远端 SSH 会话已经退出时，kanban 终端只剩 `[连接已断开]`：PTY runtime 退出就删除 handle，terminal websocket 后续重连拿不到 scrollback，只能 4004 关闭，导致真实错误（例如 `fatal: Gerrit Code Review: exec: not found`）被泛化提示覆盖。修复为 runtime 已退出但 session 仍存在时，从 registry 的历史输出回放 terminal 内容。

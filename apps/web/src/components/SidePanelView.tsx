@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 interface SidePanelViewProps {
   active: boolean;
@@ -11,6 +11,7 @@ export function SidePanelView({
   children,
   preserveMountedWhenInactive = false,
 }: SidePanelViewProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const className = [
     "side-panel-view",
     preserveMountedWhenInactive ? "side-panel-view--preserved" : "",
@@ -19,8 +20,33 @@ export function SidePanelView({
     .filter(Boolean)
     .join(" ");
 
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node) {
+      return;
+    }
+
+    if (active) {
+      node.removeAttribute("inert");
+      return;
+    }
+
+    node.setAttribute("inert", "");
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && node.contains(activeElement)) {
+      activeElement.blur();
+    }
+  }, [active]);
+
+  const hiddenFocusProps = active ? {} : { inert: true };
+
   return (
-    <div aria-hidden={!active} className={className}>
+    <div
+      ref={rootRef}
+      aria-hidden={!active}
+      className={className}
+      {...hiddenFocusProps}
+    >
       {children}
     </div>
   );

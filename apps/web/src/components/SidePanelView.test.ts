@@ -17,5 +17,6 @@ describe("SidePanelView", () => {
 
     assert.match(markup, /class="side-panel-view side-panel-view--preserved"/);
     assert.match(markup, /aria-hidden="true"/);
+    assert.match(markup, /inert=""/);
   });
 });

@@ -3,8 +3,74 @@ interface PassiveTerminalFocusRepairOptions {
   helperAvailable: boolean;
   helperFocused: boolean;
   intentionalExternalFocus: boolean;
-  lastProtectedExternalFocusAt: number;
+  lastExternalUserIntentAt: number;
   lastTerminalIntentAt: number;
+}
+
+interface IntentionalExternalFocusOptions {
+  activeElementIsDocumentBody: boolean;
+  activeElementProtected: boolean;
+  externalFocusGraceMs: number;
+  lastExternalUserIntentAt: number;
+  lastTerminalIntentAt: number;
+  now: number;
+}
+
+interface ExternalFocusPromotionOptions {
+  externalFocusGraceMs: number;
+  hasFreshUserActivation: boolean;
+  lastExternalPointerIntentAt: number;
+  lastExternalUserIntentAt: number;
+  lastTerminalIntentAt: number;
+  now: number;
+  targetIsHovered: boolean;
+}
+
+export function hasIntentionalExternalFocus(
+  options: IntentionalExternalFocusOptions,
+): boolean {
+  const externalOwnsFocus =
+    options.lastExternalUserIntentAt > 0 &&
+    options.lastExternalUserIntentAt >= options.lastTerminalIntentAt;
+
+  if (options.activeElementProtected) {
+    return externalOwnsFocus;
+  }
+
+  if (!options.activeElementIsDocumentBody || !externalOwnsFocus) {
+    return false;
+  }
+
+  return (
+    options.now - options.lastExternalUserIntentAt <
+    options.externalFocusGraceMs
+  );
+}
+
+export function shouldPromoteExternalFocusToUserIntent(
+  options: ExternalFocusPromotionOptions,
+): boolean {
+  if (options.lastTerminalIntentAt === 0) {
+    return true;
+  }
+
+  if (
+    options.lastExternalUserIntentAt > 0 &&
+    options.lastExternalUserIntentAt >= options.lastTerminalIntentAt
+  ) {
+    return true;
+  }
+
+  if (options.hasFreshUserActivation && options.targetIsHovered) {
+    return true;
+  }
+
+  return (
+    options.lastExternalPointerIntentAt > 0 &&
+    options.lastExternalPointerIntentAt > options.lastTerminalIntentAt &&
+    options.now - options.lastExternalPointerIntentAt <
+      options.externalFocusGraceMs
+  );
 }
 
 export function shouldRepairPassiveTerminalFocus(
@@ -22,9 +88,9 @@ export function shouldRepairPassiveTerminalFocus(
     return false;
   }
 
-  if (options.lastProtectedExternalFocusAt === 0) {
+  if (options.lastExternalUserIntentAt === 0) {
     return true;
   }
 
-  return options.lastTerminalIntentAt > options.lastProtectedExternalFocusAt;
+  return options.lastTerminalIntentAt > options.lastExternalUserIntentAt;
 }
