@@ -11,11 +11,11 @@ cd "$ROOT_DIR"
 BRANCH="${1:-$(git symbolic-ref --short HEAD 2>/dev/null || echo 'main')}"
 
 echo "=== 推送 $BRANCH 到 GitLab ==="
-git push gitlab "$BRANCH"
+git push gitlab "HEAD:refs/heads/$BRANCH"
 
 echo ""
 echo "=== 推送 $BRANCH 到 GitHub ==="
-git push origin "$BRANCH"
+git push origin "HEAD:refs/heads/$BRANCH"
 
 echo ""
 echo "✓ 已推送到 GitLab 和 GitHub（分支: $BRANCH）"

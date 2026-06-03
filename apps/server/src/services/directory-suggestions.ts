@@ -18,7 +18,7 @@ import { quoteForPosixShell } from "./runtime-compat.js";
 import { buildSshArgs } from "./ssh-command.js";
 
 const DIRECTORY_SUGGESTIONS_READY = "__DIRECTORY_SUGGESTIONS_READY__";
-const MAX_DIRECTORY_SUGGESTIONS = 20;
+const MAX_DIRECTORY_SUGGESTIONS = 200;
 
 function execLocal(command: string, options?: ExecSyncOptions): string {
   try {
