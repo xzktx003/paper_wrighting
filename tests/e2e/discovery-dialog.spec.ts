@@ -178,6 +178,63 @@ test.describe('Discovery Dialog', () => {
     await expect(page.locator('.discovery-error')).toHaveCount(0);
   });
 
+  test('tmux discovery does not rescan when session snapshots refresh', async ({
+    page,
+    request,
+  }) => {
+    let scanCount = 0;
+    let sessionId: string | undefined;
+
+    await page.route('**/api/agent-discovery/tmux/scan', async (route) => {
+      scanCount += 1;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [],
+          unavailable: false,
+        }),
+      });
+    });
+
+    try {
+      const displayName = `snapshot-refresh-${Date.now()}`;
+
+      await page.goto('/');
+
+      await page.locator('text=扫描 tmux').click();
+      await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
+
+      await expect(page.locator('.discovery-dialog')).toBeVisible();
+      await expect.poll(() => scanCount, { timeout: 5000 }).toBe(1);
+
+      const response = await request.post('/api/agent-sessions/register', {
+        data: {
+          workspaceId: 'default',
+          sourceType: 'local',
+          agentKind: 'shell',
+          displayName,
+          connectionState: 'online',
+          interactionState: 'running',
+        },
+      });
+      const created = (await response.json()) as { id: string };
+      sessionId = created.id;
+
+      await expect(
+        page.locator('.grid-card', { hasText: displayName }),
+      ).toBeVisible();
+      await page.waitForTimeout(500);
+
+      expect(scanCount).toBe(1);
+    } finally {
+      if (sessionId) {
+        await request
+          .delete(`/api/agent-sessions/${sessionId}`)
+          .catch(() => {});
+      }
+    }
+  });
+
   test('layout fold toggle works', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(1000);

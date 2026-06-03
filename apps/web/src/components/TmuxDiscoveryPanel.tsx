@@ -1,20 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AgentSessionRecord,
   DiscoverTmuxInput,
-  ScanResult,
 } from "@agent-orchestrator/shared";
 
 import { discoverTmuxSessions } from "../lib/api";
-import { findExistingSession } from "../lib/session-matching";
+import {
+  buildTmuxDiscoveryHostKey,
+  buildTmuxDiscoveryItems,
+  isCurrentTmuxDiscoveryRequest,
+} from "../lib/tmux-discovery-state";
 import type { AddToGridItem } from "./DiscoveryDialog";
 import type { SelectedHost } from "./HostDropdown";
-
-interface TmuxItem {
-  session: AgentSessionRecord;
-  existingId?: string;
-}
 
 interface TmuxDiscoveryPanelProps {
   host: SelectedHost;
@@ -29,53 +27,76 @@ export function TmuxDiscoveryPanel({
   onAddToGrid,
   onFocusSession,
 }: TmuxDiscoveryPanelProps) {
-  const [items, setItems] = useState<TmuxItem[]>([]);
+  const [discoveredSessions, setDiscoveredSessions] = useState<
+    AgentSessionRecord[]
+  >([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [showOnlyNew, setShowOnlyNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const hostKey = useMemo(() => buildTmuxDiscoveryHostKey(host), [host]);
+  const scanInput = useMemo<DiscoverTmuxInput>(() => {
+    if (host.type !== "ssh") {
+      return {};
+    }
 
-  useEffect(() => {
-    scan();
-  }, [host, sessions]);
+    return { sshTarget: host.preset };
+  }, [host]);
+  const currentHostKeyRef = useRef(hostKey);
+  currentHostKeyRef.current = hostKey;
 
-  function toScanResult(session: AgentSessionRecord): ScanResult {
-    return {
-      agentKind: session.agentKind,
-      status: session.interactionState === "running" ? "running" : "stopped",
-      displayName: session.displayName,
-      workingDirectory: session.workingDirectory ?? "~",
-      tmuxSession: session.transportRef?.tmuxSession,
-      tmuxPane: session.transportRef?.tmuxPane,
-      sshTarget: session.sshTarget,
-    };
-  }
+  const items = useMemo(
+    () => buildTmuxDiscoveryItems(discoveredSessions, sessions),
+    [discoveredSessions, sessions],
+  );
 
-  async function scan() {
+  const scan = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    const requestHostKey = hostKey;
+
+    const isCurrentRequest = () =>
+      isCurrentTmuxDiscoveryRequest({
+        currentHostKey: currentHostKeyRef.current,
+        latestRequestId: requestIdRef.current,
+        requestHostKey,
+        requestId,
+      });
+
     setLoading(true);
     setError(null);
     try {
-      const body: DiscoverTmuxInput =
-        host.type === "ssh" ? { sshTarget: host.preset } : {};
-      const res = await discoverTmuxSessions(body);
-      if (res.unavailable) {
-        setError("tmux 不可用或未安装");
-        setItems([]);
+      const res = await discoverTmuxSessions(scanInput);
+      if (!isCurrentRequest()) {
         return;
       }
-      const mapped: TmuxItem[] = res.items.map((s) => {
-        const existing = findExistingSession(toScanResult(s), sessions);
-        return { session: s, existingId: existing?.id };
-      });
-      setItems(mapped);
+
+      if (res.unavailable) {
+        setError("tmux 不可用或未安装");
+        setDiscoveredSessions([]);
+        setSelected(new Set());
+        return;
+      }
+
+      setDiscoveredSessions(res.items);
       setSelected(new Set());
     } catch (err) {
+      if (!isCurrentRequest()) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "扫描失败");
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+      }
     }
-  }
+  }, [hostKey, scanInput]);
+
+  useEffect(() => {
+    void scan();
+  }, [scan]);
 
   const filtered = items.filter((item) => {
     if (searchQuery) {
