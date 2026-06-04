@@ -487,21 +487,33 @@ export function FileBrowserDrawer({
 
         const fileEntries: { file: File; relativePath: string }[] = [];
 
-        const readEntry = (entry: FileSystemEntry, basePath: string): Promise<void> => {
+        const readEntry = (
+          entry: FileSystemEntry,
+          basePath: string,
+        ): Promise<void> => {
           return new Promise((resolve) => {
             if (entry.isFile) {
-              (entry as FileSystemFileEntry).file((file) => {
-                fileEntries.push({ file, relativePath: basePath + file.name });
-                resolve();
-              }, () => resolve());
+              (entry as FileSystemFileEntry).file(
+                (file) => {
+                  fileEntries.push({
+                    file,
+                    relativePath: basePath + file.name,
+                  });
+                  resolve();
+                },
+                () => resolve(),
+              );
             } else if (entry.isDirectory) {
               const reader = (entry as FileSystemDirectoryEntry).createReader();
-              reader.readEntries(async (entries) => {
-                for (const child of entries) {
-                  await readEntry(child, basePath + entry.name + "/");
-                }
-                resolve();
-              }, () => resolve());
+              reader.readEntries(
+                async (entries) => {
+                  for (const child of entries) {
+                    await readEntry(child, basePath + entry.name + "/");
+                  }
+                  resolve();
+                },
+                () => resolve(),
+              );
             } else {
               resolve();
             }
@@ -1240,12 +1252,19 @@ export function FileBrowserDrawer({
         hidden
         ref={folderInputRef}
         type="file"
-        {...({ webkitdirectory: "", directory: "", multiple: true } as React.InputHTMLAttributes<HTMLInputElement>)}
+        {...({
+          webkitdirectory: "",
+          directory: "",
+          multiple: true,
+        } as React.InputHTMLAttributes<HTMLInputElement>)}
         onChange={async (event) => {
           const files = Array.from(event.target.files ?? []);
           if (files.length > 0) {
             const relativePaths = files.map((file) => {
-              return (file as File & { webkitRelativePath: string }).webkitRelativePath || file.name;
+              return (
+                (file as File & { webkitRelativePath: string })
+                  .webkitRelativePath || file.name
+              );
             });
             await upload(files, undefined, relativePaths);
           }

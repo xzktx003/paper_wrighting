@@ -221,6 +221,16 @@ nohup env -u VSCODE_IPC_HOOK_CLI PATH="$RUNTIME_PATH" HOST="$SERVER_BIND_HOST" P
   pnpm --dir "$SERVER_APP_DIR" dev >"$SERVER_LOG" 2>&1 &
 echo $! >"$SERVER_PID_FILE"
 
+SERVER_URL="http://${SERVER_PUBLIC_HOST}:${SERVER_PORT}"
+SERVER_HEALTH_URL="${SERVER_URL}/api/health"
+
+log "Waiting for backend to be ready…"
+if ! wait_for_http backend "$SERVER_HEALTH_URL"; then
+  show_log_tail backend "$SERVER_LOG"
+  exit 1
+fi
+log "Backend ready ✓"
+
 log "Starting frontend on ${WEB_HOST}:${WEB_PORT}"
 if [[ "$WEB_HTTPS" == "1" ]]; then
   log "Frontend HTTPS enabled"
@@ -232,16 +242,6 @@ else
     >"$WEB_LOG" 2>&1 &
 fi
 echo $! >"$WEB_PID_FILE"
-
-SERVER_URL="http://${SERVER_PUBLIC_HOST}:${SERVER_PORT}"
-SERVER_HEALTH_URL="${SERVER_URL}/api/health"
-
-# Wait for backend and frontend in parallel
-BACKEND_OK=0
-FRONTEND_OK=0
-
-wait_for_http backend "$SERVER_HEALTH_URL" &
-BACKEND_WAIT_PID=$!
 
 (
   if ! wait_for_frontend_urls "$WEB_LOG"; then
@@ -255,17 +255,8 @@ BACKEND_WAIT_PID=$!
 ) &
 FRONTEND_WAIT_PID=$!
 
-if ! wait "$BACKEND_WAIT_PID"; then
-  show_log_tail backend "$SERVER_LOG"
-  BACKEND_OK=1
-fi
-
 if ! wait "$FRONTEND_WAIT_PID"; then
   show_log_tail frontend "$WEB_LOG"
-  FRONTEND_OK=1
-fi
-
-if [[ "$BACKEND_OK" -ne 0 || "$FRONTEND_OK" -ne 0 ]]; then
   exit 1
 fi
 

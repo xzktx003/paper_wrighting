@@ -312,15 +312,38 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
-    listAgentSessions()
+    let cancelled = false;
+
+    async function fetchWithRetry<T>(
+      fn: () => Promise<T>,
+      retries = 3,
+      delayMs = 1_000,
+    ): Promise<T> {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await fn();
+        } catch (error) {
+          if (attempt >= retries || cancelled) throw error;
+          await new Promise((r) => setTimeout(r, delayMs * 2 ** attempt));
+        }
+      }
+    }
+
+    fetchWithRetry(listAgentSessions)
       .then((data) => {
+        if (cancelled) return;
         setSnapshot(data);
         setIsLoading(false);
       })
-      .catch(() => setIsLoading(false));
+      .catch(() => {
+        if (!cancelled) setIsLoading(false);
+      });
 
-    getSshHosts()
-      .then((res) => setSshHosts(res.hosts))
+    fetchWithRetry(getSshHosts)
+      .then((res) => {
+        if (cancelled) return;
+        setSshHosts(res.hosts);
+      })
       .catch(() => {});
 
     const unsubscribe = subscribeAgentSessions((data) => {
@@ -328,7 +351,10 @@ export default function App() {
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

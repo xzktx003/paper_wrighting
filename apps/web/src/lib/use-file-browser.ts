@@ -555,7 +555,11 @@ export function useFileBrowser(
       } catch (err) {
         const message = err instanceof Error ? err.message : "上传失败";
         if (message === "Upload cancelled") {
-          setUploadStatus({ state: "error", total: files.length, message: "已取消上传" });
+          setUploadStatus({
+            state: "error",
+            total: files.length,
+            message: "已取消上传",
+          });
         } else {
           setUploadStatus({ state: "error", total: files.length, message });
         }

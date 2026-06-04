@@ -204,27 +204,62 @@ export function refreshTmuxSession(
   );
 }
 
+const WS_RECONNECT_BASE_MS = 1_000;
+const WS_RECONNECT_MAX_MS = 30_000;
+
 export function subscribeAgentSessions(
   onSnapshot: (snapshot: ListAgentSessionsResponse) => void,
 ): () => void {
-  const socket = new WebSocket(buildWebSocketUrl());
+  let closed = false;
   let closeAfterOpen = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectAttempts = 0;
+  let socket = new WebSocket(buildWebSocketUrl());
 
-  socket.addEventListener("message", (event) => {
-    const payload = JSON.parse(event.data) as AgentSessionSnapshotEvent;
+  function connect() {
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(event.data) as AgentSessionSnapshotEvent;
 
-    if (payload.type === "snapshot") {
-      onSnapshot(payload.payload);
-    }
-  });
+      if (payload.type === "snapshot") {
+        onSnapshot(payload.payload);
+      }
+    });
 
-  socket.addEventListener("open", () => {
-    if (closeAfterOpen) {
-      socket.close();
-    }
-  });
+    socket.addEventListener("open", () => {
+      reconnectAttempts = 0;
+      if (closeAfterOpen) {
+        socket.close();
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      if (closeAfterOpen || closed) {
+        return;
+      }
+
+      const delay = Math.min(
+        WS_RECONNECT_BASE_MS * 2 ** reconnectAttempts,
+        WS_RECONNECT_MAX_MS,
+      );
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        if (closed) return;
+        socket = new WebSocket(buildWebSocketUrl());
+        connect();
+      }, delay);
+    });
+  }
+
+  connect();
 
   return () => {
+    closed = true;
+
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
     if (socket.readyState === WebSocket.CONNECTING) {
       closeAfterOpen = true;
       return;
