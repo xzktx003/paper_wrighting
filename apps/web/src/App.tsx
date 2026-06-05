@@ -58,7 +58,15 @@ import {
   loadTerminalPreviewLightweightMode,
   saveTerminalPreviewLightweightMode,
 } from "./lib/terminal-preview-mode";
-import { touchVsCodeCacheSessionIds } from "./lib/vscode-cache";
+import {
+  loadVsCodeIframeCacheMode,
+  releaseVsCodeCacheSessionIds,
+  resolveRenderedVsCodeSessionIds,
+  saveVsCodeIframeCacheMode,
+  toggleVsCodeIframeCacheMode,
+  touchVsCodeCacheSessionIds,
+  type VsCodeIframeCacheMode,
+} from "./lib/vscode-cache";
 import "./app.css";
 
 type ViewMode = "grid" | "focus";
@@ -67,7 +75,7 @@ type SidePanelTool = "files" | "vscode";
 const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
 const SIDE_PANEL_SESSION_STORAGE_KEY = "side-panel-session-state";
 const FOCUS_VIEW_STORAGE_KEY = "focus-view-state";
-const MAX_CACHED_VSCODE_IFRAMES = 8;
+const MAX_CACHED_VSCODE_IFRAMES = 6;
 
 interface FileBrowserUiState {
   width: number;
@@ -311,6 +319,8 @@ export default function App() {
   });
   const [useLightweightTerminalPreview, setUseLightweightTerminalPreview] =
     useState(loadTerminalPreviewLightweightMode);
+  const [vscodeIframeCacheMode, setVscodeIframeCacheMode] =
+    useState<VsCodeIframeCacheMode>(loadVsCodeIframeCacheMode);
   const mainLayoutRef = useRef<HTMLDivElement | null>(null);
   const fileBrowserResizeRef = useRef<{
     startX: number;
@@ -378,6 +388,10 @@ export default function App() {
   useEffect(() => {
     saveTerminalPreviewLightweightMode(useLightweightTerminalPreview);
   }, [useLightweightTerminalPreview]);
+
+  useEffect(() => {
+    saveVsCodeIframeCacheMode(vscodeIframeCacheMode);
+  }, [vscodeIframeCacheMode]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -606,14 +620,27 @@ export default function App() {
   const vscodeOpen =
     panelAvailable && focusedSidePanelState?.activeTool === "vscode";
   const sidePanelOpen = fileBrowserOpen || vscodeOpen;
+  const activeVsCodeSessionId =
+    vscodeOpen && focusedSession ? focusedSession.id : null;
   const renderedVsCodeSessionIds = useMemo(() => {
-    const next = [...vscodeCacheSessionIds];
-    if (vscodeOpen && focusedSession && !next.includes(focusedSession.id)) {
-      next.push(focusedSession.id);
-    }
-
-    return next.slice(-MAX_CACHED_VSCODE_IFRAMES);
-  }, [focusedSession, vscodeCacheSessionIds, vscodeOpen]);
+    return resolveRenderedVsCodeSessionIds({
+      activeSessionId: activeVsCodeSessionId,
+      cachedSessionIds: vscodeCacheSessionIds,
+      maxCachedIframes: MAX_CACHED_VSCODE_IFRAMES,
+      mode: vscodeIframeCacheMode,
+    });
+  }, [activeVsCodeSessionId, vscodeCacheSessionIds, vscodeIframeCacheMode]);
+  const retainedVsCodeSessionIds = useMemo(
+    () => releaseVsCodeCacheSessionIds(activeVsCodeSessionId),
+    [activeVsCodeSessionId],
+  );
+  const vscodeCacheReleaseAvailable =
+    vscodeCacheSessionIds.some(
+      (sessionId) => !retainedVsCodeSessionIds.includes(sessionId),
+    ) ||
+    renderedVsCodeSessionIds.some(
+      (sessionId) => !retainedVsCodeSessionIds.includes(sessionId),
+    );
   const sidePanelRendered =
     sidePanelOpen || renderedVsCodeSessionIds.length > 0;
   const sidePanelCollapsed = sidePanelOpen && fileBrowserUiState.sideCollapsed;
@@ -670,6 +697,20 @@ export default function App() {
 
   function handleScanApps(host: SelectedHost) {
     setDiscoveryState({ open: true, mode: "apps", host });
+  }
+
+  function handleToggleVsCodeIframeCacheMode() {
+    setVscodeIframeCacheMode((current) => {
+      const next = toggleVsCodeIframeCacheMode(current);
+      if (next === "memory-saving") {
+        setVscodeCacheSessionIds(retainedVsCodeSessionIds);
+      }
+      return next;
+    });
+  }
+
+  function handleReleaseVsCodeIframeCache() {
+    setVscodeCacheSessionIds(retainedVsCodeSessionIds);
   }
 
   function handleDiscoveryClose() {
@@ -847,6 +888,8 @@ export default function App() {
         fileBrowserOpen={fileBrowserOpen}
         vscodeAvailable={vscodeAvailable}
         vscodeOpen={vscodeOpen}
+        vscodeIframeCacheMode={vscodeIframeCacheMode}
+        vscodeCacheReleaseAvailable={vscodeCacheReleaseAvailable}
         useLightweightTerminalPreview={useLightweightTerminalPreview}
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
@@ -891,6 +934,8 @@ export default function App() {
             };
           });
         }}
+        onToggleVsCodeIframeCacheMode={handleToggleVsCodeIframeCacheMode}
+        onReleaseVsCodeIframeCache={handleReleaseVsCodeIframeCache}
         onToggleTerminalPreviewMode={() =>
           setUseLightweightTerminalPreview((current) => !current)
         }

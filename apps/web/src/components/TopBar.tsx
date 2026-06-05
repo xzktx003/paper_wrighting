@@ -6,6 +6,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { getQuickTmuxShortcutLabel } from "../lib/platform-compat";
+import type { VsCodeIframeCacheMode } from "../lib/vscode-cache";
 
 import { HostDropdown, type SelectedHost } from "./HostDropdown";
 
@@ -17,10 +18,14 @@ interface TopBarProps {
   fileBrowserOpen: boolean;
   vscodeAvailable: boolean;
   vscodeOpen: boolean;
+  vscodeIframeCacheMode: VsCodeIframeCacheMode;
+  vscodeCacheReleaseAvailable: boolean;
   useLightweightTerminalPreview: boolean;
   onToggleCollapsed: () => void;
   onToggleFileBrowser: () => void;
   onToggleVsCode: () => void;
+  onToggleVsCodeIframeCacheMode: () => void;
+  onReleaseVsCodeIframeCache: () => void;
   onToggleTerminalPreviewMode: () => void;
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
@@ -36,10 +41,14 @@ export function TopBar({
   fileBrowserOpen,
   vscodeAvailable,
   vscodeOpen,
+  vscodeIframeCacheMode,
+  vscodeCacheReleaseAvailable,
   useLightweightTerminalPreview,
   onToggleCollapsed,
   onToggleFileBrowser,
   onToggleVsCode,
+  onToggleVsCodeIframeCacheMode,
+  onReleaseVsCodeIframeCache,
   onToggleTerminalPreviewMode,
   onOpenNewSession,
   onScanTmux,
@@ -153,6 +162,31 @@ export function TopBar({
           type="button"
         >
           <span>VS Code</span>
+        </button>
+        <button
+          className={`top-bar-action top-bar-action--ghost${vscodeIframeCacheMode === "memory-saving" ? " top-bar-action--active" : ""}`}
+          data-testid="vscode-cache-mode-toggle"
+          onClick={onToggleVsCodeIframeCacheMode}
+          title={
+            vscodeIframeCacheMode === "memory-saving"
+              ? "当前为 VS Code 省内存模式：只保留当前 iframe"
+              : "当前为 VS Code 保持状态模式：最多保留最近 6 个 iframe"
+          }
+          type="button"
+        >
+          {vscodeIframeCacheMode === "memory-saving"
+            ? "VS Code省内存"
+            : "VS Code保持状态"}
+        </button>
+        <button
+          className="top-bar-action top-bar-action--ghost"
+          data-testid="vscode-cache-release"
+          disabled={!vscodeCacheReleaseAvailable}
+          onClick={onReleaseVsCodeIframeCache}
+          title="卸载非当前 VS Code iframe，释放浏览器内存"
+          type="button"
+        >
+          释放VS Code缓存
         </button>
       </div>
       <div className="top-bar-hints" ref={hintsRef}>

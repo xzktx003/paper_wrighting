@@ -63,6 +63,8 @@
 - 本地后端优先复用 `code-server`，其次支持 `openvscode-server`；SSH 远端首版通过 SSH 启动/复用远端 `code-server`。
 - 本地会话使用稳定的 `.code-workspace` 文件；SSH 远端会话直接打开远端工作目录。
 - 扩展目录优先复用用户的 `~/.vscode-server/extensions`。
+- 浏览器侧 iframe 默认使用 VS Code 省内存模式，只保留当前打开的 iframe；可切换到保持状态模式，最多保留最近 6 个 iframe。
+- 支持一键释放 VS Code iframe 缓存，卸载非当前 iframe 以回收浏览器内存。
 
 ## 9. VS Code 窗口观察
 
@@ -81,3 +83,4 @@
 - 顶栏折叠、文件浏览器布局、聚焦视图状态、侧边工具选择等 UI 状态保存在本地存储。
 - 文件浏览器按会话和主机维度保存独立浏览状态。
 - VS Code Web 会话缓存支持跨切换复用。
+- VS Code iframe 缓存模式保存在本地存储，默认省内存；自动超时卸载暂未默认启用，保留为下一阶段策略。
