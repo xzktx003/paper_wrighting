@@ -1200,7 +1200,7 @@ test("browser: Ctrl/Meta+E 可以快速连接远端 tmux 并自动聚焦", async
     await page.goto("/");
     await expect(
       page.getByRole("button", { name: /快速连接 tmux/ }),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     await page.evaluate(() => {
       document.body.dispatchEvent(

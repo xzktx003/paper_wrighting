@@ -30,7 +30,6 @@ interface TopBarProps {
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
-  onOpenQuickTmuxConnect: () => void;
 }
 
 export function TopBar({
@@ -53,7 +52,6 @@ export function TopBar({
   onOpenNewSession,
   onScanTmux,
   onScanApps,
-  onOpenQuickTmuxConnect,
 }: TopBarProps) {
   const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
   const [showHints, setShowHints] = useState(false);
@@ -260,13 +258,6 @@ export function TopBar({
           type="button"
         >
           {useLightweightTerminalPreview ? "轻量预览：开" : "完整预览"}
-        </button>
-        <button
-          className="top-bar-action"
-          onClick={onOpenQuickTmuxConnect}
-          type="button"
-        >
-          快速连接 tmux
         </button>
         <span className="stat-item">
           共 <strong>{totalCount}</strong> 个会话

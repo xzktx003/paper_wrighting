@@ -942,7 +942,6 @@ export default function App() {
         onOpenNewSession={setNewSessionHost}
         onScanTmux={handleScanTmux}
         onScanApps={handleScanApps}
-        onOpenQuickTmuxConnect={() => setQuickTmuxOpen(true)}
       />
 
       <div className="main-layout" ref={mainLayoutRef}>
