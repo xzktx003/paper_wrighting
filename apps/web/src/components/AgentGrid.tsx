@@ -18,6 +18,7 @@ interface AgentGridProps {
   suspendedSessionId?: string | null;
   hiddenCount?: number;
   onShowHidden?: () => void;
+  useLightweightTerminalPreview?: boolean;
 }
 
 export function AgentGrid({
@@ -35,6 +36,7 @@ export function AgentGrid({
   suspendedSessionId,
   hiddenCount = 0,
   onShowHidden,
+  useLightweightTerminalPreview = true,
 }: AgentGridProps) {
   return (
     <div className="agent-grid-container">
@@ -77,6 +79,7 @@ export function AgentGrid({
               onCopyConnectCommand={onCopyConnectCommand}
               onKillTmux={onKillTmux}
               terminalSuspended={session.id === suspendedSessionId}
+              useLightweightTerminalPreview={useLightweightTerminalPreview}
             />
           ))}
         </div>

@@ -17,9 +17,11 @@ interface TopBarProps {
   fileBrowserOpen: boolean;
   vscodeAvailable: boolean;
   vscodeOpen: boolean;
+  useLightweightTerminalPreview: boolean;
   onToggleCollapsed: () => void;
   onToggleFileBrowser: () => void;
   onToggleVsCode: () => void;
+  onToggleTerminalPreviewMode: () => void;
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
@@ -34,9 +36,11 @@ export function TopBar({
   fileBrowserOpen,
   vscodeAvailable,
   vscodeOpen,
+  useLightweightTerminalPreview,
   onToggleCollapsed,
   onToggleFileBrowser,
   onToggleVsCode,
+  onToggleTerminalPreviewMode,
   onOpenNewSession,
   onScanTmux,
   onScanApps,
@@ -210,6 +214,19 @@ export function TopBar({
           onSelectHost={onScanApps}
           triggerLabel="扫描会话"
         />
+        <button
+          className={`top-bar-action top-bar-action--ghost${useLightweightTerminalPreview ? " top-bar-action--active" : ""}`}
+          data-testid="terminal-preview-mode-toggle"
+          onClick={onToggleTerminalPreviewMode}
+          title={
+            useLightweightTerminalPreview
+              ? "当前为轻量化预览：非活跃会话不打开终端 WebSocket"
+              : "当前为完整终端预览：恢复旧版小终端模式"
+          }
+          type="button"
+        >
+          {useLightweightTerminalPreview ? "轻量预览：开" : "完整预览"}
+        </button>
         <button
           className="top-bar-action"
           onClick={onOpenQuickTmuxConnect}

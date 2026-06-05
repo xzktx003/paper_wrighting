@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
-import { TerminalView } from "./TerminalView";
+import { FocusSidebarSessionCard } from "./FocusSidebarSessionCard";
+import { LazyTerminalView } from "./LazyTerminalView";
+import { TerminalPreview } from "./TerminalPreview";
 
 interface AgentFocusViewProps {
   focusedSession: AgentSessionRecord;
@@ -11,6 +13,7 @@ interface AgentFocusViewProps {
   onExit: () => void;
   onReconnect: (id: string) => void;
   onRename?: (id: string) => void;
+  useLightweightTerminalPreview?: boolean;
 }
 
 const stateLabels: Record<string, string> = {
@@ -28,6 +31,7 @@ export function AgentFocusView({
   onExit,
   onReconnect,
   onRename,
+  useLightweightTerminalPreview = true,
 }: AgentFocusViewProps) {
   function handleFocusViewPointerDownCapture(
     event: React.PointerEvent<HTMLDivElement>,
@@ -173,7 +177,12 @@ export function AgentFocusView({
             )}
         </div>
         <div className="focus-main-terminal">
-          <TerminalView agentSessionId={focusedSession.id} interactive={true} />
+          <Suspense fallback={<TerminalPreview session={focusedSession} />}>
+            <LazyTerminalView
+              agentSessionId={focusedSession.id}
+              interactive={true}
+            />
+          </Suspense>
         </div>
       </div>
 
@@ -194,40 +203,13 @@ export function AgentFocusView({
             <div className="focus-sidebar">
               <h3 className="focus-sidebar-title">其他会话</h3>
               {otherSessions.map((session) => (
-                <div
+                <FocusSidebarSessionCard
                   key={session.id}
-                  className={`focus-sidebar-card card-${session.interactionState}`}
-                  onDoubleClick={() => onSwitchFocus(session.id)}
-                >
-                  <div className="focus-sidebar-card-header">
-                    <span>{session.displayName}</span>
-                    <div className="focus-sidebar-card-actions">
-                      <button
-                        className="grid-card-rename"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onRename?.(session.id);
-                        }}
-                        title="修改名称"
-                        type="button"
-                      >
-                        ✎
-                      </button>
-                      <span
-                        className={`grid-card-badge badge-${session.interactionState}`}
-                      >
-                        {stateLabels[session.interactionState] ??
-                          session.interactionState}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="focus-sidebar-terminal">
-                    <TerminalView
-                      agentSessionId={session.id}
-                      interactive={false}
-                    />
-                  </div>
-                </div>
+                  session={session}
+                  onRename={onRename}
+                  onSwitchFocus={onSwitchFocus}
+                  useLightweightTerminalPreview={useLightweightTerminalPreview}
+                />
               ))}
             </div>
           )}

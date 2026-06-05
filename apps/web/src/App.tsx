@@ -54,6 +54,10 @@ import {
   wrapRemoteInteractiveCommand,
 } from "./lib/session-matching";
 import { isVsCodeAvailable } from "./lib/side-panel-availability";
+import {
+  loadTerminalPreviewLightweightMode,
+  saveTerminalPreviewLightweightMode,
+} from "./lib/terminal-preview-mode";
 import { touchVsCodeCacheSessionIds } from "./lib/vscode-cache";
 import "./app.css";
 
@@ -305,6 +309,8 @@ export default function App() {
     transport: null,
     dirQuery: "",
   });
+  const [useLightweightTerminalPreview, setUseLightweightTerminalPreview] =
+    useState(loadTerminalPreviewLightweightMode);
   const mainLayoutRef = useRef<HTMLDivElement | null>(null);
   const fileBrowserResizeRef = useRef<{
     startX: number;
@@ -368,6 +374,10 @@ export default function App() {
   useEffect(() => {
     saveFocusViewState({ viewMode, focusedId });
   }, [focusedId, viewMode]);
+
+  useEffect(() => {
+    saveTerminalPreviewLightweightMode(useLightweightTerminalPreview);
+  }, [useLightweightTerminalPreview]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -837,6 +847,7 @@ export default function App() {
         fileBrowserOpen={fileBrowserOpen}
         vscodeAvailable={vscodeAvailable}
         vscodeOpen={vscodeOpen}
+        useLightweightTerminalPreview={useLightweightTerminalPreview}
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
         }
@@ -880,6 +891,9 @@ export default function App() {
             };
           });
         }}
+        onToggleTerminalPreviewMode={() =>
+          setUseLightweightTerminalPreview((current) => !current)
+        }
         onOpenNewSession={setNewSessionHost}
         onScanTmux={handleScanTmux}
         onScanApps={handleScanApps}
@@ -1003,6 +1017,7 @@ export default function App() {
               onExit={handleExitFocus}
               onReconnect={handleReconnectSession}
               onRename={handleRenameSession}
+              useLightweightTerminalPreview={useLightweightTerminalPreview}
             />
           ) : (
             <AgentGrid
@@ -1019,6 +1034,7 @@ export default function App() {
               onKillTmux={handleKillTmux}
               hiddenCount={hiddenSessions.length}
               onShowHidden={() => setShowHiddenDrawer(true)}
+              useLightweightTerminalPreview={useLightweightTerminalPreview}
             />
           )}
         </div>

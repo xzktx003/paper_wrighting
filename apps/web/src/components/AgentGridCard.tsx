@@ -1,7 +1,10 @@
+import { Suspense } from "react";
+
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
 import { CardMoreMenu } from "./CardMoreMenu";
-import { TerminalView } from "./TerminalView";
+import { LazyTerminalView } from "./LazyTerminalView";
+import { TerminalPreview } from "./TerminalPreview";
 
 interface AgentGridCardProps {
   session: AgentSessionRecord;
@@ -13,6 +16,7 @@ interface AgentGridCardProps {
   onCopyConnectCommand?: (id: string) => void;
   onKillTmux?: (id: string) => void;
   terminalSuspended?: boolean;
+  useLightweightTerminalPreview?: boolean;
 }
 
 const stateLabels: Record<string, string> = {
@@ -59,6 +63,7 @@ export function AgentGridCard({
   onCopyConnectCommand,
   onKillTmux,
   terminalSuspended = false,
+  useLightweightTerminalPreview = true,
 }: AgentGridCardProps) {
   const stateClass = stateColors[session.interactionState] ?? "";
   const stateLabel =
@@ -159,11 +164,24 @@ export function AgentGridCard({
         </div>
       </div>
       <div className="grid-card-terminal">
-        <TerminalView
-          agentSessionId={session.id}
-          interactive={false}
-          suspended={terminalSuspended}
-        />
+        {useLightweightTerminalPreview ? (
+          <TerminalPreview session={session} suspended={terminalSuspended} />
+        ) : (
+          <Suspense
+            fallback={
+              <TerminalPreview
+                session={session}
+                suspended={terminalSuspended}
+              />
+            }
+          >
+            <LazyTerminalView
+              agentSessionId={session.id}
+              interactive={false}
+              suspended={terminalSuspended}
+            />
+          </Suspense>
+        )}
         {canReconnect && (
           <button className="grid-card-reconnect" onClick={handleReconnect}>
             🔄 重新连接
