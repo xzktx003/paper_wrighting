@@ -6,9 +6,56 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { getQuickTmuxShortcutLabel } from "../lib/platform-compat";
+import {
+  classifyResourcePressure,
+  getResourceDiagnosticsSnapshot,
+  type ResourceDiagnosticsSnapshot,
+} from "../lib/resource-diagnostics";
 import type { VsCodeIframeCacheMode } from "../lib/vscode-cache";
 
 import { HostDropdown, type SelectedHost } from "./HostDropdown";
+
+const RESOURCE_DIAGNOSTICS_POLL_MS = 1_000;
+
+function formatKilobytes(value: number): string {
+  return `${value.toFixed(value >= 100 ? 0 : 1)} KB`;
+}
+
+function formatKilobytesPerSecond(value: number): string {
+  return `${value.toFixed(value >= 100 ? 0 : 1)} KB/s`;
+}
+
+function formatMessagesPerSecond(value: number): string {
+  return `${value.toFixed(value >= 10 ? 1 : 2)} msg/s`;
+}
+
+function formatMegabytes(value: number | undefined): string {
+  if (value === undefined) {
+    return "浏览器未暴露";
+  }
+
+  return `${value.toFixed(value >= 100 ? 0 : 1)} MB`;
+}
+
+function getHeapSummary(snapshot: ResourceDiagnosticsSnapshot): string {
+  const { memory } = snapshot;
+
+  if (memory.usedJSHeapMegabytes === undefined) {
+    return "浏览器未暴露";
+  }
+
+  return [
+    formatMegabytes(memory.usedJSHeapMegabytes),
+    memory.totalJSHeapMegabytes === undefined
+      ? null
+      : `已分配 ${formatMegabytes(memory.totalJSHeapMegabytes)}`,
+    memory.jsHeapLimitMegabytes === undefined
+      ? null
+      : `上限 ${formatMegabytes(memory.jsHeapLimitMegabytes)}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
 
 interface TopBarProps {
   sessions: AgentSessionRecord[];
@@ -55,6 +102,11 @@ export function TopBar({
 }: TopBarProps) {
   const quickTmuxShortcutLabel = getQuickTmuxShortcutLabel();
   const [showHints, setShowHints] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticsSnapshot, setDiagnosticsSnapshot] =
+    useState<ResourceDiagnosticsSnapshot>(() =>
+      getResourceDiagnosticsSnapshot(),
+    );
   const [isFullscreen, setIsFullscreen] = useState(
     Boolean(document.fullscreenElement),
   );
@@ -76,21 +128,32 @@ export function TopBar({
       document.exitFullscreen().catch(() => {});
     }
   }, []);
-  const hintsRef = useRef<HTMLDivElement | null>(null);
+  const topBarUtilityRef = useRef<HTMLDivElement | null>(null);
   const hintsPopoverId = "operation-hints-popover";
+  const diagnosticsPopoverId = "resource-diagnostics-popover";
   const totalCount = sessions.length;
+  const resourceFindings = classifyResourcePressure({
+    snapshot: diagnosticsSnapshot,
+    useLightweightTerminalPreview,
+  });
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node | null;
-      if (hintsRef.current && target && !hintsRef.current.contains(target)) {
+      if (
+        topBarUtilityRef.current &&
+        target &&
+        !topBarUtilityRef.current.contains(target)
+      ) {
         setShowHints(false);
+        setShowDiagnostics(false);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setShowHints(false);
+        setShowDiagnostics(false);
       }
       if (event.key === "F11") {
         event.preventDefault();
@@ -104,7 +167,27 @@ export function TopBar({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [toggleFullscreen]);
+
+  useEffect(() => {
+    if (!showDiagnostics) {
+      return;
+    }
+
+    const refreshDiagnostics = () => {
+      setDiagnosticsSnapshot(getResourceDiagnosticsSnapshot());
+    };
+
+    refreshDiagnostics();
+    const intervalId = window.setInterval(
+      refreshDiagnostics,
+      RESOURCE_DIAGNOSTICS_POLL_MS,
+    );
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [showDiagnostics]);
 
   if (collapsed) {
     return (
@@ -181,16 +264,33 @@ export function TopBar({
           释放VS Code缓存
         </button>
       </div>
-      <div className="top-bar-hints" ref={hintsRef}>
+      <div className="top-bar-hints" ref={topBarUtilityRef}>
         <button
           aria-controls={hintsPopoverId}
           aria-expanded={showHints}
           className={`top-bar-action top-bar-action--ghost${showHints ? " top-bar-action--active" : ""}`}
           data-testid="help-hints-toggle"
-          onClick={() => setShowHints((current) => !current)}
+          onClick={() => {
+            setShowHints((current) => !current);
+            setShowDiagnostics(false);
+          }}
           type="button"
         >
           操作提示
+        </button>
+        <button
+          aria-controls={diagnosticsPopoverId}
+          aria-expanded={showDiagnostics}
+          className={`top-bar-action top-bar-action--ghost${showDiagnostics ? " top-bar-action--active" : ""}`}
+          data-testid="resource-diagnostics-toggle"
+          onClick={() => {
+            setShowDiagnostics((current) => !current);
+            setShowHints(false);
+          }}
+          title="查看浏览器内存、终端实例和 WebSocket 吞吐指标"
+          type="button"
+        >
+          资源诊断
         </button>
         {showHints && (
           <div
@@ -218,6 +318,85 @@ export function TopBar({
             <div className="top-bar-hint-item">
               <kbd>F11</kbd>
               <span>全屏切换</span>
+            </div>
+          </div>
+        )}
+        {showDiagnostics && (
+          <div
+            aria-label="资源诊断"
+            className="top-bar-resource-popover"
+            data-testid="resource-diagnostics-popover"
+            id={diagnosticsPopoverId}
+            role="dialog"
+          >
+            <div className="resource-diagnostics-header">
+              <strong>浏览器资源诊断</strong>
+              <span>打开时每秒刷新，不保存历史</span>
+            </div>
+            <div className="resource-diagnostics-grid">
+              <span>预览模式</span>
+              <strong>
+                {useLightweightTerminalPreview ? "轻量预览" : "完整预览"}
+              </strong>
+              <span>xterm 实例</span>
+              <strong>{diagnosticsSnapshot.dom.xtermCount}</strong>
+              <span>终端视图</span>
+              <strong>
+                {diagnosticsSnapshot.dom.terminalViewCount}（主终端{" "}
+                {diagnosticsSnapshot.dom.liveTerminalViewCount} / 预览{" "}
+                {diagnosticsSnapshot.dom.previewTerminalViewCount}）
+              </strong>
+              <span>轻量预览 DOM</span>
+              <strong>{diagnosticsSnapshot.dom.lightweightPreviewCount}</strong>
+              <span>终端 WebSocket</span>
+              <strong>
+                {diagnosticsSnapshot.terminalSockets.total}（open{" "}
+                {diagnosticsSnapshot.terminalSockets.open} / connecting{" "}
+                {diagnosticsSnapshot.terminalSockets.connecting}）
+              </strong>
+              <span>会话快照 WS</span>
+              <strong>
+                {formatMessagesPerSecond(
+                  diagnosticsSnapshot.agentSessionSocket.messagesPerSecond,
+                )}
+                {" · "}
+                {formatKilobytesPerSecond(
+                  diagnosticsSnapshot.agentSessionSocket.kilobytesPerSecond,
+                )}
+              </strong>
+              <span>快照累计/单帧</span>
+              <strong>
+                {diagnosticsSnapshot.agentSessionSocket.totalMessages} 条 / 累计{" "}
+                {formatKilobytes(
+                  diagnosticsSnapshot.agentSessionSocket.totalKilobytes,
+                )}{" "}
+                / 单帧{" "}
+                {formatKilobytes(
+                  diagnosticsSnapshot.agentSessionSocket.lastPayloadKilobytes,
+                )}
+              </strong>
+              <span>终端实时流</span>
+              <strong>
+                {formatMessagesPerSecond(
+                  diagnosticsSnapshot.terminalFrames.messagesPerSecond,
+                )}
+                {" · "}
+                {formatKilobytesPerSecond(
+                  diagnosticsSnapshot.terminalFrames.kilobytesPerSecond,
+                )}
+              </strong>
+              <span>VS Code iframe</span>
+              <strong>{diagnosticsSnapshot.dom.vscodeIframeCount}</strong>
+              <span>JS heap</span>
+              <strong>{getHeapSummary(diagnosticsSnapshot)}</strong>
+            </div>
+            <div className="resource-diagnostics-findings">
+              <strong>当前判读</strong>
+              <ul>
+                {resourceFindings.map((finding) => (
+                  <li key={finding}>{finding}</li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

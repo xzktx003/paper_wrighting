@@ -29,6 +29,8 @@ import type {
   UpdateAgentSessionInput,
 } from "@agent-orchestrator/shared";
 
+import { recordAgentSnapshotFrame } from "./resource-diagnostics";
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 function wsBase(): string {
@@ -216,13 +218,29 @@ export function subscribeAgentSessions(
   let reconnectAttempts = 0;
   let socket = new WebSocket(buildWebSocketUrl());
 
+  async function handleMessageData(data: unknown) {
+    const text =
+      typeof data === "string"
+        ? data
+        : data instanceof Blob
+          ? await data.text()
+          : null;
+
+    if (!text || closed) {
+      return;
+    }
+
+    recordAgentSnapshotFrame(text);
+    const payload = JSON.parse(text) as AgentSessionSnapshotEvent;
+
+    if (payload.type === "snapshot" && !closed) {
+      onSnapshot(payload.payload);
+    }
+  }
+
   function connect() {
     socket.addEventListener("message", (event) => {
-      const payload = JSON.parse(event.data) as AgentSessionSnapshotEvent;
-
-      if (payload.type === "snapshot") {
-        onSnapshot(payload.payload);
-      }
+      void handleMessageData(event.data);
     });
 
     socket.addEventListener("open", () => {

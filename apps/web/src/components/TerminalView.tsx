@@ -6,6 +6,10 @@ import "@xterm/xterm/css/xterm.css";
 
 import { buildTerminalWebSocketUrl } from "../lib/api";
 import {
+  recordTerminalFrame,
+  registerTerminalWebSocket,
+} from "../lib/resource-diagnostics";
+import {
   hasIntentionalExternalFocus,
   shouldPromoteExternalFocusToUserIntent,
   shouldRepairPassiveTerminalFocus,
@@ -377,6 +381,9 @@ export function TerminalView({
 
     const wsUrl = buildTerminalWebSocketUrl(agentSessionId);
     let ws: WebSocket | null = null;
+    let terminalSocketTracker: ReturnType<
+      typeof registerTerminalWebSocket
+    > | null = null;
     let replayComplete = false;
     let lastReportedTerminalFocus: "in" | "out" | null = null;
 
@@ -462,6 +469,7 @@ export function TerminalView({
         return;
       }
 
+      terminalSocketTracker = registerTerminalWebSocket(agentSessionId);
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -469,11 +477,16 @@ export function TerminalView({
         if (typeof event.data === "string") {
           handleTerminalFrame(event.data);
         } else if (event.data instanceof Blob) {
-          event.data.text().then((text) => handleTerminalFrame(text));
+          void event.data.text().then((text) => {
+            if (!disposed) {
+              handleTerminalFrame(text);
+            }
+          });
         }
       };
 
       ws.onopen = () => {
+        terminalSocketTracker?.markOpen();
         if (disposed || closeAfterOpen) {
           ws?.close();
           return;
@@ -486,6 +499,7 @@ export function TerminalView({
       };
 
       ws.onclose = () => {
+        terminalSocketTracker?.markClosed();
         if (disposed) {
           return;
         }
@@ -557,6 +571,8 @@ export function TerminalView({
     };
 
     const handleTerminalFrame = (payload: string) => {
+      recordTerminalFrame(payload);
+
       try {
         const parsed = JSON.parse(payload) as TerminalControlFrame;
         if (parsed.__agentOrchestrator !== "terminal-control") {
@@ -848,6 +864,7 @@ export function TerminalView({
       } else if (ws?.readyState === WebSocket.OPEN) {
         ws.close();
       }
+      terminalSocketTracker?.markClosed();
 
       term.dispose();
       delete container.__xterm;
