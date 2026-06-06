@@ -1,10 +1,20 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 
 import { FocusSidebarSessionCard } from "./FocusSidebarSessionCard";
 import { LazyTerminalView } from "./LazyTerminalView";
 import { TerminalPreview } from "./TerminalPreview";
+import {
+  TERMINAL_MONITOR_LAYOUT_OPTIONS,
+  areTerminalMonitorSlotsEqual,
+  getTerminalMonitorSlotIds,
+  isTerminalMonitorLayoutMode,
+  normalizeTerminalMonitorSlots,
+  setTerminalMonitorSlotSession,
+  type TerminalMonitorLayoutMode,
+  type TerminalMonitorSlot,
+} from "../lib/terminal-layout";
 
 interface AgentFocusViewProps {
   focusedSession: AgentSessionRecord;
@@ -24,6 +34,43 @@ const stateLabels: Record<string, string> = {
   exited: "已退出",
 };
 
+const TERMINAL_MONITOR_LAYOUT_STORAGE_KEY = "terminal-monitor-layout-mode";
+const DEFAULT_TERMINAL_MONITOR_SLOT_ID = "terminal-monitor-slot-1";
+const FOCUS_HEADER_COLLAPSED_STORAGE_KEY = "focus-header-collapsed";
+
+function loadTerminalMonitorLayoutMode(): TerminalMonitorLayoutMode {
+  try {
+    const raw = localStorage.getItem(TERMINAL_MONITOR_LAYOUT_STORAGE_KEY);
+    return isTerminalMonitorLayoutMode(raw) ? raw : "single";
+  } catch {
+    return "single";
+  }
+}
+
+function saveTerminalMonitorLayoutMode(mode: TerminalMonitorLayoutMode): void {
+  try {
+    localStorage.setItem(TERMINAL_MONITOR_LAYOUT_STORAGE_KEY, mode);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadFocusHeaderCollapsed(): boolean {
+  try {
+    return localStorage.getItem(FOCUS_HEADER_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveFocusHeaderHeaderCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(FOCUS_HEADER_COLLAPSED_STORAGE_KEY, String(collapsed));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function AgentFocusView({
   focusedSession,
   sessions,
@@ -33,6 +80,153 @@ export function AgentFocusView({
   onRename,
   useLightweightTerminalPreview = true,
 }: AgentFocusViewProps) {
+  const [terminalLayoutMode, setTerminalLayoutMode] =
+    useState<TerminalMonitorLayoutMode>(loadTerminalMonitorLayoutMode);
+  const [activeSlotId, setActiveSlotId] = useState(
+    DEFAULT_TERMINAL_MONITOR_SLOT_ID,
+  );
+  const [terminalSlots, setTerminalSlots] = useState<TerminalMonitorSlot[]>(
+    () =>
+      normalizeTerminalMonitorSlots({
+        mode: terminalLayoutMode,
+        sessions,
+        preferredSessionId: focusedSession.id,
+        preferredSlotId: DEFAULT_TERMINAL_MONITOR_SLOT_ID,
+      }),
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(
+    loadFocusHeaderCollapsed,
+  );
+  const sessionById = useMemo(() => {
+    return new Map(sessions.map((session) => [session.id, session]));
+  }, [sessions]);
+  const renderedSessionIds = new Set(
+    terminalSlots
+      .map((slot) => slot.sessionId)
+      .filter((sessionId): sessionId is string => Boolean(sessionId)),
+  );
+  const usedSessionIds = renderedSessionIds;
+  const otherSessions = sessions.filter(
+    (session) => !renderedSessionIds.has(session.id),
+  );
+  const activeSlotAvailable = terminalSlots.some(
+    (slot) => slot.id === activeSlotId,
+  );
+  const safeActiveSlotId = activeSlotAvailable
+    ? activeSlotId
+    : (terminalSlots[0]?.id ?? DEFAULT_TERMINAL_MONITOR_SLOT_ID);
+
+  useEffect(() => {
+    saveTerminalMonitorLayoutMode(terminalLayoutMode);
+  }, [terminalLayoutMode]);
+
+  useEffect(() => {
+    saveFocusHeaderHeaderCollapsed(headerCollapsed);
+  }, [headerCollapsed]);
+
+  useEffect(() => {
+    const availableSlotIds = getTerminalMonitorSlotIds(terminalLayoutMode);
+    const nextActiveSlotId = availableSlotIds.includes(activeSlotId)
+      ? activeSlotId
+      : availableSlotIds[0]!;
+
+    if (nextActiveSlotId !== activeSlotId) {
+      setActiveSlotId(nextActiveSlotId);
+    }
+
+    setTerminalSlots((current) => {
+      const next = normalizeTerminalMonitorSlots({
+        mode: terminalLayoutMode,
+        sessions,
+        preferredSessionId: focusedSession.id,
+        preferredSlotId: nextActiveSlotId,
+        previousSlots: current,
+      });
+
+      return areTerminalMonitorSlotsEqual(current, next) ? current : next;
+    });
+  }, [activeSlotId, focusedSession.id, sessions, terminalLayoutMode]);
+
+  function getActiveTerminalTextarea(): HTMLTextAreaElement | null {
+    return document.querySelector(
+      '[data-active-terminal-pane="true"] .xterm-helper-textarea',
+    ) as HTMLTextAreaElement | null;
+  }
+
+  useEffect(() => {
+    const active = document.activeElement as HTMLElement | null;
+    if (
+      active?.closest(
+        'input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="dialog"], [role="alertdialog"]',
+      )
+    ) {
+      return;
+    }
+
+    getActiveTerminalTextarea()?.focus();
+  }, [focusedSession.id, safeActiveSlotId, terminalLayoutMode, terminalSlots]);
+
+  function activateSlot(slot: TerminalMonitorSlot) {
+    if (!slot.sessionId) {
+      return;
+    }
+
+    setActiveSlotId(slot.id);
+    if (slot.sessionId !== focusedSession.id) {
+      onSwitchFocus(slot.sessionId);
+    }
+  }
+
+  function handlePanePointerDownCapture(
+    slot: TerminalMonitorSlot,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        'button, input, textarea, select, a, [contenteditable="true"], [contenteditable=""]',
+      )
+    ) {
+      return;
+    }
+
+    activateSlot(slot);
+  }
+
+  function handleSelectSlotSession(slotId: string, sessionId: string) {
+    if (!sessionId) {
+      return;
+    }
+
+    setTerminalSlots((current) =>
+      setTerminalMonitorSlotSession(current, slotId, sessionId),
+    );
+    setActiveSlotId(slotId);
+    if (sessionId !== focusedSession.id) {
+      onSwitchFocus(sessionId);
+    }
+  }
+
+  function handleSidebarSwitchFocus(sessionId: string) {
+    const slotId = safeActiveSlotId;
+    setTerminalSlots((current) =>
+      setTerminalMonitorSlotSession(current, slotId, sessionId),
+    );
+    setActiveSlotId(slotId);
+    if (sessionId !== focusedSession.id) {
+      onSwitchFocus(sessionId);
+    }
+  }
+
+  function handleLayoutModeChange(mode: TerminalMonitorLayoutMode) {
+    setTerminalLayoutMode(mode);
+    const slotIds = getTerminalMonitorSlotIds(mode);
+    if (!slotIds.includes(activeSlotId)) {
+      setActiveSlotId(slotIds[0] ?? DEFAULT_TERMINAL_MONITOR_SLOT_ID);
+    }
+  }
+
   function handleFocusViewPointerDownCapture(
     event: React.PointerEvent<HTMLDivElement>,
   ) {
@@ -45,7 +239,7 @@ export function AgentFocusView({
     // terminal workspace. If the user clicks them, keep the terminal ready for
     // immediate typing instead of leaving focus on the document body and
     // relying on synthetic key forwarding.
-    if (target.closest(".focus-main-terminal")) {
+    if (target.closest(".focus-terminal-pane-terminal")) {
       return;
     }
 
@@ -57,17 +251,17 @@ export function AgentFocusView({
       return;
     }
 
-    const textarea = document.querySelector(
-      ".focus-main-terminal .xterm-helper-textarea",
-    ) as HTMLTextAreaElement | null;
-    textarea?.focus();
+    getActiveTerminalTextarea()?.focus();
   }
 
   useEffect(() => {
-    function isInTerminal(node: HTMLElement | null): boolean {
+    function isInActiveTerminal(node: HTMLElement | null): boolean {
       return Boolean(
-        node?.closest(".focus-main-terminal") ||
-        node?.classList.contains("xterm-helper-textarea"),
+        node?.closest(
+          '[data-active-terminal-pane="true"] .focus-terminal-pane-terminal',
+        ) ||
+        (node?.classList.contains("xterm-helper-textarea") &&
+          node.closest('[data-active-terminal-pane="true"]')),
       );
     }
 
@@ -77,7 +271,7 @@ export function AgentFocusView({
 
       if (e.key === "Escape") {
         // Esc is reserved for dialog-like interactions; never use it to exit focus mode.
-        if (!isInTerminal(target) && !isInTerminal(active)) {
+        if (!isInActiveTerminal(target) && !isInActiveTerminal(active)) {
           e.stopPropagation();
         }
         return;
@@ -108,10 +302,12 @@ export function AgentFocusView({
         active?.isContentEditable ||
         active?.closest('[role="dialog"]') !== null ||
         active?.closest('[role="alertdialog"]') !== null;
-      if (!inInput && !isInTerminal(target) && !isInTerminal(active)) {
-        const textarea = document.querySelector(
-          ".focus-main-terminal .xterm-helper-textarea",
-        ) as HTMLTextAreaElement | null;
+      if (
+        !inInput &&
+        !isInActiveTerminal(target) &&
+        !isInActiveTerminal(active)
+      ) {
+        const textarea = getActiveTerminalTextarea();
         if (textarea) {
           e.preventDefault();
           textarea.focus();
@@ -137,10 +333,7 @@ export function AgentFocusView({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onExit]);
-
-  const otherSessions = sessions.filter((s) => s.id !== focusedSession.id);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  }, [onExit, safeActiveSlotId]);
 
   return (
     <div
@@ -148,41 +341,150 @@ export function AgentFocusView({
       onPointerDownCapture={handleFocusViewPointerDownCapture}
     >
       <div className="focus-main">
-        <div className="focus-main-header">
-          <span className="focus-main-name">{focusedSession.displayName}</span>
-          <span
-            className={`grid-card-badge badge-${focusedSession.interactionState}`}
-          >
-            {stateLabels[focusedSession.interactionState] ??
-              focusedSession.interactionState}
-          </span>
+        <div
+          className={`focus-main-header${headerCollapsed ? " focus-main-header--collapsed" : ""}`}
+        >
           <button
-            className="focus-rename-btn"
-            onClick={() => onRename?.(focusedSession.id)}
+            className="focus-header-collapse-btn"
+            onClick={() => setHeaderCollapsed((c) => !c)}
+            title={headerCollapsed ? "展开标题栏" : "折叠标题栏"}
             type="button"
           >
-            ✎ 改名
+            {headerCollapsed ? "▼" : "▲"}
           </button>
-          <button className="focus-exit-btn" onClick={onExit} title="Alt+Q">
-            返回宫格
-          </button>
-          {focusedSession.interactionState === "exited" &&
-            focusedSession.sourceType !== "remote-tmux-discovered" && (
-              <button
-                className="focus-reconnect-btn"
-                onClick={() => onReconnect(focusedSession.id)}
+          <span className="focus-main-name">{focusedSession.displayName}</span>
+          {!headerCollapsed && (
+            <>
+              <span
+                className={`grid-card-badge badge-${focusedSession.interactionState}`}
               >
-                🔄 重新连接
+                {stateLabels[focusedSession.interactionState] ??
+                  focusedSession.interactionState}
+              </span>
+              <button
+                className="focus-rename-btn"
+                onClick={() => onRename?.(focusedSession.id)}
+                type="button"
+              >
+                ✎ 改名
               </button>
-            )}
+              <div
+                aria-label="终端监控布局"
+                className="focus-layout-switcher"
+                role="group"
+              >
+                {TERMINAL_MONITOR_LAYOUT_OPTIONS.map((option) => (
+                  <button
+                    key={option.mode}
+                    aria-pressed={terminalLayoutMode === option.mode}
+                    className={`focus-layout-btn${terminalLayoutMode === option.mode ? " focus-layout-btn--active" : ""}`}
+                    onClick={() => handleLayoutModeChange(option.mode)}
+                    title={`${option.label}监控 ${option.capacity} 个终端`}
+                    type="button"
+                  >
+                    {option.label}
+                    <span>{option.capacity}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="focus-exit-btn" onClick={onExit} title="Alt+Q">
+                返回宫格
+              </button>
+              {focusedSession.interactionState === "exited" &&
+                focusedSession.sourceType !== "remote-tmux-discovered" && (
+                  <button
+                    className="focus-reconnect-btn"
+                    onClick={() => onReconnect(focusedSession.id)}
+                  >
+                    🔄 重新连接
+                  </button>
+                )}
+            </>
+          )}
         </div>
         <div className="focus-main-terminal">
-          <Suspense fallback={<TerminalPreview session={focusedSession} />}>
-            <LazyTerminalView
-              agentSessionId={focusedSession.id}
-              interactive={true}
-            />
-          </Suspense>
+          <div
+            className={`focus-terminal-layout focus-terminal-layout--${terminalLayoutMode}`}
+          >
+            {terminalSlots.map((slot, index) => {
+              const session = slot.sessionId
+                ? sessionById.get(slot.sessionId)
+                : null;
+              const isActiveInputPane = Boolean(
+                session && slot.id === safeActiveSlotId,
+              );
+
+              return (
+                <div
+                  key={slot.id}
+                  className={`focus-terminal-pane${isActiveInputPane ? " focus-terminal-pane--active" : ""}`}
+                  data-active-terminal-pane={
+                    isActiveInputPane ? "true" : "false"
+                  }
+                  data-terminal-pane-session={session?.id}
+                  onPointerDownCapture={(event) =>
+                    handlePanePointerDownCapture(slot, event)
+                  }
+                >
+                  <div className="focus-terminal-pane-header">
+                    <span className="focus-terminal-pane-index">
+                      {index + 1}
+                    </span>
+                    <select
+                      aria-label={`选择第 ${index + 1} 个监控终端`}
+                      className="focus-terminal-session-select"
+                      onChange={(event) =>
+                        handleSelectSlotSession(slot.id, event.target.value)
+                      }
+                      value={session?.id ?? ""}
+                    >
+                      {!session && <option value="">无可用会话</option>}
+                      {sessions.map((candidate) => {
+                        const usedElsewhere =
+                          usedSessionIds.has(candidate.id) &&
+                          candidate.id !== session?.id;
+
+                        return (
+                          <option
+                            key={candidate.id}
+                            disabled={usedElsewhere}
+                            value={candidate.id}
+                          >
+                            {candidate.displayName}
+                            {usedElsewhere ? "（已显示）" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      className={`focus-terminal-input-btn${isActiveInputPane ? " focus-terminal-input-btn--active" : ""}`}
+                      disabled={!session || isActiveInputPane}
+                      onClick={() => activateSlot(slot)}
+                      type="button"
+                    >
+                      {isActiveInputPane ? "输入中" : "设为输入"}
+                    </button>
+                  </div>
+                  <div className="focus-terminal-pane-terminal">
+                    {session ? (
+                      <Suspense
+                        fallback={<TerminalPreview session={session} />}
+                      >
+                        <LazyTerminalView
+                          key={session.id}
+                          agentSessionId={session.id}
+                          interactive={true}
+                          inputEnabled={isActiveInputPane}
+                        />
+                      </Suspense>
+                    ) : (
+                      <div className="focus-terminal-empty">暂无可监控会话</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -207,7 +509,7 @@ export function AgentFocusView({
                   key={session.id}
                   session={session}
                   onRename={onRename}
-                  onSwitchFocus={onSwitchFocus}
+                  onSwitchFocus={handleSidebarSwitchFocus}
                   useLightweightTerminalPreview={useLightweightTerminalPreview}
                 />
               ))}

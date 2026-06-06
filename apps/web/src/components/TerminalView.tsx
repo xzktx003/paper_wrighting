@@ -14,11 +14,13 @@ import {
   shouldPromoteExternalFocusToUserIntent,
   shouldRepairPassiveTerminalFocus,
 } from "../lib/terminal-focus";
+import { shouldAttemptTerminalInputForward } from "../lib/terminal-input-forwarding";
 import { stripTerminalResponsePayload } from "../lib/terminal-input";
 
 interface TerminalViewProps {
   agentSessionId: string;
   interactive?: boolean;
+  inputEnabled?: boolean;
   suspended?: boolean;
 }
 
@@ -60,14 +62,31 @@ const terminalInputOwners = new Map<string, TerminalInputOwner>();
 export function TerminalView({
   agentSessionId,
   interactive = true,
+  inputEnabled: inputEnabledProp,
   suspended = false,
 }: TerminalViewProps) {
+  const inputEnabled = inputEnabledProp ?? interactive;
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const pendingResizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const inputEnabledRef = useRef(inputEnabled);
+  const terminalInputReadyRef = useRef(false);
+
+  useEffect(() => {
+    inputEnabledRef.current = inputEnabled;
+    const term = termRef.current;
+    if (!term) {
+      return;
+    }
+
+    term.options.cursorBlink = inputEnabled;
+    term.options.disableStdin = !(
+      inputEnabled && terminalInputReadyRef.current
+    );
+  }, [inputEnabled]);
 
   useEffect(() => {
     if (suspended) {
@@ -80,12 +99,14 @@ export function TerminalView({
       : (stageRef.current as HTMLDivElement | null);
     if (!container || !stage) return;
 
+    terminalInputReadyRef.current = false;
+
     const timeoutIds: number[] = [];
     const intervalIds: number[] = [];
     const animationFrameIds: number[] = [];
     const isPreview = !interactive;
     const ownerToken = Symbol(agentSessionId);
-    const ownerPriority = interactive ? 2 : 1;
+    const ownerPriority = 2;
     let handleMouseDownCapture: (() => void) | null = null;
     let handlePointerDownCapture: (() => void) | null = null;
     let handleTerminalFocusIn: ((event: FocusEvent) => void) | null = null;
@@ -106,6 +127,10 @@ export function TerminalView({
     let lastTerminalIntentAt = 0;
 
     const ensureInputOwner = () => {
+      if (!inputEnabledRef.current) {
+        return false;
+      }
+
       const currentOwner = terminalInputOwners.get(agentSessionId);
       if (
         !currentOwner ||
@@ -122,7 +147,9 @@ export function TerminalView({
       return false;
     };
 
-    ensureInputOwner();
+    if (inputEnabledRef.current) {
+      ensureInputOwner();
+    }
 
     const cachePreviewGeometry = (cols: number, rows: number) => {
       if (isPreview) {
@@ -164,7 +191,7 @@ export function TerminalView({
     };
 
     const term = new Terminal({
-      cursorBlink: interactive,
+      cursorBlink: inputEnabledRef.current,
       fontSize: 14,
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", monospace',
       theme: {
@@ -326,7 +353,7 @@ export function TerminalView({
     };
 
     const focusInteractiveTerminal = (unlockInput = false) => {
-      if (!interactive) {
+      if (!interactive || !inputEnabledRef.current) {
         return;
       }
 
@@ -349,7 +376,7 @@ export function TerminalView({
     };
 
     const scheduleFocusInteractiveTerminal = (unlockInput = false) => {
-      if (!interactive) {
+      if (!interactive || !inputEnabledRef.current) {
         return;
       }
 
@@ -398,7 +425,7 @@ export function TerminalView({
     };
 
     const syncTerminalFocusReport = () => {
-      if (!interactive) {
+      if (!interactive || !inputEnabledRef.current) {
         return;
       }
 
@@ -565,9 +592,12 @@ export function TerminalView({
       }
 
       replayComplete = true;
-      term.options.disableStdin = false;
-      scheduleFocusInteractiveTerminal();
-      scheduleTerminalFocusReport();
+      terminalInputReadyRef.current = true;
+      term.options.disableStdin = !inputEnabledRef.current;
+      if (inputEnabledRef.current) {
+        scheduleFocusInteractiveTerminal();
+        scheduleTerminalFocusReport();
+      }
     };
 
     const handleTerminalFrame = (payload: string) => {
@@ -601,22 +631,36 @@ export function TerminalView({
 
     term.onData((data) => {
       const sanitized = stripTerminalResponsePayload(data);
-      if (!sanitized) {
+      const socketOpen = ws?.readyState === WebSocket.OPEN;
+      if (
+        !shouldAttemptTerminalInputForward({
+          inputEnabled: inputEnabledRef.current,
+          sanitizedPayload: sanitized,
+          socketOpen,
+        })
+      ) {
         return;
       }
 
-      if (ws?.readyState === WebSocket.OPEN && ensureInputOwner()) {
+      if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
         ws.send(sanitized);
       }
     });
 
     term.onBinary((data) => {
       const sanitized = stripTerminalResponsePayload(data);
-      if (!sanitized) {
+      const socketOpen = ws?.readyState === WebSocket.OPEN;
+      if (
+        !shouldAttemptTerminalInputForward({
+          inputEnabled: inputEnabledRef.current,
+          sanitizedPayload: sanitized,
+          socketOpen,
+        })
+      ) {
         return;
       }
 
-      if (ws?.readyState === WebSocket.OPEN && ensureInputOwner()) {
+      if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
         ws.send(
           JSON.stringify({
             type: "binary",
@@ -628,6 +672,10 @@ export function TerminalView({
 
     if (interactive) {
       const repairPassiveFocusDrift = () => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         const helperTextarea = getHelperTextarea();
         if (
           !shouldRepairPassiveTerminalFocus({
@@ -647,6 +695,10 @@ export function TerminalView({
       };
 
       handleTerminalFocusIn = (event) => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         const target = event.target as HTMLElement | null;
         if (!target?.classList.contains("xterm-helper-textarea")) {
           return;
@@ -657,23 +709,37 @@ export function TerminalView({
       };
 
       term.attachCustomWheelEventHandler((event) => {
-        rememberTerminalIntent();
-        focusInteractiveTerminal(true);
-        event.stopPropagation();
+        if (inputEnabledRef.current) {
+          rememberTerminalIntent();
+          focusInteractiveTerminal(true);
+          event.stopPropagation();
+        }
         return true;
       });
 
       handlePointerDownCapture = () => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         rememberTerminalIntent();
         focusInteractiveTerminal(true);
       };
 
       handleMouseDownCapture = () => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         rememberTerminalIntent();
         focusInteractiveTerminal(true);
       };
 
       handleTerminalFocusOut = (event) => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         const target = event.target as HTMLElement | null;
         if (!target?.classList.contains("xterm-helper-textarea")) {
           return;
@@ -709,11 +775,19 @@ export function TerminalView({
       };
 
       handleWindowFocus = () => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         scheduleFocusInteractiveTerminal();
         scheduleTerminalFocusReport();
       };
 
       handleWindowBlur = () => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         rememberActiveExternalFocusIfUserDriven();
 
         timeoutIds.push(
@@ -726,14 +800,26 @@ export function TerminalView({
       };
 
       handleDocumentPointerDownCapture = (event) => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         rememberExternalPointerIntent(event.target);
       };
 
       handleDocumentFocusInCapture = (event) => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         rememberExternalFocusIfUserDriven(event.target);
       };
 
       handleDocumentKeyDownCapture = (event) => {
+        if (!inputEnabledRef.current) {
+          return;
+        }
+
         const target = event.target as HTMLElement | null;
         if (
           target &&
@@ -872,13 +958,14 @@ export function TerminalView({
       wsRef.current = null;
       fitRef.current = null;
       pendingResizeRef.current = null;
+      terminalInputReadyRef.current = false;
     };
   }, [agentSessionId, interactive, suspended]);
 
   return (
     <div
       ref={containerRef}
-      className={`terminal-view ${interactive ? "terminal-view-live" : "terminal-view-preview"}`}
+      className={`terminal-view ${interactive ? "terminal-view-live" : "terminal-view-preview"} ${inputEnabled ? "terminal-view-input-active" : "terminal-view-input-monitor"}`}
       style={{
         width: "100%",
         height: "100%",

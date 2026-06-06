@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { stripTerminalResponsePayload } from "./terminal-input.js";
+import {
+  isTerminalProtocolResponsePayload,
+  stripTerminalResponsePayload,
+} from "./terminal-input.js";
 
 describe("stripTerminalResponsePayload", () => {
   it("forwards device-attribute responses so TUIs (e.g. Copilot CLI) finish their capability handshake", () => {
@@ -79,5 +82,13 @@ describe("stripTerminalResponsePayload", () => {
       stripTerminalResponsePayload("\u001b]4;0;rgb:bad/value\u001b\\"),
       "\u001b]4;0;rgb:bad/value\u001b\\",
     );
+  });
+
+  it("identifies terminal protocol replies that may pass through monitor-only panes", () => {
+    assert.equal(isTerminalProtocolResponsePayload("\u001b[?1;2c"), true);
+    assert.equal(isTerminalProtocolResponsePayload("\u001b[0n"), true);
+    assert.equal(isTerminalProtocolResponsePayload("\u001b[12;42R"), true);
+    assert.equal(isTerminalProtocolResponsePayload("\u001b[A"), false);
+    assert.equal(isTerminalProtocolResponsePayload("whoami"), false);
   });
 });

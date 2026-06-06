@@ -30,6 +30,8 @@ function makeSnapshot(
       liveTerminalViewCount: 1,
       previewTerminalViewCount: 0,
       lightweightPreviewCount: 4,
+      monitorTerminalPaneCount: 0,
+      activeInputTerminalPaneCount: 0,
       vscodeIframeCount: 0,
     },
     agentSessionSocket: {
@@ -124,6 +126,8 @@ describe("resource diagnostics", () => {
         ".terminal-view": 2,
         ".terminal-view-live": 1,
         ".terminal-view-preview": 1,
+        ".focus-terminal-pane[data-terminal-pane-session]": 2,
+        '[data-active-terminal-pane="true"][data-terminal-pane-session]': 1,
         ".vscode-drawer-frame": 1,
         ".xterm": 2,
       }),
@@ -140,6 +144,8 @@ describe("resource diagnostics", () => {
     assert.deepEqual(snapshot.dom, {
       lightweightPreviewCount: 5,
       liveTerminalViewCount: 1,
+      monitorTerminalPaneCount: 2,
+      activeInputTerminalPaneCount: 1,
       previewTerminalViewCount: 1,
       terminalViewCount: 2,
       vscodeIframeCount: 1,
@@ -159,6 +165,8 @@ describe("resource diagnostics", () => {
           liveTerminalViewCount: 1,
           previewTerminalViewCount: 7,
           lightweightPreviewCount: 0,
+          monitorTerminalPaneCount: 0,
+          activeInputTerminalPaneCount: 0,
           vscodeIframeCount: 0,
         },
         terminalSockets: {
@@ -213,6 +221,40 @@ describe("resource diagnostics", () => {
     );
   });
 
+  it("does not classify explicit multi-terminal monitoring as hidden full terminals", () => {
+    const findings = classifyResourcePressure({
+      snapshot: makeSnapshot({
+        dom: {
+          xtermCount: 4,
+          terminalViewCount: 4,
+          liveTerminalViewCount: 4,
+          previewTerminalViewCount: 0,
+          lightweightPreviewCount: 5,
+          monitorTerminalPaneCount: 4,
+          activeInputTerminalPaneCount: 1,
+          vscodeIframeCount: 0,
+        },
+        terminalSockets: {
+          connecting: 0,
+          open: 4,
+          total: 4,
+        },
+      }),
+      useLightweightTerminalPreview: true,
+    });
+
+    assert.equal(
+      findings.some((finding) =>
+        finding.includes("轻量预览下仍出现多个 xterm"),
+      ),
+      false,
+    );
+    assert.equal(
+      findings.some((finding) => finding.includes("多个终端 WebSocket")),
+      false,
+    );
+  });
+
   it("flags hidden full terminals even when lightweight preview is selected", () => {
     const findings = classifyResourcePressure({
       snapshot: makeSnapshot({
@@ -222,6 +264,8 @@ describe("resource diagnostics", () => {
           liveTerminalViewCount: 1,
           previewTerminalViewCount: 2,
           lightweightPreviewCount: 5,
+          monitorTerminalPaneCount: 0,
+          activeInputTerminalPaneCount: 0,
           vscodeIframeCount: 0,
         },
       }),

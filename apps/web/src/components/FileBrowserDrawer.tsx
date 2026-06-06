@@ -167,6 +167,7 @@ export function FileBrowserDrawer({
 }: FileBrowserDrawerProps) {
   const TREE_WIDTH_STORAGE_KEY = "file-browser-tree-width";
   const PREVIEW_HEIGHT_STORAGE_KEY = "file-browser-preview-height";
+  const TREE_COLLAPSED_STORAGE_KEY = "file-browser-tree-collapsed";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const treeResizeRef = useRef<{
@@ -215,6 +216,14 @@ export function FileBrowserDrawer({
       return 240;
     }
   });
+  const [treeCollapsed, setTreeCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(TREE_COLLAPSED_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [pathInputValue, setPathInputValue] = useState("");
 
   const {
     ready,
@@ -253,6 +262,10 @@ export function FileBrowserDrawer({
     scopeKey,
     defaultPath,
   });
+
+  useEffect(() => {
+    setPathInputValue(currentPath || "/");
+  }, [currentPath]);
 
   useEffect(() => {
     hostScopeRef.current =
@@ -299,6 +312,14 @@ export function FileBrowserDrawer({
       // ignore storage failures
     }
   }, [previewHeight]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TREE_COLLAPSED_STORAGE_KEY, String(treeCollapsed));
+    } catch {
+      // ignore storage failures
+    }
+  }, [treeCollapsed]);
 
   useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
@@ -645,44 +666,68 @@ export function FileBrowserDrawer({
         />
       </div>
 
-      <div className="file-browser-breadcrumbs">
-        {breadcrumbs.map((segment) => (
-          <button
-            key={segment.path}
-            className={`file-browser-breadcrumb${segment.path === currentPath ? " is-active" : ""}`}
-            onClick={() => navigate(segment.path)}
-            type="button"
-          >
-            {segment.label}
-          </button>
-        ))}
+      <div className="file-browser-path-bar">
+        <input
+          className="file-browser-path-input"
+          value={pathInputValue}
+          onChange={(event) => setPathInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              const trimmed = pathInputValue.trim();
+              if (trimmed) {
+                navigate(trimmed);
+              }
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              setPathInputValue(currentPath || "/");
+            }
+          }}
+          spellCheck={false}
+          type="text"
+        />
       </div>
 
       <div className="file-browser-body" ref={bodyLayoutRef}>
         <section
-          className="file-browser-tree"
-          style={{ width: `${treeWidth}px` }}
+          className={`file-browser-tree${treeCollapsed ? " file-browser-tree--collapsed" : ""}`}
+          style={{ width: treeCollapsed ? undefined : `${treeWidth}px` }}
         >
-          <div className="file-browser-pane-title">目录树</div>
-          <div
-            className="file-browser-tree-rows"
-            data-testid="file-browser-tree-rows"
-          >
+          <div className="file-browser-pane-title">
+            {!treeCollapsed && <span>目录树</span>}
             <button
-              className="file-browser-tree-node is-root"
-              onClick={() => navigate(currentPath)}
+              className="file-browser-tree-collapse-btn"
+              onClick={() => setTreeCollapsed((c) => !c)}
+              title={treeCollapsed ? "展开目录树" : "折叠目录树"}
               type="button"
             >
-              {selectedHost.type === "local" ? "🖥" : "🌐"}{" "}
-              {currentPath || "当前目录"}
+              {treeCollapsed ? "▶" : "◀"}
             </button>
-            {renderTree(currentPath)}
           </div>
+          {!treeCollapsed && (
+            <div
+              className="file-browser-tree-rows"
+              data-testid="file-browser-tree-rows"
+            >
+              <button
+                className="file-browser-tree-node is-root"
+                onClick={() => navigate(currentPath)}
+                type="button"
+              >
+                {selectedHost.type === "local" ? "🖥" : "🌐"}{" "}
+                {currentPath || "当前目录"}
+              </button>
+              {renderTree(currentPath)}
+            </div>
+          )}
         </section>
         <div
-          className="file-browser-tree-splitter"
+          className={`file-browser-tree-splitter${treeCollapsed ? " file-browser-tree-splitter--collapsed" : ""}`}
           data-testid="file-browser-tree-splitter"
           onMouseDown={(event) => {
+            if (treeCollapsed) {
+              return;
+            }
             treeResizeRef.current = {
               startX: event.clientX,
               startWidth: treeWidth,

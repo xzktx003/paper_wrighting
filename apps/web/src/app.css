@@ -1194,16 +1194,50 @@ input {
 .focus-main-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px 12px 0 0;
   background: rgba(14, 18, 23, 0.9);
+  transition: padding 0.2s ease;
+}
+
+.focus-main-header--collapsed {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 5px 10px;
+}
+
+.focus-header-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 234, 0.72);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.focus-header-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 152, 0, 0.4);
 }
 
 .focus-main-name {
+  max-width: 260px;
+  overflow: hidden;
   font-size: 15px;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .focus-rename-btn {
@@ -1218,6 +1252,55 @@ input {
 
 .focus-rename-btn:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.focus-layout-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.focus-layout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(244, 241, 234, 0.68);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.focus-layout-btn span {
+  min-width: 15px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  text-align: center;
+}
+
+.focus-layout-btn:hover,
+.focus-layout-btn--active {
+  border-color: rgba(255, 152, 0, 0.35);
+  background: rgba(255, 152, 0, 0.12);
+  color: #ffe0ad;
+}
+
+.focus-input-policy {
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 152, 0, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 152, 0, 0.08);
+  color: rgba(255, 224, 173, 0.82);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .focus-exit-btn {
@@ -1247,10 +1330,143 @@ input {
 
 .focus-main-terminal {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-top: none;
   border-radius: 0 0 12px 12px;
+  background: rgba(4, 7, 11, 0.72);
   overflow: hidden;
+}
+
+.focus-terminal-layout {
+  flex: 1;
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.focus-terminal-layout--single {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.focus-terminal-layout--dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.focus-terminal-layout--quad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.focus-terminal-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(14, 18, 23, 0.86);
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.focus-terminal-pane--active {
+  border-color: rgba(255, 152, 0, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 152, 0, 0.18);
+}
+
+.focus-terminal-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.focus-terminal-pane-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 241, 234, 0.76);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.focus-terminal-session-select {
+  min-width: 0;
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(4, 7, 11, 0.72);
+  color: rgba(244, 241, 234, 0.88);
+  font-size: 12px;
+}
+
+.focus-terminal-input-btn {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(244, 241, 234, 0.72);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.focus-terminal-input-btn:not(:disabled):hover {
+  border-color: rgba(255, 152, 0, 0.45);
+  background: rgba(255, 152, 0, 0.12);
+  color: #ffe0ad;
+}
+
+.focus-terminal-input-btn--active,
+.focus-terminal-input-btn:disabled.focus-terminal-input-btn--active {
+  border-color: rgba(255, 152, 0, 0.42);
+  background: rgba(255, 152, 0, 0.16);
+  color: #ffd28a;
+  cursor: default;
+}
+
+.focus-terminal-pane-terminal {
+  flex: 1;
+  min-height: 0;
+  background: #0e1217;
+  overflow: hidden;
+}
+
+.focus-terminal-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(244, 241, 234, 0.48);
+  font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .focus-terminal-layout--dual,
+  .focus-terminal-layout--quad {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .focus-terminal-layout--quad {
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .focus-sidebar-toggle {
@@ -2193,6 +2409,7 @@ input {
   background: rgba(246, 178, 107, 0.08);
   color: #ffd8af;
   cursor: pointer;
+  font-size: 12px;
 }
 
 .file-browser-pill:disabled {
@@ -2230,24 +2447,26 @@ input {
   color: inherit;
 }
 
-.file-browser-breadcrumbs {
+.file-browser-path-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
 }
 
-.file-browser-breadcrumb {
-  padding: 4px 8px;
-  border: none;
+.file-browser-path-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(244, 241, 234, 0.72);
-  cursor: pointer;
+  background: rgba(4, 7, 11, 0.6);
+  color: rgba(244, 241, 234, 0.82);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
 }
 
-.file-browser-breadcrumb.is-active {
-  background: rgba(246, 178, 107, 0.18);
-  color: #ffe0bc;
+.file-browser-path-input:focus {
+  border-color: rgba(246, 178, 107, 0.4);
+  background: rgba(4, 7, 11, 0.8);
 }
 
 .file-browser-body {
@@ -2263,6 +2482,39 @@ input {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.file-browser-tree--collapsed {
+  min-width: unset;
+  width: 26px;
+  flex-shrink: 0;
+}
+
+.file-browser-tree--collapsed .file-browser-pane-title {
+  padding: 6px 2px;
+  justify-content: center;
+}
+
+.file-browser-tree-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 234, 0.72);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.file-browser-tree-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 152, 0, 0.4);
 }
 
 .file-browser-tree-splitter {
@@ -2281,6 +2533,16 @@ input {
 
 .file-browser-tree-splitter:hover {
   background: rgba(246, 178, 107, 0.24);
+}
+
+.file-browser-tree-splitter--collapsed {
+  width: 1px;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.file-browser-tree-splitter--collapsed:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .file-browser-tree-rows {

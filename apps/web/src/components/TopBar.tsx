@@ -346,6 +346,11 @@ export function TopBar({
                 {diagnosticsSnapshot.dom.liveTerminalViewCount} / 预览{" "}
                 {diagnosticsSnapshot.dom.previewTerminalViewCount}）
               </strong>
+              <span>监控窗格</span>
+              <strong>
+                {diagnosticsSnapshot.dom.monitorTerminalPaneCount}（输入{" "}
+                {diagnosticsSnapshot.dom.activeInputTerminalPaneCount}）
+              </strong>
               <span>轻量预览 DOM</span>
               <strong>{diagnosticsSnapshot.dom.lightweightPreviewCount}</strong>
               <span>终端 WebSocket</span>

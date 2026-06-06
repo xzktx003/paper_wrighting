@@ -22,9 +22,15 @@
 const FOCUS_REPORT_PATTERN = /\u001b\[[IO]/g;
 const OSC_COLOR_REPLY_PATTERN =
   /\u001b\](?:10|11);rgb:(?:[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}|[0-9a-fA-F]{4}\/[0-9a-fA-F]{4}\/[0-9a-fA-F]{4})(?:\u0007|\u001b\\)|\u001b\]4;\d+;rgb:(?:[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}|[0-9a-fA-F]{4}\/[0-9a-fA-F]{4}\/[0-9a-fA-F]{4})(?:\u0007|\u001b\\)/g;
+const TERMINAL_PROTOCOL_RESPONSE_PAYLOAD_PATTERN =
+  /^(?:\u001b\[(?:\?[\d;]*|>[\d;]*|[\d;]*)c|\u001b\[\??[\d;]+n|\u001b\[\d+;\d+R)+$/;
 
 export function stripTerminalResponsePayload(payload: string): string {
   return payload
     .replace(FOCUS_REPORT_PATTERN, "")
     .replace(OSC_COLOR_REPLY_PATTERN, "");
+}
+
+export function isTerminalProtocolResponsePayload(payload: string): boolean {
+  return TERMINAL_PROTOCOL_RESPONSE_PAYLOAD_PATTERN.test(payload);
 }

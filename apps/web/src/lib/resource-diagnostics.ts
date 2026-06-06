@@ -32,6 +32,8 @@ export interface ResourceDiagnosticsSnapshot {
     liveTerminalViewCount: number;
     previewTerminalViewCount: number;
     lightweightPreviewCount: number;
+    monitorTerminalPaneCount: number;
+    activeInputTerminalPaneCount: number;
     vscodeIframeCount: number;
   };
   agentSessionSocket: {
@@ -204,6 +206,14 @@ export function getResourceDiagnosticsSnapshot(
         ".terminal-view-preview",
       ),
       lightweightPreviewCount: countSelector(documentRef, ".terminal-preview"),
+      monitorTerminalPaneCount: countSelector(
+        documentRef,
+        ".focus-terminal-pane[data-terminal-pane-session]",
+      ),
+      activeInputTerminalPaneCount: countSelector(
+        documentRef,
+        '[data-active-terminal-pane="true"][data-terminal-pane-session]',
+      ),
       vscodeIframeCount: countSelector(documentRef, ".vscode-drawer-frame"),
     },
     agentSessionSocket: {
@@ -238,8 +248,15 @@ export function classifyResourcePressure({
   useLightweightTerminalPreview: boolean;
 }): string[] {
   const findings: string[] = [];
+  const intentionalLiveTerminalBudget = Math.max(
+    1,
+    snapshot.dom.monitorTerminalPaneCount,
+  );
 
-  if (!useLightweightTerminalPreview && snapshot.dom.xtermCount > 1) {
+  if (
+    !useLightweightTerminalPreview &&
+    snapshot.dom.xtermCount > intentionalLiveTerminalBudget
+  ) {
     findings.push(
       "完整预览正在挂载多个 xterm，这是无 VS Code 场景下内存增长的首要嫌疑。",
     );
@@ -251,7 +268,7 @@ export function classifyResourcePressure({
     );
   }
 
-  if (snapshot.terminalSockets.total > 1) {
+  if (snapshot.terminalSockets.total > intentionalLiveTerminalBudget) {
     findings.push(
       "同时存在多个终端 WebSocket，说明页面仍挂着多个完整终端实例。",
     );
@@ -266,18 +283,21 @@ export function classifyResourcePressure({
     );
   }
 
-  if (useLightweightTerminalPreview && snapshot.dom.xtermCount > 1) {
+  if (
+    useLightweightTerminalPreview &&
+    snapshot.dom.xtermCount > intentionalLiveTerminalBudget
+  ) {
     findings.push(
       "轻量预览下仍出现多个 xterm，需要检查是否有隐藏完整终端未释放。",
     );
   }
 
   if (
-    snapshot.dom.xtermCount <= 1 &&
+    snapshot.dom.xtermCount <= intentionalLiveTerminalBudget &&
     snapshot.agentSessionSocket.messagesPerSecond < 5 &&
     snapshot.terminalFrames.messagesPerSecond < 20 &&
     snapshot.terminalFrames.kilobytesPerSecond < 256 &&
-    snapshot.terminalSockets.total <= 1
+    snapshot.terminalSockets.total <= intentionalLiveTerminalBudget
   ) {
     findings.push(
       "当前指标未显示明显泄漏源；若 heap 继续增长，应优先抓取 Chrome Heap Snapshot 对比 retained objects。",
