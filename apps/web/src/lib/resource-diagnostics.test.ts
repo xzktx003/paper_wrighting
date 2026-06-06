@@ -5,6 +5,7 @@ import {
   classifyResourcePressure,
   getResourceDiagnosticsSnapshot,
   recordAgentSnapshotFrame,
+  recordMainThreadLongTask,
   recordTerminalFrame,
   registerTerminalWebSocket,
   resetResourceDiagnosticsForTest,
@@ -33,6 +34,8 @@ function makeSnapshot(
       monitorTerminalPaneCount: 0,
       activeInputTerminalPaneCount: 0,
       vscodeIframeCount: 0,
+      vscodeActiveIframeCount: 0,
+      vscodeHiddenIframeCount: 0,
     },
     agentSessionSocket: {
       messagesPerSecond: 0,
@@ -49,6 +52,14 @@ function makeSnapshot(
     terminalFrames: {
       messagesPerSecond: 0,
       kilobytesPerSecond: 0,
+    },
+    mainThread: {
+      blockedMillisecondsPerSecond: 0,
+      lastLongTaskMilliseconds: 0,
+      longTaskObserverSupported: false,
+      longTasksPerSecond: 0,
+      totalBlockedMilliseconds: 0,
+      totalLongTasks: 0,
     },
     memory: {},
     ...overrides,
@@ -129,6 +140,7 @@ describe("resource diagnostics", () => {
         ".focus-terminal-pane[data-terminal-pane-session]": 2,
         '[data-active-terminal-pane="true"][data-terminal-pane-session]': 1,
         ".vscode-drawer-frame": 1,
+        ".side-panel-view--active .vscode-drawer-frame": 1,
         ".xterm": 2,
       }),
       now: 1_000,
@@ -147,6 +159,8 @@ describe("resource diagnostics", () => {
       monitorTerminalPaneCount: 2,
       activeInputTerminalPaneCount: 1,
       previewTerminalViewCount: 1,
+      vscodeActiveIframeCount: 1,
+      vscodeHiddenIframeCount: 0,
       terminalViewCount: 2,
       vscodeIframeCount: 1,
       xtermCount: 2,
@@ -168,6 +182,8 @@ describe("resource diagnostics", () => {
           monitorTerminalPaneCount: 0,
           activeInputTerminalPaneCount: 0,
           vscodeIframeCount: 0,
+          vscodeActiveIframeCount: 0,
+          vscodeHiddenIframeCount: 0,
         },
         terminalSockets: {
           connecting: 0,
@@ -233,6 +249,8 @@ describe("resource diagnostics", () => {
           monitorTerminalPaneCount: 4,
           activeInputTerminalPaneCount: 1,
           vscodeIframeCount: 0,
+          vscodeActiveIframeCount: 0,
+          vscodeHiddenIframeCount: 0,
         },
         terminalSockets: {
           connecting: 0,
@@ -267,6 +285,8 @@ describe("resource diagnostics", () => {
           monitorTerminalPaneCount: 0,
           activeInputTerminalPaneCount: 0,
           vscodeIframeCount: 0,
+          vscodeActiveIframeCount: 0,
+          vscodeHiddenIframeCount: 0,
         },
       }),
       useLightweightTerminalPreview: true,
@@ -276,6 +296,116 @@ describe("resource diagnostics", () => {
       findings.some((finding) =>
         finding.includes("轻量预览下仍出现多个 xterm"),
       ),
+      true,
+    );
+  });
+
+  it("counts active and hidden vscode iframes separately", () => {
+    const snapshot = getResourceDiagnosticsSnapshot({
+      documentRef: makeDocument({
+        ".vscode-drawer-frame": 3,
+        ".side-panel-view--active .vscode-drawer-frame": 1,
+      }),
+      now: 1_000,
+    });
+
+    assert.equal(snapshot.dom.vscodeIframeCount, 3);
+    assert.equal(snapshot.dom.vscodeActiveIframeCount, 1);
+    assert.equal(snapshot.dom.vscodeHiddenIframeCount, 2);
+  });
+
+  it("records main-thread long tasks as browser jank pressure", () => {
+    recordMainThreadLongTask(120, 1_000);
+    recordMainThreadLongTask(80, 2_000);
+
+    const snapshot = getResourceDiagnosticsSnapshot({
+      documentRef: makeDocument({}),
+      now: 2_000,
+    });
+
+    assert.equal(snapshot.mainThread.totalLongTasks, 2);
+    assert.equal(snapshot.mainThread.totalBlockedMilliseconds, 200);
+    assert.equal(snapshot.mainThread.lastLongTaskMilliseconds, 80);
+    assert.equal(snapshot.mainThread.longTasksPerSecond, 0.4);
+    assert.equal(snapshot.mainThread.blockedMillisecondsPerSecond, 40);
+  });
+
+  it("classifies hidden vscode iframes and proxy websocket pressure", () => {
+    const findings = classifyResourcePressure({
+      snapshot: makeSnapshot({
+        dom: {
+          xtermCount: 1,
+          terminalViewCount: 1,
+          liveTerminalViewCount: 1,
+          previewTerminalViewCount: 0,
+          lightweightPreviewCount: 5,
+          monitorTerminalPaneCount: 0,
+          activeInputTerminalPaneCount: 0,
+          vscodeIframeCount: 3,
+          vscodeActiveIframeCount: 1,
+          vscodeHiddenIframeCount: 2,
+        },
+      }),
+      useLightweightTerminalPreview: true,
+      vscodeProxyDiagnostics: {
+        timestamp: new Date(1_000).toISOString(),
+        http: {
+          activeRequests: 0,
+          downloadKilobytesPerSecond: 0,
+          lastStatusCode: 200,
+          requestsPerSecond: 0,
+          totalDownloadKilobytes: 0,
+          totalRequests: 0,
+          totalUploadKilobytes: 0,
+          uploadKilobytesPerSecond: 0,
+        },
+        websocket: {
+          activeConnections: 1,
+          downloadKilobytesPerSecond: 300,
+          messagesPerSecond: 12,
+          totalDownloadKilobytes: 1000,
+          totalDownloadMessages: 10,
+          totalUploadKilobytes: 10,
+          totalUploadMessages: 5,
+          uploadKilobytesPerSecond: 20,
+        },
+      },
+    });
+
+    assert.equal(
+      findings.some((finding) => finding.includes("隐藏保活的 VS Code iframe")),
+      true,
+    );
+    assert.equal(
+      findings.some((finding) =>
+        finding.includes("VS Code 代理 WebSocket 吞吐偏高"),
+      ),
+      true,
+    );
+  });
+
+  it("asks for backend proxy diagnostics when vscode is open but proxy metrics are missing", () => {
+    const findings = classifyResourcePressure({
+      snapshot: makeSnapshot({
+        dom: {
+          xtermCount: 1,
+          terminalViewCount: 1,
+          liveTerminalViewCount: 1,
+          previewTerminalViewCount: 0,
+          lightweightPreviewCount: 5,
+          monitorTerminalPaneCount: 0,
+          activeInputTerminalPaneCount: 0,
+          vscodeIframeCount: 1,
+          vscodeActiveIframeCount: 1,
+          vscodeHiddenIframeCount: 0,
+        },
+      }),
+      useLightweightTerminalPreview: true,
+      vscodeProxyDiagnostics: null,
+    });
+
+    assert.equal(
+      findings.some((finding) => finding.includes("未拿到后端代理吞吐")),
       true,
     );
   });

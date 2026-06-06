@@ -27,6 +27,7 @@ import type {
   StdinAgentSessionInput,
   TmuxControlActionResponse,
   UpdateAgentSessionInput,
+  VsCodeWebProxyDiagnosticsResponse,
 } from "@agent-orchestrator/shared";
 
 import { recordAgentSnapshotFrame } from "./resource-diagnostics";
@@ -499,6 +500,12 @@ export function openVsCodeWeb(
   return request<OpenVsCodeWebResponse>(
     `/api/agent-sessions/${agentSessionId}/vscode-web`,
     { method: "POST" },
+  );
+}
+
+export function getVsCodeWebProxyDiagnostics(): Promise<VsCodeWebProxyDiagnosticsResponse> {
+  return request<VsCodeWebProxyDiagnosticsResponse>(
+    "/api/diagnostics/vscode-web-proxy",
   );
 }
 

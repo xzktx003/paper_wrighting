@@ -3,9 +3,12 @@ import { request as httpsRequest } from "node:https";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
+import type { VsCodeWebProxyDiagnosticsResponse } from "@agent-orchestrator/shared";
+
 import { resolveVsCodeWebRequestTarget } from "./vscode-web-request-target.js";
 
 const VSCODE_WEB_PROXY_PREFIX = "/vscode";
+const DIAGNOSTIC_RATE_WINDOW_MS = 5_000;
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -20,6 +23,204 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 interface VsCodeWebProxyManagerLike {
   getProxyTargetUrl(): string | null;
+}
+
+interface ProxyTrafficSample {
+  timestamp: number;
+  bytes: number;
+}
+
+const httpRequestSamples: ProxyTrafficSample[] = [];
+const httpUploadSamples: ProxyTrafficSample[] = [];
+const httpDownloadSamples: ProxyTrafficSample[] = [];
+const webSocketUploadSamples: ProxyTrafficSample[] = [];
+const webSocketDownloadSamples: ProxyTrafficSample[] = [];
+
+let activeHttpRequests = 0;
+let totalHttpRequests = 0;
+let totalHttpUploadBytes = 0;
+let totalHttpDownloadBytes = 0;
+let lastHttpStatusCode: number | null = null;
+let activeWebSocketConnections = 0;
+let totalWebSocketUploadMessages = 0;
+let totalWebSocketDownloadMessages = 0;
+let totalWebSocketUploadBytes = 0;
+let totalWebSocketDownloadBytes = 0;
+
+function trimProxySamples(
+  samples: ProxyTrafficSample[],
+  now = Date.now(),
+): void {
+  while (
+    samples.length > 0 &&
+    now - samples[0]!.timestamp > DIAGNOSTIC_RATE_WINDOW_MS
+  ) {
+    samples.shift();
+  }
+}
+
+function recordProxySample(
+  samples: ProxyTrafficSample[],
+  bytes: number,
+  now = Date.now(),
+): void {
+  samples.push({ timestamp: now, bytes });
+  trimProxySamples(samples, now);
+}
+
+function calculateProxyRate(
+  samples: ProxyTrafficSample[],
+  now = Date.now(),
+): { eventsPerSecond: number; kilobytesPerSecond: number } {
+  trimProxySamples(samples, now);
+  const totalBytes = samples.reduce((sum, sample) => sum + sample.bytes, 0);
+
+  return {
+    eventsPerSecond: samples.length / (DIAGNOSTIC_RATE_WINDOW_MS / 1000),
+    kilobytesPerSecond: totalBytes / 1024 / (DIAGNOSTIC_RATE_WINDOW_MS / 1000),
+  };
+}
+
+function toKilobytes(bytes: number): number {
+  return bytes / 1024;
+}
+
+function beginVsCodeProxyHttpRequest(): (statusCode: number | null) => void {
+  let finished = false;
+  activeHttpRequests += 1;
+  totalHttpRequests += 1;
+  recordProxySample(httpRequestSamples, 0);
+
+  return (statusCode: number | null) => {
+    if (finished) {
+      return;
+    }
+
+    finished = true;
+    activeHttpRequests = Math.max(0, activeHttpRequests - 1);
+    lastHttpStatusCode = statusCode;
+  };
+}
+
+function recordVsCodeProxyHttpUpload(bytes: number): void {
+  if (bytes <= 0) {
+    return;
+  }
+
+  totalHttpUploadBytes += bytes;
+  recordProxySample(httpUploadSamples, bytes);
+}
+
+function recordVsCodeProxyHttpDownload(bytes: number): void {
+  if (bytes <= 0) {
+    return;
+  }
+
+  totalHttpDownloadBytes += bytes;
+  recordProxySample(httpDownloadSamples, bytes);
+}
+
+function beginVsCodeProxyWebSocket(): () => void {
+  let closed = false;
+  activeWebSocketConnections += 1;
+
+  return () => {
+    if (closed) {
+      return;
+    }
+
+    closed = true;
+    activeWebSocketConnections = Math.max(0, activeWebSocketConnections - 1);
+  };
+}
+
+function recordVsCodeProxyWebSocketUpload(bytes: number): void {
+  totalWebSocketUploadMessages += 1;
+  totalWebSocketUploadBytes += bytes;
+  recordProxySample(webSocketUploadSamples, bytes);
+}
+
+function recordVsCodeProxyWebSocketDownload(bytes: number): void {
+  totalWebSocketDownloadMessages += 1;
+  totalWebSocketDownloadBytes += bytes;
+  recordProxySample(webSocketDownloadSamples, bytes);
+}
+
+function proxyDataByteLength(data: unknown): number {
+  if (typeof data === "string") {
+    return Buffer.byteLength(data);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength;
+  }
+
+  if (data instanceof Blob) {
+    return data.size;
+  }
+
+  return 0;
+}
+
+export function getVsCodeWebProxyDiagnosticsSnapshot(
+  now = Date.now(),
+): VsCodeWebProxyDiagnosticsResponse {
+  const httpRequestRate = calculateProxyRate(httpRequestSamples, now);
+  const httpUploadRate = calculateProxyRate(httpUploadSamples, now);
+  const httpDownloadRate = calculateProxyRate(httpDownloadSamples, now);
+  const webSocketUploadRate = calculateProxyRate(webSocketUploadSamples, now);
+  const webSocketDownloadRate = calculateProxyRate(
+    webSocketDownloadSamples,
+    now,
+  );
+
+  return {
+    timestamp: new Date(now).toISOString(),
+    http: {
+      activeRequests: activeHttpRequests,
+      downloadKilobytesPerSecond: httpDownloadRate.kilobytesPerSecond,
+      lastStatusCode: lastHttpStatusCode,
+      requestsPerSecond: httpRequestRate.eventsPerSecond,
+      totalDownloadKilobytes: toKilobytes(totalHttpDownloadBytes),
+      totalRequests: totalHttpRequests,
+      totalUploadKilobytes: toKilobytes(totalHttpUploadBytes),
+      uploadKilobytesPerSecond: httpUploadRate.kilobytesPerSecond,
+    },
+    websocket: {
+      activeConnections: activeWebSocketConnections,
+      downloadKilobytesPerSecond: webSocketDownloadRate.kilobytesPerSecond,
+      messagesPerSecond:
+        webSocketUploadRate.eventsPerSecond +
+        webSocketDownloadRate.eventsPerSecond,
+      totalDownloadKilobytes: toKilobytes(totalWebSocketDownloadBytes),
+      totalDownloadMessages: totalWebSocketDownloadMessages,
+      totalUploadKilobytes: toKilobytes(totalWebSocketUploadBytes),
+      totalUploadMessages: totalWebSocketUploadMessages,
+      uploadKilobytesPerSecond: webSocketUploadRate.kilobytesPerSecond,
+    },
+  };
+}
+
+export function resetVsCodeWebProxyDiagnosticsForTest(): void {
+  httpRequestSamples.length = 0;
+  httpUploadSamples.length = 0;
+  httpDownloadSamples.length = 0;
+  webSocketUploadSamples.length = 0;
+  webSocketDownloadSamples.length = 0;
+  activeHttpRequests = 0;
+  totalHttpRequests = 0;
+  totalHttpUploadBytes = 0;
+  totalHttpDownloadBytes = 0;
+  lastHttpStatusCode = null;
+  activeWebSocketConnections = 0;
+  totalWebSocketUploadMessages = 0;
+  totalWebSocketDownloadMessages = 0;
+  totalWebSocketUploadBytes = 0;
+  totalWebSocketDownloadBytes = 0;
 }
 
 function firstHeaderValue(
@@ -200,6 +401,7 @@ async function proxyHttpRequest(
     `${targetBaseUrl.origin}/`,
   );
   const serializedBody = serializeProxyBody(request.body);
+  const finishDiagnostics = beginVsCodeProxyHttpRequest();
   reply.hijack();
   const proxyRequest = (
     targetUrl.protocol === "https:" ? httpsRequest : httpRequest
@@ -210,7 +412,8 @@ async function proxyHttpRequest(
       method: request.method,
     },
     (proxyResponse) => {
-      reply.raw.statusCode = proxyResponse.statusCode ?? 502;
+      const statusCode = proxyResponse.statusCode ?? 502;
+      reply.raw.statusCode = statusCode;
 
       for (const [name, value] of Object.entries(proxyResponse.headers)) {
         if (value === undefined || HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
@@ -220,19 +423,33 @@ async function proxyHttpRequest(
         reply.raw.setHeader(name, value);
       }
 
+      proxyResponse.on("data", (chunk: Buffer) => {
+        recordVsCodeProxyHttpDownload(chunk.byteLength);
+      });
+      proxyResponse.on("end", () => {
+        finishDiagnostics(statusCode);
+      });
+      proxyResponse.on("close", () => {
+        finishDiagnostics(statusCode);
+      });
       proxyResponse.pipe(reply.raw);
     },
   );
 
   proxyRequest.on("error", (error) => {
+    finishDiagnostics(502);
     writeProxyError(reply.raw, 502, `VS Code Web 代理失败: ${error.message}`);
   });
 
   if (serializedBody) {
+    recordVsCodeProxyHttpUpload(serializedBody.byteLength);
     proxyRequest.end(serializedBody);
     return;
   }
 
+  request.raw.on("data", (chunk: Buffer) => {
+    recordVsCodeProxyHttpUpload(chunk.byteLength);
+  });
   request.raw.pipe(proxyRequest);
 }
 
@@ -251,6 +468,7 @@ function proxyWebSocketConnection(
     return;
   }
 
+  const finishDiagnostics = beginVsCodeProxyWebSocket();
   const targetProtocol = targetBaseUrl.protocol === "https:" ? "wss:" : "ws:";
   const upstream = new WebSocket(
     `${targetProtocol}//${targetBaseUrl.host}${rewriteProxyPath(
@@ -264,10 +482,12 @@ function proxyWebSocketConnection(
       return;
     }
 
+    recordVsCodeProxyWebSocketUpload(data.byteLength);
     upstream.send(isBinary ? data : data.toString("utf8"));
   });
 
   clientSocket.on("close", () => {
+    finishDiagnostics();
     if (
       upstream.readyState === WebSocket.OPEN ||
       upstream.readyState === WebSocket.CONNECTING
@@ -277,6 +497,7 @@ function proxyWebSocketConnection(
   });
 
   clientSocket.on("error", () => {
+    finishDiagnostics();
     if (
       upstream.readyState === WebSocket.OPEN ||
       upstream.readyState === WebSocket.CONNECTING
@@ -286,12 +507,15 @@ function proxyWebSocketConnection(
   });
 
   upstream.addEventListener("message", (event) => {
+    recordVsCodeProxyWebSocketDownload(proxyDataByteLength(event.data));
     void forwardUpstreamMessage(clientSocket, event.data);
   });
   upstream.addEventListener("close", () => {
+    finishDiagnostics();
     clientSocket.close();
   });
   upstream.addEventListener("error", () => {
+    finishDiagnostics();
     clientSocket.close(1011, Buffer.from("VS Code Web upstream failed"));
   });
 }
@@ -304,6 +528,9 @@ export async function registerVsCodeWebProxyRoutes(
   const proxyHandler = async (request: FastifyRequest, reply: FastifyReply) =>
     proxyHttpRequest(request, reply, vsCodeWebManager);
 
+  fastify.get("/api/diagnostics/vscode-web-proxy", async () =>
+    getVsCodeWebProxyDiagnosticsSnapshot(),
+  );
   fastify.route({
     handler: proxyHandler,
     method: ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"],

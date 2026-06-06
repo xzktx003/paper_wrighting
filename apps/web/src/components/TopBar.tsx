@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AgentSessionRecord,
   SshHostPreset,
+  VsCodeWebProxyDiagnosticsResponse,
 } from "@agent-orchestrator/shared";
 
+import { getVsCodeWebProxyDiagnostics } from "../lib/api";
 import { getQuickTmuxShortcutLabel } from "../lib/platform-compat";
 import {
   classifyResourcePressure,
@@ -57,6 +59,59 @@ function getHeapSummary(snapshot: ResourceDiagnosticsSnapshot): string {
     .join(" / ");
 }
 
+function getMainThreadSummary(snapshot: ResourceDiagnosticsSnapshot): string {
+  const { mainThread } = snapshot;
+
+  if (
+    !mainThread.longTaskObserverSupported &&
+    mainThread.totalLongTasks === 0
+  ) {
+    return "浏览器未暴露";
+  }
+
+  return [
+    `${mainThread.longTasksPerSecond.toFixed(2)} task/s`,
+    `${mainThread.blockedMillisecondsPerSecond.toFixed(1)} ms/s`,
+    `累计 ${mainThread.totalLongTasks}`,
+    `最近 ${mainThread.lastLongTaskMilliseconds.toFixed(0)} ms`,
+  ].join(" / ");
+}
+
+function getVsCodeProxyHttpSummary(
+  diagnostics: VsCodeWebProxyDiagnosticsResponse | null,
+): string {
+  if (!diagnostics) {
+    return "后端未返回";
+  }
+
+  return [
+    `${diagnostics.http.requestsPerSecond.toFixed(2)} req/s`,
+    `↑ ${formatKilobytesPerSecond(diagnostics.http.uploadKilobytesPerSecond)}`,
+    `↓ ${formatKilobytesPerSecond(diagnostics.http.downloadKilobytesPerSecond)}`,
+    `active ${diagnostics.http.activeRequests}`,
+    diagnostics.http.lastStatusCode === null
+      ? null
+      : `last ${diagnostics.http.lastStatusCode}`,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function getVsCodeProxyWebSocketSummary(
+  diagnostics: VsCodeWebProxyDiagnosticsResponse | null,
+): string {
+  if (!diagnostics) {
+    return "后端未返回";
+  }
+
+  return [
+    `${diagnostics.websocket.messagesPerSecond.toFixed(2)} msg/s`,
+    `↑ ${formatKilobytesPerSecond(diagnostics.websocket.uploadKilobytesPerSecond)}`,
+    `↓ ${formatKilobytesPerSecond(diagnostics.websocket.downloadKilobytesPerSecond)}`,
+    `active ${diagnostics.websocket.activeConnections}`,
+  ].join(" / ");
+}
+
 interface TopBarProps {
   sessions: AgentSessionRecord[];
   collapsed: boolean;
@@ -107,6 +162,8 @@ export function TopBar({
     useState<ResourceDiagnosticsSnapshot>(() =>
       getResourceDiagnosticsSnapshot(),
     );
+  const [vscodeProxyDiagnostics, setVsCodeProxyDiagnostics] =
+    useState<VsCodeWebProxyDiagnosticsResponse | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(
     Boolean(document.fullscreenElement),
   );
@@ -135,6 +192,7 @@ export function TopBar({
   const resourceFindings = classifyResourcePressure({
     snapshot: diagnosticsSnapshot,
     useLightweightTerminalPreview,
+    vscodeProxyDiagnostics,
   });
 
   useEffect(() => {
@@ -174,8 +232,20 @@ export function TopBar({
       return;
     }
 
+    let cancelled = false;
     const refreshDiagnostics = () => {
       setDiagnosticsSnapshot(getResourceDiagnosticsSnapshot());
+      void getVsCodeWebProxyDiagnostics()
+        .then((diagnostics) => {
+          if (!cancelled) {
+            setVsCodeProxyDiagnostics(diagnostics);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setVsCodeProxyDiagnostics(null);
+          }
+        });
     };
 
     refreshDiagnostics();
@@ -185,6 +255,7 @@ export function TopBar({
     );
 
     return () => {
+      cancelled = true;
       window.clearInterval(intervalId);
     };
   }, [showDiagnostics]);
@@ -391,7 +462,21 @@ export function TopBar({
                 )}
               </strong>
               <span>VS Code iframe</span>
-              <strong>{diagnosticsSnapshot.dom.vscodeIframeCount}</strong>
+              <strong>
+                {diagnosticsSnapshot.dom.vscodeIframeCount}（当前{" "}
+                {diagnosticsSnapshot.dom.vscodeActiveIframeCount} / 隐藏{" "}
+                {diagnosticsSnapshot.dom.vscodeHiddenIframeCount}）
+              </strong>
+              <span>主线程长任务</span>
+              <strong>{getMainThreadSummary(diagnosticsSnapshot)}</strong>
+              <span>VS Code代理 HTTP</span>
+              <strong>
+                {getVsCodeProxyHttpSummary(vscodeProxyDiagnostics)}
+              </strong>
+              <span>VS Code代理 WS</span>
+              <strong>
+                {getVsCodeProxyWebSocketSummary(vscodeProxyDiagnostics)}
+              </strong>
               <span>JS heap</span>
               <strong>{getHeapSummary(diagnosticsSnapshot)}</strong>
             </div>

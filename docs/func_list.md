@@ -18,7 +18,7 @@
 - 顶栏提供文件浏览器、VS Code Web、新建会话、扫描 tmux、扫描会话、操作提示、资源诊断和菜单栏折叠入口。
 - 菜单栏折叠状态持久化到本地存储。
 - 顶栏提供终端预览模式切换按钮，可在默认轻量预览和旧版完整小终端预览之间切换。
-- 顶栏提供资源诊断面板，按需展示 xterm 实例数、终端 WebSocket 数、会话快照吞吐、终端实时流吞吐、VS Code iframe 数和 Chromium JS heap 指标，用于定位浏览器内存与网络增长来源。
+- 顶栏提供资源诊断面板，按需展示 xterm 实例数、终端 WebSocket 数、会话快照吞吐、终端实时流吞吐、VS Code iframe 当前/隐藏数量、主线程长任务、VS Code 代理 HTTP/WS 吞吐和 Chromium JS heap 指标，用于定位浏览器内存、网络增长与 VS Code iframe 卡顿来源。
 - 提供 `Ctrl/⌘+E` 快速连接 tmux、`Ctrl/⌘+Shift+S` 打开 tmux 扫描等快捷操作。
 
 ## 3. 新建会话

@@ -250,6 +250,30 @@ export interface OpenVsCodeWebResponse {
   workingDirectory: string;
 }
 
+export interface VsCodeWebProxyDiagnosticsResponse {
+  timestamp: string;
+  http: {
+    activeRequests: number;
+    requestsPerSecond: number;
+    uploadKilobytesPerSecond: number;
+    downloadKilobytesPerSecond: number;
+    totalRequests: number;
+    totalUploadKilobytes: number;
+    totalDownloadKilobytes: number;
+    lastStatusCode: number | null;
+  };
+  websocket: {
+    activeConnections: number;
+    messagesPerSecond: number;
+    uploadKilobytesPerSecond: number;
+    downloadKilobytesPerSecond: number;
+    totalUploadMessages: number;
+    totalDownloadMessages: number;
+    totalUploadKilobytes: number;
+    totalDownloadKilobytes: number;
+  };
+}
+
 export type FileEntryType = "file" | "directory" | "symlink";
 
 export interface FileEntry {

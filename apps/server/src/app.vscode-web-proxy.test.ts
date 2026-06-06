@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 
 import { buildServer } from "./app.js";
+import { resetVsCodeWebProxyDiagnosticsForTest } from "./routes/vscode-web-proxy.js";
 
 function listen(server: ReturnType<typeof createServer>): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -143,7 +144,62 @@ test("GET /vscode returns 503 when no active VS Code Web target exists", async (
   }
 });
 
+test("GET /api/diagnostics/vscode-web-proxy reports proxied HTTP traffic", async () => {
+  resetVsCodeWebProxyDiagnosticsForTest();
+
+  const upstream = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "text/plain; charset=utf-8");
+    response.end("proxied-diagnostics-ok");
+  });
+  const upstreamPort = await listen(upstream);
+
+  const { app } = buildServer({
+    vsCodeWebManager: {
+      dispose: async () => {},
+      getProxyTargetUrl: () => `http://127.0.0.1:${upstreamPort}`,
+    } as never,
+  });
+
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const proxiedResponse = await fetch(
+      `http://127.0.0.1:${address.port}/vscode/diagnostics.txt`,
+    );
+    assert.equal(proxiedResponse.status, 200);
+    assert.equal(await proxiedResponse.text(), "proxied-diagnostics-ok");
+
+    const diagnosticsResponse = await app.inject({
+      method: "GET",
+      url: "/api/diagnostics/vscode-web-proxy",
+    });
+    const diagnostics = JSON.parse(diagnosticsResponse.body);
+
+    assert.equal(diagnosticsResponse.statusCode, 200);
+    assert.equal(diagnostics.http.totalRequests, 1);
+    assert.equal(diagnostics.http.lastStatusCode, 200);
+    assert.ok(diagnostics.http.requestsPerSecond > 0);
+    assert.ok(diagnostics.http.totalDownloadKilobytes > 0);
+  } finally {
+    await app.close();
+    await new Promise<void>((resolve, reject) => {
+      upstream.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("/vscode proxies WebSocket upgrades to the active VS Code Web target", async () => {
+  resetVsCodeWebProxyDiagnosticsForTest();
+
   let receivedUpgradeUrl = "";
   const upstream = createServer();
   upstream.on("upgrade", (request, socket) => {
@@ -195,6 +251,17 @@ test("/vscode proxies WebSocket upgrades to the active VS Code Web target", asyn
 
     assert.equal(receivedMessage, "hello");
     assert.equal(receivedUpgradeUrl, "/socket?channel=1");
+
+    const diagnosticsResponse = await app.inject({
+      method: "GET",
+      url: "/api/diagnostics/vscode-web-proxy",
+    });
+    const diagnostics = JSON.parse(diagnosticsResponse.body);
+
+    assert.equal(diagnosticsResponse.statusCode, 200);
+    assert.equal(diagnostics.websocket.totalDownloadMessages, 1);
+    assert.ok(diagnostics.websocket.messagesPerSecond > 0);
+    assert.ok(diagnostics.websocket.totalDownloadKilobytes > 0);
   } finally {
     await app.close();
     await new Promise<void>((resolve, reject) => {
