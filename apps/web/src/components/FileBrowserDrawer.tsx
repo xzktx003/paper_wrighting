@@ -5,7 +5,7 @@ import type {
   FilePreviewResponse,
 } from "@agent-orchestrator/shared";
 
-import { listFiles, previewFile } from "../lib/api";
+import { previewFile } from "../lib/api";
 import { useFileBrowser } from "../lib/use-file-browser";
 
 import { HostDropdown, type SelectedHost } from "./HostDropdown";
@@ -24,10 +24,6 @@ interface FileBrowserDrawerProps {
   }>;
   selectedHost: SelectedHost;
   onSelectHost: (host: SelectedHost) => void;
-}
-
-interface TreeState {
-  [path: string]: FileEntry[];
 }
 
 interface ContextMenuState {
@@ -57,6 +53,8 @@ interface CreateEntryState {
   kind: CreateEntryKind;
   value: string;
 }
+
+type UploadChoiceKind = "file" | "folder";
 
 const DEFAULT_CREATE_ENTRY_NAMES: Record<CreateEntryKind, string> = {
   directory: "新建文件夹",
@@ -165,44 +163,22 @@ export function FileBrowserDrawer({
   selectedHost,
   onSelectHost,
 }: FileBrowserDrawerProps) {
-  const TREE_WIDTH_STORAGE_KEY = "file-browser-tree-width";
   const PREVIEW_HEIGHT_STORAGE_KEY = "file-browser-preview-height";
-  const TREE_COLLAPSED_STORAGE_KEY = "file-browser-tree-collapsed";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
-  const treeResizeRef = useRef<{
-    startX: number;
-    startWidth: number;
-  } | null>(null);
   const previewResizeRef = useRef<{
     startY: number;
     startHeight: number;
   } | null>(null);
-  const bodyLayoutRef = useRef<HTMLDivElement | null>(null);
   const previewLayoutRef = useRef<HTMLDivElement | null>(null);
-  const hostScopeRef = useRef("local");
-  const [directoryTree, setDirectoryTree] = useState<TreeState>({});
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renameState, setRenameState] = useState<RenameState | null>(null);
   const [createEntryState, setCreateEntryState] =
     useState<CreateEntryState | null>(null);
+  const [uploadChoiceOpen, setUploadChoiceOpen] = useState(false);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [chmodState, setChmodState] = useState<ChmodState | null>(null);
   const [dragDepth, setDragDepth] = useState(0);
-  const [treeWidth, setTreeWidth] = useState(() => {
-    try {
-      const raw = localStorage.getItem(TREE_WIDTH_STORAGE_KEY);
-      if (!raw) {
-        return 280;
-      }
-
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) ? parsed : 280;
-    } catch {
-      return 280;
-    }
-  });
   const [previewHeight, setPreviewHeight] = useState(() => {
     try {
       const raw = localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY);
@@ -214,13 +190,6 @@ export function FileBrowserDrawer({
       return Number.isFinite(parsed) ? parsed : 240;
     } catch {
       return 240;
-    }
-  });
-  const [treeCollapsed, setTreeCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(TREE_COLLAPSED_STORAGE_KEY) === "true";
-    } catch {
-      return false;
     }
   });
   const [pathInputValue, setPathInputValue] = useState("");
@@ -268,25 +237,8 @@ export function FileBrowserDrawer({
   }, [currentPath]);
 
   useEffect(() => {
-    hostScopeRef.current =
-      selectedHost.type === "ssh"
-        ? `ssh:${selectedHost.preset.host}:${selectedHost.preset.port}:${selectedHost.preset.identityFile ?? ""}`
-        : "local";
-    setDirectoryTree({});
-    setExpandedPaths(new Set());
     setContextMenu(null);
   }, [selectedHost]);
-
-  useEffect(() => {
-    if (!currentPath) {
-      return;
-    }
-
-    setDirectoryTree((current) => ({
-      ...current,
-      [currentPath]: entries.filter((entry) => entry.type === "directory"),
-    }));
-  }, [currentPath, entries]);
 
   useEffect(() => {
     function handleCloseContextMenu() {
@@ -299,14 +251,6 @@ export function FileBrowserDrawer({
 
   useEffect(() => {
     try {
-      localStorage.setItem(TREE_WIDTH_STORAGE_KEY, String(treeWidth));
-    } catch {
-      // ignore storage failures
-    }
-  }, [treeWidth]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(previewHeight));
     } catch {
       // ignore storage failures
@@ -314,21 +258,11 @@ export function FileBrowserDrawer({
   }, [previewHeight]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(TREE_COLLAPSED_STORAGE_KEY, String(treeCollapsed));
-    } catch {
-      // ignore storage failures
-    }
-  }, [treeCollapsed]);
-
-  useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
-      updateTreeWidth(event.clientX);
       updatePreviewHeight(event.clientY);
     }
 
     function handleMouseUp() {
-      treeResizeRef.current = null;
       previewResizeRef.current = null;
     }
 
@@ -356,42 +290,6 @@ export function FileBrowserDrawer({
       ? preview
       : null;
   const dragActive = dragDepth > 0;
-
-  async function loadTreeNode(pathValue: string) {
-    if (directoryTree[pathValue]) {
-      return;
-    }
-
-    const requestedScope = hostScopeRef.current;
-    const response = await listFiles({
-      path: pathValue,
-      sshTarget,
-      showHidden,
-    });
-
-    if (requestedScope !== hostScopeRef.current) {
-      return;
-    }
-
-    setDirectoryTree((current) => ({
-      ...current,
-      [pathValue]: response.entries.filter(
-        (entry) => entry.type === "directory",
-      ),
-    }));
-  }
-
-  function toggleExpanded(pathValue: string) {
-    setExpandedPaths((current) => {
-      const next = new Set(current);
-      if (next.has(pathValue)) {
-        next.delete(pathValue);
-      } else {
-        next.add(pathValue);
-      }
-      return next;
-    });
-  }
 
   async function handleOpenEditor(entry: FileEntry) {
     const filePreview =
@@ -421,34 +319,6 @@ export function FileBrowserDrawer({
     await deleteEntries(selectedPaths);
   }
 
-  function renderTree(pathValue: string, depth = 0) {
-    const children = directoryTree[pathValue] ?? [];
-    return children.map((entry) => {
-      const expanded = expandedPaths.has(entry.path);
-
-      return (
-        <div key={entry.path}>
-          <button
-            className={`file-browser-tree-node${currentPath === entry.path ? " is-active" : ""}`}
-            onClick={async () => {
-              await loadTreeNode(entry.path);
-              toggleExpanded(entry.path);
-              await navigate(entry.path);
-            }}
-            style={{ paddingLeft: `${12 + depth * 14}px` }}
-            type="button"
-          >
-            <span className="file-browser-tree-toggle">
-              {expanded ? "▾" : "▸"}
-            </span>
-            <span>📁 {entry.name}</span>
-          </button>
-          {expanded && renderTree(entry.path, depth + 1)}
-        </div>
-      );
-    });
-  }
-
   if (!open) {
     return null;
   }
@@ -467,22 +337,6 @@ export function FileBrowserDrawer({
       Math.max(160, resizeState.startHeight + delta),
     );
     setPreviewHeight(nextHeight);
-  }
-
-  function updateTreeWidth(clientX: number) {
-    const resizeState = treeResizeRef.current;
-    const layout = bodyLayoutRef.current;
-    if (!resizeState || !layout) {
-      return;
-    }
-
-    const delta = clientX - resizeState.startX;
-    const maxWidth = Math.max(190, layout.clientWidth - 280);
-    const nextWidth = Math.min(
-      maxWidth,
-      Math.max(190, resizeState.startWidth + delta),
-    );
-    setTreeWidth(nextWidth);
   }
 
   return (
@@ -621,18 +475,10 @@ export function FileBrowserDrawer({
         <button
           className="file-browser-pill"
           disabled={!ready}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => setUploadChoiceOpen(true)}
           type="button"
         >
-          上传文件
-        </button>
-        <button
-          className="file-browser-pill"
-          disabled={!ready}
-          onClick={() => folderInputRef.current?.click()}
-          type="button"
-        >
-          上传文件夹
+          上传
         </button>
         <button
           className="file-browser-pill"
@@ -688,55 +534,7 @@ export function FileBrowserDrawer({
         />
       </div>
 
-      <div className="file-browser-body" ref={bodyLayoutRef}>
-        <section
-          className={`file-browser-tree${treeCollapsed ? " file-browser-tree--collapsed" : ""}`}
-          style={{ width: treeCollapsed ? undefined : `${treeWidth}px` }}
-        >
-          <div className="file-browser-pane-title">
-            {!treeCollapsed && <span>目录树</span>}
-            <button
-              className="file-browser-tree-collapse-btn"
-              onClick={() => setTreeCollapsed((c) => !c)}
-              title={treeCollapsed ? "展开目录树" : "折叠目录树"}
-              type="button"
-            >
-              {treeCollapsed ? "▶" : "◀"}
-            </button>
-          </div>
-          {!treeCollapsed && (
-            <div
-              className="file-browser-tree-rows"
-              data-testid="file-browser-tree-rows"
-            >
-              <button
-                className="file-browser-tree-node is-root"
-                onClick={() => navigate(currentPath)}
-                type="button"
-              >
-                {selectedHost.type === "local" ? "🖥" : "🌐"}{" "}
-                {currentPath || "当前目录"}
-              </button>
-              {renderTree(currentPath)}
-            </div>
-          )}
-        </section>
-        <div
-          className={`file-browser-tree-splitter${treeCollapsed ? " file-browser-tree-splitter--collapsed" : ""}`}
-          data-testid="file-browser-tree-splitter"
-          onMouseDown={(event) => {
-            if (treeCollapsed) {
-              return;
-            }
-            treeResizeRef.current = {
-              startX: event.clientX,
-              startWidth: treeWidth,
-            };
-            event.preventDefault();
-          }}
-          role="separator"
-        />
-
+      <div className="file-browser-body">
         <section
           className="file-browser-content"
           ref={previewLayoutRef}
@@ -789,14 +587,26 @@ export function FileBrowserDrawer({
             )}
             {error && <div className="file-browser-error">{error}</div>}
             <div className="file-browser-table file-browser-table--header">
-              <button type="button" onClick={() => toggleSort("name")}>
-                名称{" "}
-                {sortKey === "name"
-                  ? sortDirection === "asc"
-                    ? "↑"
-                    : "↓"
-                  : ""}
-              </button>
+              <div className="file-browser-name-header">
+                <button type="button" onClick={() => toggleSort("name")}>
+                  名称
+                  {sortKey === "name" && (
+                    <span className="file-browser-sort-indicator">
+                      {sortDirection === "asc" ? "升序" : "降序"}
+                    </span>
+                  )}
+                </button>
+                <button
+                  aria-label="返回上一级目录"
+                  className="file-browser-up-one-level"
+                  disabled={!ready}
+                  onClick={goUp}
+                  title="返回上一级目录"
+                  type="button"
+                >
+                  ↑
+                </button>
+              </div>
               <button type="button" onClick={() => toggleSort("size")}>
                 大小{" "}
                 {sortKey === "size"
@@ -969,6 +779,29 @@ export function FileBrowserDrawer({
           className="file-browser-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {contextMenu.entry.type === "directory" && (
+            <button
+              onClick={() => {
+                const targetPath = contextMenu.entry.path;
+                setContextMenu(null);
+                navigate(targetPath).then(() => {
+                  setUploadChoiceOpen(true);
+                });
+              }}
+              type="button"
+            >
+              上传到此目录
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setContextMenu(null);
+              setUploadChoiceOpen(true);
+            }}
+            type="button"
+          >
+            上传到当前目录
+          </button>
           <button
             onClick={() => downloadEntries([contextMenu.entry.path])}
             type="button"
@@ -1111,6 +944,45 @@ export function FileBrowserDrawer({
                 type="button"
               >
                 创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uploadChoiceOpen && (
+        <div className="file-browser-modal">
+          <div className="file-browser-dialog">
+            <h3>上传</h3>
+            <div className="file-browser-dialog-kind-tabs">
+              <button
+                className="file-browser-pill"
+                onClick={() => {
+                  setUploadChoiceOpen(false);
+                  fileInputRef.current?.click();
+                }}
+                type="button"
+              >
+                文件
+              </button>
+              <button
+                className="file-browser-pill"
+                onClick={() => {
+                  setUploadChoiceOpen(false);
+                  folderInputRef.current?.click();
+                }}
+                type="button"
+              >
+                文件夹
+              </button>
+            </div>
+            <div className="file-browser-dialog-actions">
+              <button
+                className="file-browser-pill"
+                onClick={() => setUploadChoiceOpen(false)}
+                type="button"
+              >
+                取消
               </button>
             </div>
           </div>

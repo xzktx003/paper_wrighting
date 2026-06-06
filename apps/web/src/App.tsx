@@ -75,7 +75,7 @@ type SidePanelTool = "files" | "vscode";
 const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
 const SIDE_PANEL_SESSION_STORAGE_KEY = "side-panel-session-state";
 const FOCUS_VIEW_STORAGE_KEY = "focus-view-state";
-const MAX_CACHED_VSCODE_IFRAMES = 6;
+const MAX_CACHED_VSCODE_IFRAMES = 8;
 
 interface FileBrowserUiState {
   width: number;

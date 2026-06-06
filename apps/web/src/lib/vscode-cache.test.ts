@@ -45,9 +45,11 @@ describe("touchVsCodeCacheSessionIds", () => {
         "session-d",
         "session-e",
         "session-f",
+        "session-g",
+        "session-h",
       ],
-      "session-g",
-      6,
+      "session-i",
+      8,
     );
 
     assert.deepEqual(result, [
@@ -57,6 +59,8 @@ describe("touchVsCodeCacheSessionIds", () => {
       "session-e",
       "session-f",
       "session-g",
+      "session-h",
+      "session-i",
     ]);
   });
 });
@@ -119,15 +123,17 @@ describe("resolveRenderedVsCodeSessionIds", () => {
   it("keeps recent cached iframes in preserve-state mode", () => {
     assert.deepEqual(
       resolveRenderedVsCodeSessionIds({
-        activeSessionId: "session-f",
+        activeSessionId: "session-h",
         cachedSessionIds: [
           "session-a",
           "session-b",
           "session-c",
           "session-d",
           "session-e",
+          "session-f",
+          "session-g",
         ],
-        maxCachedIframes: 6,
+        maxCachedIframes: 8,
         mode: "preserve-state",
       }),
       [
@@ -137,6 +143,8 @@ describe("resolveRenderedVsCodeSessionIds", () => {
         "session-d",
         "session-e",
         "session-f",
+        "session-g",
+        "session-h",
       ],
     );
   });

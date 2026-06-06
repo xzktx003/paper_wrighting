@@ -11,6 +11,7 @@ import {
   getTerminalMonitorSlotIds,
   isTerminalMonitorLayoutMode,
   normalizeTerminalMonitorSlots,
+  placeTerminalMonitorSlotSession,
   setTerminalMonitorSlotSession,
   type TerminalMonitorLayoutMode,
   type TerminalMonitorSlot,
@@ -37,6 +38,13 @@ const stateLabels: Record<string, string> = {
 const TERMINAL_MONITOR_LAYOUT_STORAGE_KEY = "terminal-monitor-layout-mode";
 const DEFAULT_TERMINAL_MONITOR_SLOT_ID = "terminal-monitor-slot-1";
 const FOCUS_HEADER_COLLAPSED_STORAGE_KEY = "focus-header-collapsed";
+const TERMINAL_MONITOR_DRAG_MIME =
+  "application/x-coding-kanban-terminal-session";
+
+interface TerminalMonitorDragPayload {
+  sessionId: string;
+  sourceSlotId?: string;
+}
 
 function loadTerminalMonitorLayoutMode(): TerminalMonitorLayoutMode {
   try {
@@ -71,6 +79,32 @@ function saveFocusHeaderHeaderCollapsed(collapsed: boolean): void {
   }
 }
 
+function readTerminalMonitorDragPayload(
+  dataTransfer: DataTransfer,
+): TerminalMonitorDragPayload | null {
+  const raw =
+    dataTransfer.getData(TERMINAL_MONITOR_DRAG_MIME) ||
+    dataTransfer.getData("text/plain");
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<TerminalMonitorDragPayload>;
+    return typeof parsed.sessionId === "string"
+      ? {
+          sessionId: parsed.sessionId,
+          sourceSlotId:
+            typeof parsed.sourceSlotId === "string"
+              ? parsed.sourceSlotId
+              : undefined,
+        }
+      : null;
+  } catch {
+    return { sessionId: raw };
+  }
+}
+
 export function AgentFocusView({
   focusedSession,
   sessions,
@@ -98,6 +132,7 @@ export function AgentFocusView({
   const [headerCollapsed, setHeaderCollapsed] = useState(
     loadFocusHeaderCollapsed,
   );
+  const [dragOverSlotId, setDragOverSlotId] = useState<string | null>(null);
   const sessionById = useMemo(() => {
     return new Map(sessions.map((session) => [session.id, session]));
   }, [sessions]);
@@ -206,6 +241,76 @@ export function AgentFocusView({
     if (sessionId !== focusedSession.id) {
       onSwitchFocus(sessionId);
     }
+  }
+
+  function placeSessionInSlot(
+    slotId: string,
+    sessionId: string,
+    sourceSlotId?: string,
+  ) {
+    if (!sessionById.has(sessionId)) {
+      return;
+    }
+
+    setTerminalSlots((current) =>
+      placeTerminalMonitorSlotSession(current, slotId, sessionId, sourceSlotId),
+    );
+    setActiveSlotId(slotId);
+    if (sessionId !== focusedSession.id) {
+      onSwitchFocus(sessionId);
+    }
+  }
+
+  function startSessionDrag(
+    sessionId: string,
+    event: React.DragEvent<HTMLElement>,
+    sourceSlotId?: string,
+  ) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        'button, input, textarea, select, a, [contenteditable="true"], [contenteditable=""]',
+      )
+    ) {
+      event.preventDefault();
+      return;
+    }
+
+    const payload: TerminalMonitorDragPayload = {
+      sessionId,
+      sourceSlotId,
+    };
+    const serialized = JSON.stringify(payload);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(TERMINAL_MONITOR_DRAG_MIME, serialized);
+    event.dataTransfer.setData("text/plain", serialized);
+  }
+
+  function handleSlotDragOver(
+    slotId: string,
+    event: React.DragEvent<HTMLDivElement>,
+  ) {
+    if (!event.dataTransfer.types.includes(TERMINAL_MONITOR_DRAG_MIME)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverSlotId(slotId);
+  }
+
+  function handleSlotDrop(
+    slotId: string,
+    event: React.DragEvent<HTMLDivElement>,
+  ) {
+    const payload = readTerminalMonitorDragPayload(event.dataTransfer);
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    setDragOverSlotId(null);
+    placeSessionInSlot(slotId, payload.sessionId, payload.sourceSlotId);
   }
 
   function handleSidebarSwitchFocus(sessionId: string) {
@@ -417,16 +522,32 @@ export function AgentFocusView({
               return (
                 <div
                   key={slot.id}
-                  className={`focus-terminal-pane${isActiveInputPane ? " focus-terminal-pane--active" : ""}`}
+                  className={`focus-terminal-pane${isActiveInputPane ? " focus-terminal-pane--active" : ""}${dragOverSlotId === slot.id ? " focus-terminal-pane--drag-over" : ""}`}
                   data-active-terminal-pane={
                     isActiveInputPane ? "true" : "false"
                   }
+                  data-terminal-pane-slot={slot.id}
                   data-terminal-pane-session={session?.id}
+                  onDragLeave={() => {
+                    if (dragOverSlotId === slot.id) {
+                      setDragOverSlotId(null);
+                    }
+                  }}
+                  onDragOver={(event) => handleSlotDragOver(slot.id, event)}
+                  onDrop={(event) => handleSlotDrop(slot.id, event)}
                   onPointerDownCapture={(event) =>
                     handlePanePointerDownCapture(slot, event)
                   }
                 >
-                  <div className="focus-terminal-pane-header">
+                  <div
+                    className="focus-terminal-pane-header"
+                    draggable={Boolean(session)}
+                    onDragStart={(event) => {
+                      if (session) {
+                        startSessionDrag(session.id, event, slot.id);
+                      }
+                    }}
+                  >
                     <span className="focus-terminal-pane-index">
                       {index + 1}
                     </span>
@@ -508,6 +629,7 @@ export function AgentFocusView({
                 <FocusSidebarSessionCard
                   key={session.id}
                   session={session}
+                  onDragStart={startSessionDrag}
                   onRename={onRename}
                   onSwitchFocus={handleSidebarSwitchFocus}
                   useLightweightTerminalPreview={useLightweightTerminalPreview}

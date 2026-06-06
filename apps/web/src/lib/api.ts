@@ -31,14 +31,12 @@ import type {
 
 import { recordAgentSnapshotFrame } from "./resource-diagnostics";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+const viteEnv = import.meta.env ?? {};
+const apiBaseUrl = viteEnv.VITE_API_BASE_URL ?? "";
 
 function wsBase(): string {
-  if (import.meta.env.VITE_API_WS_URL) {
-    return import.meta.env.VITE_API_WS_URL.replace(
-      /\/ws\/agent-sessions\/?$/,
-      "",
-    );
+  if (viteEnv.VITE_API_WS_URL) {
+    return viteEnv.VITE_API_WS_URL.replace(/\/ws\/agent-sessions\/?$/, "");
   }
 
   if (apiBaseUrl) {

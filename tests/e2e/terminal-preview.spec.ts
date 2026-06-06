@@ -251,3 +251,77 @@ test("focus view opens a real terminal only for the focused session", async ({
     expect.stringContaining("/sidebar-session/terminal"),
   );
 });
+
+test("focus monitor panes accept dragged sidebar sessions and swap dragged panes", async ({
+  page,
+}) => {
+  await mockSessions(page, [
+    makeSession({
+      id: "alpha-session",
+      displayName: "Alpha Session",
+      outputPreview: "alpha ready",
+    }),
+    makeSession({
+      id: "beta-session",
+      displayName: "Beta Session",
+      outputPreview: "beta ready",
+    }),
+    makeSession({
+      id: "gamma-session",
+      displayName: "Gamma Session",
+      outputPreview: "gamma ready",
+    }),
+  ]);
+
+  await page.goto("/");
+
+  await page
+    .locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: "Alpha Session" }),
+    })
+    .dblclick();
+  await page.getByRole("button", { name: /左右双屏/ }).click();
+
+  const firstPane = page.locator(
+    '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+  );
+  const secondPane = page.locator(
+    '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+  );
+
+  await expect(firstPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "alpha-session",
+  );
+  await expect(secondPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "beta-session",
+  );
+
+  await page
+    .locator(".focus-sidebar-card", { hasText: "Gamma Session" })
+    .dragTo(firstPane);
+
+  await expect(firstPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "gamma-session",
+  );
+  await expect(secondPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "beta-session",
+  );
+  await expect(
+    page.locator(".focus-sidebar-card", { hasText: "Alpha Session" }),
+  ).toBeVisible();
+
+  await firstPane.locator(".focus-terminal-pane-header").dragTo(secondPane);
+
+  await expect(firstPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "beta-session",
+  );
+  await expect(secondPane).toHaveAttribute(
+    "data-terminal-pane-session",
+    "gamma-session",
+  );
+});

@@ -245,7 +245,7 @@ export function TopBar({
           title={
             vscodeIframeCacheMode === "memory-saving"
               ? "当前为 VS Code 省内存模式：只保留当前 iframe"
-              : "当前为 VS Code 保持状态模式：最多保留最近 6 个 iframe"
+              : "当前为 VS Code 保持状态模式：最多保留最近 8 个 iframe"
           }
           type="button"
         >

@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  TERMINAL_MONITOR_LAYOUT_OPTIONS,
   areTerminalMonitorSlotsEqual,
   getTerminalMonitorLayoutCapacity,
+  isTerminalMonitorLayoutMode,
   normalizeTerminalMonitorSlots,
+  placeTerminalMonitorSlotSession,
   setTerminalMonitorSlotSession,
 } from "./terminal-layout.js";
 
@@ -14,13 +17,16 @@ const sessions = [
   { id: "agent-3" },
   { id: "agent-4" },
   { id: "agent-5" },
+  { id: "agent-6" },
 ];
 
 describe("terminal monitor layout", () => {
   it("caps monitor panes to the selected layout size", () => {
     assert.equal(getTerminalMonitorLayoutCapacity("single"), 1);
     assert.equal(getTerminalMonitorLayoutCapacity("dual"), 2);
+    assert.equal(getTerminalMonitorLayoutCapacity("dual-vertical"), 2);
     assert.equal(getTerminalMonitorLayoutCapacity("quad"), 4);
+    assert.equal(getTerminalMonitorLayoutCapacity("six"), 6);
 
     const slots = normalizeTerminalMonitorSlots({
       mode: "quad",
@@ -32,6 +38,71 @@ describe("terminal monitor layout", () => {
     assert.deepEqual(
       slots.map((slot) => slot.sessionId),
       ["agent-1", "agent-2", "agent-3", "agent-4"],
+    );
+  });
+
+  it("treats vertical dual layout as an independent two-pane mode", () => {
+    assert.equal(isTerminalMonitorLayoutMode("dual-vertical"), true);
+    assert.equal(
+      TERMINAL_MONITOR_LAYOUT_OPTIONS.some(
+        (option) => option.mode === "dual-vertical",
+      ),
+      true,
+    );
+
+    const slots = normalizeTerminalMonitorSlots({
+      mode: "dual-vertical",
+      sessions,
+      preferredSessionId: "agent-3",
+      previousSlots: [
+        { id: "terminal-monitor-slot-1", sessionId: "agent-1" },
+        { id: "terminal-monitor-slot-2", sessionId: "agent-2" },
+        { id: "terminal-monitor-slot-3", sessionId: "agent-3" },
+        { id: "terminal-monitor-slot-4", sessionId: "agent-4" },
+      ],
+      preferredSlotId: "terminal-monitor-slot-2",
+    });
+
+    assert.deepEqual(
+      slots.map((slot) => slot.sessionId),
+      ["agent-1", "agent-3"],
+    );
+  });
+
+  it("fills six unique terminal panes in six-pane mode", () => {
+    assert.equal(isTerminalMonitorLayoutMode("six"), true);
+    assert.equal(
+      TERMINAL_MONITOR_LAYOUT_OPTIONS.some((option) => option.mode === "six"),
+      true,
+    );
+
+    const slots = normalizeTerminalMonitorSlots({
+      mode: "six",
+      sessions,
+      preferredSessionId: "agent-6",
+      previousSlots: [
+        { id: "terminal-monitor-slot-1", sessionId: "agent-1" },
+        { id: "terminal-monitor-slot-2", sessionId: "agent-2" },
+        { id: "terminal-monitor-slot-3", sessionId: "agent-3" },
+        { id: "terminal-monitor-slot-4", sessionId: "agent-4" },
+      ],
+      preferredSlotId: "terminal-monitor-slot-6",
+    });
+
+    assert.deepEqual(
+      slots.map((slot) => slot.id),
+      [
+        "terminal-monitor-slot-1",
+        "terminal-monitor-slot-2",
+        "terminal-monitor-slot-3",
+        "terminal-monitor-slot-4",
+        "terminal-monitor-slot-5",
+        "terminal-monitor-slot-6",
+      ],
+    );
+    assert.deepEqual(
+      slots.map((slot) => slot.sessionId),
+      ["agent-1", "agent-2", "agent-3", "agent-4", "agent-5", "agent-6"],
     );
   });
 
@@ -86,6 +157,39 @@ describe("terminal monitor layout", () => {
 
     assert.deepEqual(slots, [
       { id: "terminal-monitor-slot-1", sessionId: null },
+      { id: "terminal-monitor-slot-2", sessionId: "agent-1" },
+    ]);
+  });
+
+  it("places a sidebar session into a monitor pane without duplicating it", () => {
+    const slots = placeTerminalMonitorSlotSession(
+      [
+        { id: "terminal-monitor-slot-1", sessionId: "agent-1" },
+        { id: "terminal-monitor-slot-2", sessionId: "agent-2" },
+      ],
+      "terminal-monitor-slot-2",
+      "agent-3",
+    );
+
+    assert.deepEqual(slots, [
+      { id: "terminal-monitor-slot-1", sessionId: "agent-1" },
+      { id: "terminal-monitor-slot-2", sessionId: "agent-3" },
+    ]);
+  });
+
+  it("swaps two occupied monitor panes when dragging a pane onto another pane", () => {
+    const slots = placeTerminalMonitorSlotSession(
+      [
+        { id: "terminal-monitor-slot-1", sessionId: "agent-1" },
+        { id: "terminal-monitor-slot-2", sessionId: "agent-2" },
+      ],
+      "terminal-monitor-slot-2",
+      "agent-1",
+      "terminal-monitor-slot-1",
+    );
+
+    assert.deepEqual(slots, [
+      { id: "terminal-monitor-slot-1", sessionId: "agent-2" },
       { id: "terminal-monitor-slot-2", sessionId: "agent-1" },
     ]);
   });

@@ -27,7 +27,7 @@ interface PersistedBrowserScopeState {
   sortDirection: SortDirection;
 }
 
-function getParentPath(inputPath: string): string {
+export function getFileBrowserParentPath(inputPath: string): string {
   if (!inputPath || inputPath === "/") {
     return "/";
   }
@@ -505,7 +505,7 @@ export function useFileBrowser(
 
   const renameEntry = useCallback(
     async (entryPath: string, nextName: string) => {
-      const parentPath = getParentPath(entryPath);
+      const parentPath = getFileBrowserParentPath(entryPath);
       await fileOperation({
         operation: "rename",
         path: entryPath,
@@ -653,6 +653,6 @@ export function useFileBrowser(
     downloadEntries,
     updatePermissions,
     goHome: () => refresh(hostDefaultPath),
-    goUp: () => refresh(getParentPath(currentPath)),
+    goUp: () => refresh(getFileBrowserParentPath(currentPath)),
   };
 }
