@@ -588,13 +588,12 @@ export function FileBrowserDrawer({
             {error && <div className="file-browser-error">{error}</div>}
             <div className="file-browser-table file-browser-table--header">
               <div className="file-browser-name-header">
-                <button type="button" onClick={() => toggleSort("name")}>
+                <button
+                  className="file-browser-name-sort-button"
+                  type="button"
+                  onClick={() => toggleSort("name")}
+                >
                   名称
-                  {sortKey === "name" && (
-                    <span className="file-browser-sort-indicator">
-                      {sortDirection === "asc" ? "升序" : "降序"}
-                    </span>
-                  )}
                 </button>
                 <button
                   aria-label="返回上一级目录"

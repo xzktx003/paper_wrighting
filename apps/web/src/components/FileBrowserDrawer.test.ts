@@ -36,6 +36,12 @@ describe("FileBrowserDrawer", () => {
     );
 
     assert.match(markup, /class="file-browser-name-header"/);
+    assert.match(
+      markup,
+      /class="file-browser-name-sort-button"[^>]*>名称<\/button>/,
+    );
+    assert.doesNotMatch(markup, /file-browser-sort-indicator/);
+    assert.doesNotMatch(markup, /升序|降序/);
     assert.match(markup, /aria-label="返回上一级目录"/);
     assert.match(markup, /class="file-browser-up-one-level"[^>]*>↑<\/button>/);
   });
