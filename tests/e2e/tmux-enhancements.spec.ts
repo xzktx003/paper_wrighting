@@ -1310,7 +1310,8 @@ test("browser: 扫描结果会合并 tmux 运行态并支持 tmux 恢复", async
 
     await page.goto("/");
 
-    await page.getByText("扫描会话").click();
+    await page.getByTestId("scan-menu-toggle").click();
+    await page.getByTestId("btn-扫描会话").click();
     await page.locator(".host-dropdown-item", { hasText: "本机" }).click();
 
     await expect(page.locator(".discovery-dialog-title")).toContainText(
@@ -1443,7 +1444,8 @@ test("browser: 扫描应用中的 tmux 结果同时支持直接加入和从 tmux
 
     await page.goto("/");
 
-    await page.getByText("扫描会话").click();
+    await page.getByTestId("scan-menu-toggle").click();
+    await page.getByTestId("btn-扫描会话").click();
     await page.locator(".host-dropdown-item", { hasText: "本机" }).click();
 
     const dialog = page.locator(".discovery-dialog");

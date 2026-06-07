@@ -19,6 +19,8 @@ import { HostDropdown, type SelectedHost } from "./HostDropdown";
 
 const RESOURCE_DIAGNOSTICS_POLL_MS = 1_000;
 
+type TopBarMenuId = "scan" | "display" | "tools";
+
 function formatKilobytes(value: number): string {
   return `${value.toFixed(value >= 100 ? 0 : 1)} KB`;
 }
@@ -186,6 +188,7 @@ export function TopBar({
     }
   }, []);
   const topBarUtilityRef = useRef<HTMLDivElement | null>(null);
+  const [openMenu, setOpenMenu] = useState<TopBarMenuId | null>(null);
   const hintsPopoverId = "operation-hints-popover";
   const diagnosticsPopoverId = "resource-diagnostics-popover";
   const totalCount = sessions.length;
@@ -203,6 +206,7 @@ export function TopBar({
         target &&
         !topBarUtilityRef.current.contains(target)
       ) {
+        setOpenMenu(null);
         setShowHints(false);
         setShowDiagnostics(false);
       }
@@ -210,6 +214,7 @@ export function TopBar({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        setOpenMenu(null);
         setShowHints(false);
         setShowDiagnostics(false);
       }
@@ -226,6 +231,28 @@ export function TopBar({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [toggleFullscreen]);
+
+  const toggleMenu = (menuId: TopBarMenuId) => {
+    setOpenMenu((current) => (current === menuId ? null : menuId));
+    setShowHints(false);
+    setShowDiagnostics(false);
+  };
+
+  const closeMenus = () => {
+    setOpenMenu(null);
+  };
+
+  const openHints = () => {
+    setOpenMenu(null);
+    setShowHints((current) => !current);
+    setShowDiagnostics(false);
+  };
+
+  const openDiagnostics = () => {
+    setOpenMenu(null);
+    setShowDiagnostics((current) => !current);
+    setShowHints(false);
+  };
 
   useEffect(() => {
     if (!showDiagnostics) {
@@ -279,97 +306,236 @@ export function TopBar({
 
   return (
     <header className="top-bar">
-      <div className="top-bar-left">
+      <div className="top-bar-brand">
         <h1 className="top-bar-title">Coding Kanban</h1>
-        <a
-          className="top-bar-action top-bar-action--ghost"
-          href="/?view=mobile"
-          title="打开手机端终端控制页"
-        >
-          手机端
-        </a>
-        <button
-          className={`top-bar-action${fileBrowserOpen ? " top-bar-action--active" : ""}`}
-          data-testid="file-browser-toggle"
-          disabled={!fileBrowserAvailable}
-          onClick={onToggleFileBrowser}
-          title={
-            fileBrowserAvailable
-              ? "打开当前终端的文件浏览器"
-              : "仅在终端聚焦态可用"
-          }
-          type="button"
-        >
-          📁 文件
-        </button>
-        <button
-          className={`top-bar-action${vscodeOpen ? " top-bar-action--active" : ""}`}
-          data-testid="vscode-toggle"
-          disabled={!vscodeAvailable}
-          onClick={onToggleVsCode}
-          title={
-            vscodeAvailable
-              ? "打开当前终端的 VS Code Web"
-              : "仅在终端聚焦态可用"
-          }
-          type="button"
-        >
-          <span>VS Code</span>
-        </button>
-        <button
-          className={`top-bar-action top-bar-action--ghost${vscodeIframeCacheMode === "memory-saving" ? " top-bar-action--active" : ""}`}
-          data-testid="vscode-cache-mode-toggle"
-          onClick={onToggleVsCodeIframeCacheMode}
-          title={
-            vscodeIframeCacheMode === "memory-saving"
-              ? "当前为 VS Code 省内存模式：只保留当前 iframe"
-              : "当前为 VS Code 保持状态模式：最多保留最近 8 个 iframe"
-          }
-          type="button"
-        >
-          {vscodeIframeCacheMode === "memory-saving"
-            ? "VS Code省内存"
-            : "VS Code保持状态"}
-        </button>
-        <button
-          className="top-bar-action top-bar-action--ghost"
-          data-testid="vscode-cache-release"
-          disabled={!vscodeCacheReleaseAvailable}
-          onClick={onReleaseVsCodeIframeCache}
-          title="卸载非当前 VS Code iframe，释放浏览器内存"
-          type="button"
-        >
-          释放VS Code缓存
-        </button>
+        <div className="top-bar-stats">
+          <span className="stat-item">
+            共 <strong>{totalCount}</strong> 个会话
+          </span>
+        </div>
       </div>
-      <div className="top-bar-hints" ref={topBarUtilityRef}>
-        <button
-          aria-controls={hintsPopoverId}
-          aria-expanded={showHints}
-          className={`top-bar-action top-bar-action--ghost${showHints ? " top-bar-action--active" : ""}`}
-          data-testid="help-hints-toggle"
-          onClick={() => {
-            setShowHints((current) => !current);
-            setShowDiagnostics(false);
-          }}
-          type="button"
-        >
-          操作提示
-        </button>
-        <button
-          aria-controls={diagnosticsPopoverId}
-          aria-expanded={showDiagnostics}
-          className={`top-bar-action top-bar-action--ghost${showDiagnostics ? " top-bar-action--active" : ""}`}
-          data-testid="resource-diagnostics-toggle"
-          onClick={() => {
-            setShowDiagnostics((current) => !current);
-            setShowHints(false);
-          }}
-          title="查看浏览器内存、终端实例和 WebSocket 吞吐指标"
-          type="button"
-        >
-          资源诊断
-        </button>
+      <div className="top-bar-actions" ref={topBarUtilityRef}>
+        <div className="top-bar-primary-actions">
+          <HostDropdown
+            sshHosts={sshHosts}
+            onSelectHost={onOpenNewSession}
+            triggerLabel="新建会话"
+            buttonTestId="new-session-toggle"
+            triggerClassName="top-bar-action top-bar-action--primary"
+          />
+          <div className="top-bar-menu">
+            <button
+              aria-controls="top-bar-scan-menu"
+              aria-expanded={openMenu === "scan"}
+              className={`top-bar-action${openMenu === "scan" ? " top-bar-action--active" : ""}`}
+              data-testid="scan-menu-toggle"
+              onClick={() => toggleMenu("scan")}
+              type="button"
+            >
+              扫描 ▾
+            </button>
+            {openMenu === "scan" && (
+              <div
+                aria-label="扫描入口"
+                className="top-bar-menu-popover top-bar-menu-popover--scan"
+                id="top-bar-scan-menu"
+                role="menu"
+              >
+                <HostDropdown
+                  sshHosts={sshHosts}
+                  onSelectHost={(host) => {
+                    closeMenus();
+                    onScanTmux(host);
+                  }}
+                  triggerLabel="扫描 tmux"
+                  buttonTestId="btn-扫描 tmux"
+                  triggerClassName="top-bar-menu-item"
+                />
+                <HostDropdown
+                  sshHosts={sshHosts}
+                  onSelectHost={(host) => {
+                    closeMenus();
+                    onScanApps(host);
+                  }}
+                  triggerLabel="扫描会话"
+                  buttonTestId="btn-扫描会话"
+                  triggerClassName="top-bar-menu-item"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="top-bar-context-actions">
+          <button
+            className={`top-bar-action${fileBrowserOpen ? " top-bar-action--active" : ""}`}
+            data-testid="file-browser-toggle"
+            disabled={!fileBrowserAvailable}
+            onClick={onToggleFileBrowser}
+            title={
+              fileBrowserAvailable
+                ? "打开当前终端的文件浏览器"
+                : "仅在终端聚焦态可用"
+            }
+            type="button"
+          >
+            📁 文件
+          </button>
+          <button
+            className={`top-bar-action${vscodeOpen ? " top-bar-action--active" : ""}`}
+            data-testid="vscode-toggle"
+            disabled={!vscodeAvailable}
+            onClick={onToggleVsCode}
+            title={
+              vscodeAvailable
+                ? "打开当前终端的 VS Code Web"
+                : "仅在终端聚焦态可用"
+            }
+            type="button"
+          >
+            <span>VS Code</span>
+          </button>
+        </div>
+        <div className="top-bar-secondary-actions">
+          <div className="top-bar-menu">
+            <button
+              aria-controls="top-bar-display-menu"
+              aria-expanded={openMenu === "display"}
+              className={`top-bar-action top-bar-action--ghost${openMenu === "display" ? " top-bar-action--active" : ""}`}
+              data-testid="display-menu-toggle"
+              onClick={() => toggleMenu("display")}
+              type="button"
+            >
+              显示 ▾
+            </button>
+            {openMenu === "display" && (
+              <div
+                aria-label="显示设置"
+                className="top-bar-menu-popover"
+                id="top-bar-display-menu"
+                role="menu"
+              >
+                <button
+                  className={`top-bar-menu-item${useLightweightTerminalPreview ? " top-bar-menu-item--active" : ""}`}
+                  data-testid="terminal-preview-mode-toggle"
+                  onClick={onToggleTerminalPreviewMode}
+                  title={
+                    useLightweightTerminalPreview
+                      ? "当前为轻量化预览：非活跃会话不打开终端 WebSocket"
+                      : "当前为完整终端预览：恢复旧版小终端模式"
+                  }
+                  type="button"
+                >
+                  <span>
+                    {useLightweightTerminalPreview
+                      ? "轻量预览：开"
+                      : "完整预览"}
+                  </span>
+                  <small>终端卡片预览模式</small>
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="top-bar-menu">
+            <button
+              aria-controls="top-bar-tools-menu"
+              aria-expanded={openMenu === "tools"}
+              className={`top-bar-action top-bar-action--ghost${openMenu === "tools" || showHints || showDiagnostics ? " top-bar-action--active" : ""}`}
+              data-testid="tools-menu-toggle"
+              onClick={() => toggleMenu("tools")}
+              type="button"
+            >
+              工具 ▾
+            </button>
+            {openMenu === "tools" && (
+              <div
+                aria-label="工具入口"
+                className="top-bar-menu-popover"
+                id="top-bar-tools-menu"
+                role="menu"
+              >
+                <button
+                  aria-controls={hintsPopoverId}
+                  aria-expanded={showHints}
+                  className="top-bar-menu-item"
+                  data-testid="help-hints-toggle"
+                  onClick={openHints}
+                  type="button"
+                >
+                  <span>操作提示</span>
+                  <small>快捷键和基础操作</small>
+                </button>
+                <button
+                  aria-controls={diagnosticsPopoverId}
+                  aria-expanded={showDiagnostics}
+                  className="top-bar-menu-item"
+                  data-testid="resource-diagnostics-toggle"
+                  onClick={openDiagnostics}
+                  title="查看浏览器内存、终端实例和 WebSocket 吞吐指标"
+                  type="button"
+                >
+                  <span>资源诊断</span>
+                  <small>内存、WebSocket 和 VS Code 指标</small>
+                </button>
+                <a
+                  className="top-bar-menu-item"
+                  href="/?view=mobile"
+                  title="打开手机端终端控制页"
+                >
+                  <span>手机端</span>
+                  <small>打开触屏终端控制页</small>
+                </a>
+                <div className="top-bar-menu-divider" />
+                <button
+                  className={`top-bar-menu-item${vscodeIframeCacheMode === "memory-saving" ? " top-bar-menu-item--active" : ""}`}
+                  data-testid="vscode-cache-mode-toggle"
+                  onClick={onToggleVsCodeIframeCacheMode}
+                  title={
+                    vscodeIframeCacheMode === "memory-saving"
+                      ? "当前为 VS Code 省内存模式：只保留当前 iframe"
+                      : "当前为 VS Code 保持状态模式：最多保留最近 8 个 iframe"
+                  }
+                  type="button"
+                >
+                  <span>
+                    {vscodeIframeCacheMode === "memory-saving"
+                      ? "VS Code 省内存"
+                      : "VS Code 保持状态"}
+                  </span>
+                  <small>iframe 缓存模式</small>
+                </button>
+                <button
+                  className="top-bar-menu-item"
+                  data-testid="vscode-cache-release"
+                  disabled={!vscodeCacheReleaseAvailable}
+                  onClick={onReleaseVsCodeIframeCache}
+                  title="卸载非当前 VS Code iframe，释放浏览器内存"
+                  type="button"
+                >
+                  <span>释放 VS Code 缓存</span>
+                  <small>卸载隐藏 iframe</small>
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            className={`top-bar-action top-bar-action--ghost top-bar-icon-action${isFullscreen ? " top-bar-action--active" : ""}`}
+            data-testid="fullscreen-toggle"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "退出全屏" : "进入全屏"}
+            type="button"
+          >
+            ⛶
+          </button>
+          <button
+            className="top-bar-collapse-btn top-bar-icon-action"
+            data-testid="top-bar-collapse"
+            onClick={onToggleCollapsed}
+            title="折叠菜单栏"
+            type="button"
+          >
+            ▴
+          </button>
+        </div>
         {showHints && (
           <div
             aria-label="操作提示"
@@ -497,59 +663,6 @@ export function TopBar({
             </div>
           </div>
         )}
-      </div>
-      <div className="top-bar-stats">
-        <HostDropdown
-          sshHosts={sshHosts}
-          onSelectHost={onOpenNewSession}
-          triggerLabel="新建会话"
-          buttonTestId="new-session-toggle"
-          triggerClassName="top-bar-action top-bar-action--primary"
-        />
-        <HostDropdown
-          sshHosts={sshHosts}
-          onSelectHost={onScanTmux}
-          triggerLabel="扫描 tmux"
-        />
-        <HostDropdown
-          sshHosts={sshHosts}
-          onSelectHost={onScanApps}
-          triggerLabel="扫描会话"
-        />
-        <button
-          className={`top-bar-action top-bar-action--ghost${useLightweightTerminalPreview ? " top-bar-action--active" : ""}`}
-          data-testid="terminal-preview-mode-toggle"
-          onClick={onToggleTerminalPreviewMode}
-          title={
-            useLightweightTerminalPreview
-              ? "当前为轻量化预览：非活跃会话不打开终端 WebSocket"
-              : "当前为完整终端预览：恢复旧版小终端模式"
-          }
-          type="button"
-        >
-          {useLightweightTerminalPreview ? "轻量预览：开" : "完整预览"}
-        </button>
-        <span className="stat-item">
-          共 <strong>{totalCount}</strong> 个会话
-        </span>
-        <button
-          className={`top-bar-action top-bar-action--ghost${isFullscreen ? " top-bar-action--active" : ""}`}
-          data-testid="fullscreen-toggle"
-          onClick={toggleFullscreen}
-          title={isFullscreen ? "退出全屏" : "进入全屏"}
-          type="button"
-        >
-          {isFullscreen ? "⛶ 退出全屏" : "⛶ 全屏"}
-        </button>
-        <button
-          className="top-bar-collapse-btn"
-          data-testid="top-bar-collapse"
-          onClick={onToggleCollapsed}
-          title="折叠菜单栏"
-          type="button"
-        >
-          ▴ 收起菜单栏
-        </button>
       </div>
     </header>
   );

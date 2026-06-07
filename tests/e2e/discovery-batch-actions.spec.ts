@@ -156,6 +156,7 @@ async function mockAppDiscovery(
 
 async function openAppDiscovery(page: Page): Promise<void> {
   await page.goto("/");
+  await page.getByTestId("scan-menu-toggle").click();
   await page.getByTestId("btn-扫描会话").click();
   await page.locator(".host-dropdown-item", { hasText: "本机" }).click();
   await expect(page.locator(".discovery-dialog")).toBeVisible();

@@ -1,16 +1,30 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 declare const process: {
   cwd(): string;
 };
+
+async function openScanMenu(page: Page): Promise<void> {
+  await page.getByTestId('scan-menu-toggle').click();
+}
+
+async function openScanTmuxHostDropdown(page: Page): Promise<void> {
+  await openScanMenu(page);
+  await page.getByTestId('btn-扫描 tmux').click();
+}
+
+async function openScanAppsHostDropdown(page: Page): Promise<void> {
+  await openScanMenu(page);
+  await page.getByTestId('btn-扫描会话').click();
+}
 
 test.describe('Discovery Dialog', () => {
   test('TopBar has scan tmux dropdown button', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(1000);
 
-    // TopBar should have the tmux scan button
-    const scanTmuxBtn = page.locator('text=扫描 tmux');
+    await openScanMenu(page);
+    const scanTmuxBtn = page.getByTestId('btn-扫描 tmux');
     await expect(scanTmuxBtn).toBeVisible();
   });
 
@@ -18,7 +32,8 @@ test.describe('Discovery Dialog', () => {
     await page.goto('/');
     await page.waitForTimeout(1000);
 
-    const scanAppsBtn = page.locator('text=扫描会话');
+    await openScanMenu(page);
+    const scanAppsBtn = page.getByTestId('btn-扫描会话');
     await expect(scanAppsBtn).toBeVisible();
   });
 
@@ -28,9 +43,7 @@ test.describe('Discovery Dialog', () => {
     await page.goto('/');
     await page.waitForTimeout(1000);
 
-    // Click the tmux scan button
-    const scanTmuxBtn = page.locator('text=扫描 tmux');
-    await scanTmuxBtn.click();
+    await openScanTmuxHostDropdown(page);
 
     // Should see host dropdown with 本机 option
     const localOption = page.locator('.host-dropdown-item', { hasText: '本机' });
@@ -55,8 +68,7 @@ test.describe('Discovery Dialog', () => {
     await page.goto('/');
     await page.waitForTimeout(1000);
 
-    const scanAppsBtn = page.locator('text=扫描会话');
-    await scanAppsBtn.click();
+    await openScanAppsHostDropdown(page);
 
     const localOption = page.locator('.host-dropdown-item', { hasText: '本机' });
     await expect(localOption).toBeVisible();
@@ -77,7 +89,7 @@ test.describe('Discovery Dialog', () => {
     await page.goto('/');
     await page.waitForTimeout(1000);
 
-    await page.locator('text=扫描 tmux').click();
+    await openScanTmuxHostDropdown(page);
 
     const menu = page.locator('.host-dropdown-menu');
     await expect(menu).toBeVisible();
@@ -168,7 +180,7 @@ test.describe('Discovery Dialog', () => {
 
     const beforeCount = await page.locator('.grid-card').count();
 
-    await page.locator('text=扫描 tmux').click();
+    await openScanTmuxHostDropdown(page);
     await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
 
     await expect(page.locator('.discovery-dialog')).toBeVisible();
@@ -201,7 +213,7 @@ test.describe('Discovery Dialog', () => {
 
       await page.goto('/');
 
-      await page.locator('text=扫描 tmux').click();
+      await openScanTmuxHostDropdown(page);
       await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
 
       await expect(page.locator('.discovery-dialog')).toBeVisible();

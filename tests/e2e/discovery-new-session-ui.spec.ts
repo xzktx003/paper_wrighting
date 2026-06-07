@@ -65,6 +65,7 @@ test('app discovery: 选择 SSH 主机后扫描请求会带上 sshTarget', async
   });
 
   await page.goto('/');
+  await page.getByTestId('scan-menu-toggle').click();
   await page.getByTestId('btn-扫描会话').click();
   await page.getByRole('button', { name: /hm15/i }).click();
 

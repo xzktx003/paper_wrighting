@@ -181,6 +181,7 @@ test("preview mode toggle restores full terminal previews on demand", async ({
 
   await page.goto("/");
 
+  await page.getByTestId("display-menu-toggle").click();
   const toggle = page.getByTestId("terminal-preview-mode-toggle");
   await expect(toggle).toHaveText("轻量预览：开");
   expect(await terminalWebSocketUrls(page)).toEqual([]);
