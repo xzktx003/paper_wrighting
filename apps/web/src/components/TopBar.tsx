@@ -19,7 +19,7 @@ import { HostDropdown, type SelectedHost } from "./HostDropdown";
 
 const RESOURCE_DIAGNOSTICS_POLL_MS = 1_000;
 
-type TopBarMenuId = "scan" | "display" | "tools";
+type TopBarMenuId = "scan" | "tools" | "resource";
 
 function formatKilobytes(value: number): string {
   return `${value.toFixed(value >= 100 ? 0 : 1)} KB`;
@@ -290,7 +290,7 @@ export function TopBar({
   if (collapsed) {
     return (
       <header className="top-bar top-bar--collapsed">
-        <span className="top-bar-collapsed-title">Coding Kanban</span>
+        <span className="top-bar-collapsed-title">电脑端 Coding Kanban</span>
         <button
           className="top-bar-expand-btn"
           data-testid="top-bar-expand"
@@ -307,7 +307,16 @@ export function TopBar({
   return (
     <header className="top-bar">
       <div className="top-bar-brand">
-        <h1 className="top-bar-title">Coding Kanban</h1>
+        <div className="top-bar-mode-switch" aria-label="端切换">
+          <h1 className="top-bar-title">电脑端 Coding Kanban</h1>
+          <a
+            className="top-bar-mode-link"
+            href="/?view=mobile"
+            title="切换到手机端终端控制页"
+          >
+            手机端 Coding Kanban
+          </a>
+        </div>
         <div className="top-bar-stats">
           <span className="stat-item">
             共 <strong>{totalCount}</strong> 个会话
@@ -398,48 +407,9 @@ export function TopBar({
         <div className="top-bar-secondary-actions">
           <div className="top-bar-menu">
             <button
-              aria-controls="top-bar-display-menu"
-              aria-expanded={openMenu === "display"}
-              className={`top-bar-action top-bar-action--ghost${openMenu === "display" ? " top-bar-action--active" : ""}`}
-              data-testid="display-menu-toggle"
-              onClick={() => toggleMenu("display")}
-              type="button"
-            >
-              显示 ▾
-            </button>
-            {openMenu === "display" && (
-              <div
-                aria-label="显示设置"
-                className="top-bar-menu-popover"
-                id="top-bar-display-menu"
-                role="menu"
-              >
-                <button
-                  className={`top-bar-menu-item${useLightweightTerminalPreview ? " top-bar-menu-item--active" : ""}`}
-                  data-testid="terminal-preview-mode-toggle"
-                  onClick={onToggleTerminalPreviewMode}
-                  title={
-                    useLightweightTerminalPreview
-                      ? "当前为轻量化预览：非活跃会话不打开终端 WebSocket"
-                      : "当前为完整终端预览：恢复旧版小终端模式"
-                  }
-                  type="button"
-                >
-                  <span>
-                    {useLightweightTerminalPreview
-                      ? "轻量预览：开"
-                      : "完整预览"}
-                  </span>
-                  <small>终端卡片预览模式</small>
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="top-bar-menu">
-            <button
               aria-controls="top-bar-tools-menu"
               aria-expanded={openMenu === "tools"}
-              className={`top-bar-action top-bar-action--ghost${openMenu === "tools" || showHints || showDiagnostics ? " top-bar-action--active" : ""}`}
+              className={`top-bar-action top-bar-action--ghost${openMenu === "tools" || showHints ? " top-bar-action--active" : ""}`}
               data-testid="tools-menu-toggle"
               onClick={() => toggleMenu("tools")}
               type="button"
@@ -464,27 +434,45 @@ export function TopBar({
                   <span>操作提示</span>
                   <small>快捷键和基础操作</small>
                 </button>
+              </div>
+            )}
+          </div>
+          <div className="top-bar-menu">
+            <button
+              aria-controls="top-bar-resource-menu"
+              aria-expanded={openMenu === "resource"}
+              className={`top-bar-action top-bar-action--ghost${openMenu === "resource" || showDiagnostics ? " top-bar-action--active" : ""}`}
+              data-testid="resource-tuning-menu-toggle"
+              onClick={() => toggleMenu("resource")}
+              type="button"
+            >
+              资源调节 ▾
+            </button>
+            {openMenu === "resource" && (
+              <div
+                aria-label="资源调节"
+                className="top-bar-menu-popover"
+                id="top-bar-resource-menu"
+                role="menu"
+              >
                 <button
-                  aria-controls={diagnosticsPopoverId}
-                  aria-expanded={showDiagnostics}
-                  className="top-bar-menu-item"
-                  data-testid="resource-diagnostics-toggle"
-                  onClick={openDiagnostics}
-                  title="查看浏览器内存、终端实例和 WebSocket 吞吐指标"
+                  className={`top-bar-menu-item${useLightweightTerminalPreview ? " top-bar-menu-item--active" : ""}`}
+                  data-testid="terminal-preview-mode-toggle"
+                  onClick={onToggleTerminalPreviewMode}
+                  title={
+                    useLightweightTerminalPreview
+                      ? "当前为轻量化预览：非活跃会话不打开终端 WebSocket"
+                      : "当前为完整终端预览：恢复旧版小终端模式"
+                  }
                   type="button"
                 >
-                  <span>资源诊断</span>
-                  <small>内存、WebSocket 和 VS Code 指标</small>
+                  <span>
+                    {useLightweightTerminalPreview
+                      ? "轻量预览：开"
+                      : "完整预览"}
+                  </span>
+                  <small>终端卡片预览模式</small>
                 </button>
-                <a
-                  className="top-bar-menu-item"
-                  href="/?view=mobile"
-                  title="打开手机端终端控制页"
-                >
-                  <span>手机端</span>
-                  <small>打开触屏终端控制页</small>
-                </a>
-                <div className="top-bar-menu-divider" />
                 <button
                   className={`top-bar-menu-item${vscodeIframeCacheMode === "memory-saving" ? " top-bar-menu-item--active" : ""}`}
                   data-testid="vscode-cache-mode-toggle"
@@ -513,6 +501,18 @@ export function TopBar({
                 >
                   <span>释放 VS Code 缓存</span>
                   <small>卸载隐藏 iframe</small>
+                </button>
+                <button
+                  aria-controls={diagnosticsPopoverId}
+                  aria-expanded={showDiagnostics}
+                  className="top-bar-menu-item"
+                  data-testid="resource-diagnostics-toggle"
+                  onClick={openDiagnostics}
+                  title="查看浏览器内存、终端实例和 WebSocket 吞吐指标"
+                  type="button"
+                >
+                  <span>资源诊断</span>
+                  <small>内存、WebSocket 和 VS Code 指标</small>
                 </button>
               </div>
             )}

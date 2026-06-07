@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { MobileWorkbenchPage } from "./MobileWorkbenchPage.js";
+
+function installDocumentStub() {
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      documentElement: {
+        classList: {
+          add: () => {},
+          remove: () => {},
+        },
+      },
+      body: {
+        classList: {
+          add: () => {},
+          remove: () => {},
+        },
+      },
+    },
+  });
+}
+
+describe("MobileWorkbenchPage", () => {
+  it("puts desktop/mobile switching in the Coding Kanban title area", () => {
+    installDocumentStub();
+
+    const markup = renderToStaticMarkup(
+      createElement(MobileWorkbenchPage, {
+        activeSessionId: null,
+        isLoading: false,
+        sessions: [],
+        onSwitchSession: () => {},
+      }),
+    );
+
+    assert.match(markup, /手机端 Coding Kanban/);
+    assert.match(markup, /电脑端 Coding Kanban/);
+    assert.match(markup, /href="\/"/);
+  });
+});

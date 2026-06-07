@@ -1,5 +1,10 @@
 :root {
   --app-height: 100vh;
+  --motion-fast: 140ms;
+  --motion-standard: 220ms;
+  --motion-slow: 320ms;
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
   font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
   color: #f4f1ea;
   background: linear-gradient(135deg, #101418 0%, #1c2228 100%);
@@ -52,6 +57,52 @@ button,
 textarea,
 input {
   font: inherit;
+}
+
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-popover-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 /* ===== App Shell ===== */
@@ -131,6 +182,9 @@ input {
   background: rgba(14, 18, 23, 0.96);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
   z-index: 330;
+  transform-origin: top right;
+  animation: ui-popover-in var(--motion-fast) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .top-bar-hint-item {
@@ -176,6 +230,9 @@ input {
   background: rgba(14, 18, 23, 0.98);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
   z-index: 330;
+  transform-origin: top right;
+  animation: ui-popover-in var(--motion-standard) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .resource-diagnostics-header {
@@ -245,6 +302,39 @@ input {
   white-space: nowrap;
 }
 
+.top-bar-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.top-bar-mode-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 241, 234, 0.62);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.top-bar-mode-link:hover {
+  border-color: rgba(246, 178, 107, 0.34);
+  background: rgba(246, 178, 107, 0.1);
+  color: #ffd1a1;
+  transform: translate3d(0, -1px, 0);
+}
+
 .top-bar-menu {
   position: relative;
   display: inline-flex;
@@ -263,12 +353,16 @@ input {
   border-radius: 10px;
   background: rgba(14, 18, 23, 0.98);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.46);
+  transform-origin: top right;
+  animation: ui-popover-in var(--motion-fast) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .top-bar-menu-popover--scan {
   left: 0;
   right: auto;
   width: min(240px, calc(100vw - 32px));
+  transform-origin: top left;
 }
 
 .top-bar-menu-popover .host-dropdown {
@@ -382,6 +476,7 @@ input {
 .top-bar-action:hover:not(:disabled) {
   background: rgba(246, 178, 107, 0.18);
   border-color: rgba(246, 178, 107, 0.42);
+  transform: translate3d(0, -1px, 0);
 }
 
 .top-bar-action--primary {
@@ -563,6 +658,7 @@ input {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
 }
 
 /* ===== Collapsible Sections ===== */
@@ -970,6 +1066,14 @@ input {
   cursor: pointer;
   font-size: 11px;
   white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.filter-reset:hover {
+  transform: translate3d(0, -1px, 0);
 }
 
 /* ===== Agent Grid ===== */
@@ -1020,6 +1124,7 @@ input {
     transform 0.18s ease;
   min-height: 240px;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.2);
+  animation: ui-card-in var(--motion-standard) var(--motion-ease-soft) both;
 }
 
 .grid-card:hover {
@@ -1027,7 +1132,7 @@ input {
   box-shadow:
     0 18px 38px rgba(0, 0, 0, 0.26),
     0 0 0 1px rgba(255, 152, 0, 0.08);
-  transform: translateY(-1px);
+  transform: translate3d(0, -2px, 0);
 }
 
 .grid-card.card-running {
@@ -1318,7 +1423,7 @@ input {
 }
 
 .focus-view--sidebar-collapsed {
-  gap: 4px;
+  gap: 2px;
 }
 
 .focus-main {
@@ -1729,6 +1834,13 @@ input {
   border-color: rgba(255, 152, 0, 0.4);
 }
 
+.focus-view--sidebar-collapsed .focus-sidebar-toggle-btn {
+  width: 12px;
+  height: 64px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
 /* ===== Focus Sidebar ===== */
 .focus-sidebar {
   width: 260px;
@@ -1891,17 +2003,26 @@ input {
     ),
     linear-gradient(180deg, #111820 0%, #070b10 100%);
   color: #f4f1ea;
+  animation: ui-fade-in var(--motion-standard) var(--motion-ease-out) both;
 }
 
 .mobile-workbench-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 10px;
   flex-shrink: 0;
   padding: max(10px, env(safe-area-inset-top)) 12px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(10, 14, 19, 0.94);
   backdrop-filter: blur(12px);
+}
+
+.mobile-workbench-mode-switch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
 }
 
 .mobile-workbench-desktop-link {
@@ -1914,8 +2035,9 @@ input {
   border-radius: 10px;
   background: rgba(246, 178, 107, 0.1);
   color: #ffd1a1;
-  font-size: 13px;
+  font-size: 12px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .mobile-workbench-title {
@@ -2034,6 +2156,7 @@ input {
   justify-content: center;
   padding: 16px;
   background: rgba(0, 0, 0, 0.48);
+  animation: ui-fade-in var(--motion-fast) var(--motion-ease-out) both;
 }
 
 .mobile-terminal-help-panel {
@@ -2046,6 +2169,8 @@ input {
   background: rgba(14, 18, 23, 0.98);
   color: #f4f1ea;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .mobile-terminal-help-header {
@@ -2825,6 +2950,9 @@ input {
   z-index: 360;
   overflow-x: hidden;
   overflow-y: auto;
+  transform-origin: top left;
+  animation: ui-popover-in var(--motion-fast) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .host-dropdown-menu--end {
@@ -2888,6 +3016,7 @@ input {
     rgba(12, 16, 21, 0.94);
   overflow: visible;
   position: relative;
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
 }
 
 .file-browser-drawer.is-drag-active {
@@ -2912,6 +3041,7 @@ input {
   border-radius: 20px;
   overflow: hidden;
   position: relative;
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
 }
 
 .vscode-drawer-tools {
@@ -3449,6 +3579,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: ui-fade-in var(--motion-fast) var(--motion-ease-out) both;
 }
 
 .discovery-dialog {
@@ -3462,6 +3593,8 @@ input {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .discovery-dialog-header {
@@ -3806,6 +3939,9 @@ input {
   border-radius: 6px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.46);
   min-width: 160px;
+  transform-origin: top right;
+  animation: ui-popover-in var(--motion-fast) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .card-more-menu-item {
@@ -3909,6 +4045,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: ui-fade-in var(--motion-fast) var(--motion-ease-out) both;
 }
 
 .hidden-drawer {
@@ -3919,6 +4056,8 @@ input {
   max-height: 70vh;
   overflow-y: auto;
   padding: 16px;
+  animation: ui-panel-in var(--motion-standard) var(--motion-ease-out) both;
+  will-change: opacity, transform;
 }
 
 .hidden-drawer h3 {
@@ -3987,4 +4126,22 @@ input {
 .hidden-drawer-actions .btn-danger:hover {
   color: #e06c75;
   background: rgba(224, 108, 117, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .grid-card,
+  .top-bar-action:hover:not(:disabled),
+  .top-bar-mode-link:hover,
+  .filter-reset:hover {
+    transform: none;
+  }
 }

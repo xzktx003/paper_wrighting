@@ -65,16 +65,19 @@ export function MobileWorkbenchPage({
   return (
     <main className="mobile-workbench-page">
       <header className="mobile-workbench-header">
-        <a className="mobile-workbench-desktop-link" href="/">
-          桌面
-        </a>
-        <div className="mobile-workbench-title">
-          <strong>{activeSession?.displayName ?? "手机终端"}</strong>
-          <span>
-            {activeSession
-              ? `${stateLabels[activeSession.interactionState] ?? activeSession.interactionState} · ${activeSession.agentKind}`
-              : "无可用会话"}
-          </span>
+        <div className="mobile-workbench-mode-switch" aria-label="端切换">
+          <div className="mobile-workbench-title">
+            <strong>手机端 Coding Kanban</strong>
+            <span>
+              {activeSession?.displayName ?? "无可用会话"}
+              {activeSession
+                ? ` · ${stateLabels[activeSession.interactionState] ?? activeSession.interactionState} · ${activeSession.agentKind}`
+                : ""}
+            </span>
+          </div>
+          <a className="mobile-workbench-desktop-link" href="/">
+            电脑端 Coding Kanban
+          </a>
         </div>
         <label className="mobile-session-switcher">
           <span>会话</span>

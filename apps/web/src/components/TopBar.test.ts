@@ -66,18 +66,18 @@ describe("TopBar", () => {
   it("keeps only grouped high-level actions visible by default", () => {
     const markup = renderTopBar();
 
-    assert.match(markup, /Coding Kanban/);
+    assert.match(markup, /电脑端 Coding Kanban/);
+    assert.match(markup, /手机端 Coding Kanban/);
     assert.match(markup, /共 <strong>2<\/strong> 个会话/);
     assert.match(markup, /data-testid="new-session-toggle"/);
     assert.match(markup, /data-testid="scan-menu-toggle"/);
-    assert.match(markup, /data-testid="display-menu-toggle"/);
     assert.match(markup, /data-testid="tools-menu-toggle"/);
+    assert.match(markup, /data-testid="resource-tuning-menu-toggle"/);
     assert.match(markup, /data-testid="file-browser-toggle"/);
     assert.match(markup, /data-testid="vscode-toggle"/);
     assert.doesNotMatch(markup, /VS Code 省内存/);
     assert.doesNotMatch(markup, /释放 VS Code 缓存/);
     assert.doesNotMatch(markup, />资源诊断</);
-    assert.doesNotMatch(markup, />手机端</);
     assert.doesNotMatch(markup, />轻量预览：开</);
   });
 });
