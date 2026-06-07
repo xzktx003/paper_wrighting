@@ -22,6 +22,7 @@ import { FileBrowserDrawer } from "./components/FileBrowserDrawer";
 import type { FilterState } from "./components/FilterBar";
 import { HiddenSessionsDrawer } from "./components/HiddenSessionsDrawer";
 import type { SelectedHost } from "./components/HostDropdown";
+import { MobileWorkbenchPage } from "./components/MobileWorkbenchPage";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { QuickTmuxConnect } from "./components/QuickTmuxConnect";
 import { SidePanelView } from "./components/SidePanelView";
@@ -58,6 +59,8 @@ import {
   loadTerminalPreviewLightweightMode,
   saveTerminalPreviewLightweightMode,
 } from "./lib/terminal-preview-mode";
+import { shouldEnableMobileTerminalTouchMode } from "./lib/mobile-terminal-mode";
+import { isMobileWorkbenchLocation } from "./lib/mobile-workbench-route";
 import {
   loadVsCodeIframeCacheMode,
   releaseVsCodeCacheSessionIds,
@@ -76,6 +79,13 @@ const FILE_BROWSER_UI_STORAGE_KEY = "file-browser-ui-state";
 const SIDE_PANEL_SESSION_STORAGE_KEY = "side-panel-session-state";
 const FOCUS_VIEW_STORAGE_KEY = "focus-view-state";
 const MAX_CACHED_VSCODE_IFRAMES = 8;
+
+function readMobileTerminalTouchMode(): boolean {
+  return shouldEnableMobileTerminalTouchMode({
+    maxTouchPoints: navigator.maxTouchPoints,
+    pointerCoarse: window.matchMedia?.("(pointer: coarse)").matches ?? false,
+  });
+}
 
 interface FileBrowserUiState {
   width: number;
@@ -321,6 +331,9 @@ export default function App() {
     useState(loadTerminalPreviewLightweightMode);
   const [vscodeIframeCacheMode, setVscodeIframeCacheMode] =
     useState<VsCodeIframeCacheMode>(loadVsCodeIframeCacheMode);
+  const [mobileTerminalTouchMode, setMobileTerminalTouchMode] = useState(
+    readMobileTerminalTouchMode,
+  );
   const mainLayoutRef = useRef<HTMLDivElement | null>(null);
   const fileBrowserResizeRef = useRef<{
     startX: number;
@@ -392,6 +405,19 @@ export default function App() {
   useEffect(() => {
     saveVsCodeIframeCacheMode(vscodeIframeCacheMode);
   }, [vscodeIframeCacheMode]);
+
+  useEffect(() => {
+    const pointerMedia = window.matchMedia?.("(pointer: coarse)");
+    const refresh = () =>
+      setMobileTerminalTouchMode(readMobileTerminalTouchMode());
+
+    pointerMedia?.addEventListener("change", refresh);
+    window.addEventListener("orientationchange", refresh);
+    return () => {
+      pointerMedia?.removeEventListener("change", refresh);
+      window.removeEventListener("orientationchange", refresh);
+    };
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -507,6 +533,14 @@ export default function App() {
   function handleSwitchFocus(id: string) {
     setFocusedId(id);
   }
+
+  const handleMobileSwitchSession = useCallback((id: string) => {
+    setFocusedId(id);
+    setViewMode("focus");
+    focusAgentSession({ agentSessionId: id })
+      .then(setSnapshot)
+      .catch(() => {});
+  }, []);
 
   function handleLaunched() {
     listAgentSessions()
@@ -878,6 +912,23 @@ export default function App() {
       .catch(() => {});
   }
 
+  if (isMobileWorkbenchLocation(window.location)) {
+    const mobileActiveSessionId =
+      focusedId ??
+      snapshot?.activeAgentSessionId ??
+      visibleSessions[0]?.id ??
+      null;
+
+    return (
+      <MobileWorkbenchPage
+        activeSessionId={mobileActiveSessionId}
+        isLoading={isLoading}
+        sessions={sessions}
+        onSwitchSession={handleMobileSwitchSession}
+      />
+    );
+  }
+
   return (
     <main className={`app-shell-v2 layout-${layoutMode}`}>
       <TopBar
@@ -1062,6 +1113,7 @@ export default function App() {
               onReconnect={handleReconnectSession}
               onRename={handleRenameSession}
               useLightweightTerminalPreview={useLightweightTerminalPreview}
+              mobileTerminalTouchMode={mobileTerminalTouchMode}
             />
           ) : (
             <AgentGrid

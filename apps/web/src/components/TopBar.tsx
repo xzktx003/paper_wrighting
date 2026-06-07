@@ -281,6 +281,13 @@ export function TopBar({
     <header className="top-bar">
       <div className="top-bar-left">
         <h1 className="top-bar-title">Coding Kanban</h1>
+        <a
+          className="top-bar-action top-bar-action--ghost"
+          href="/?view=mobile"
+          title="打开手机端终端控制页"
+        >
+          手机端
+        </a>
         <button
           className={`top-bar-action${fileBrowserOpen ? " top-bar-action--active" : ""}`}
           data-testid="file-browser-toggle"

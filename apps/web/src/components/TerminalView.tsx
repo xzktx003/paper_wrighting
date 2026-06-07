@@ -6,6 +6,13 @@ import "@xterm/xterm/css/xterm.css";
 
 import { buildTerminalWebSocketUrl } from "../lib/api";
 import {
+  computeMobilePinchFontSize,
+  computeMobileTerminalScrollLines,
+  loadMobileTerminalFontSize,
+  measureTouchDistance,
+  saveMobileTerminalFontSize,
+} from "../lib/mobile-terminal-touch";
+import {
   recordTerminalFrame,
   registerTerminalWebSocket,
 } from "../lib/resource-diagnostics";
@@ -21,6 +28,7 @@ interface TerminalViewProps {
   agentSessionId: string;
   interactive?: boolean;
   inputEnabled?: boolean;
+  mobileTouchMode?: boolean;
   suspended?: boolean;
 }
 
@@ -55,6 +63,10 @@ const DEFAULT_PREVIEW_GEOMETRY: TerminalGeometry = {
 
 const EXTERNAL_FOCUS_GRACE_MS = 750;
 const PASSIVE_FOCUS_REPAIR_INTERVAL_MS = 500;
+const MOBILE_TOUCH_LISTENER_OPTIONS = {
+  capture: true,
+  passive: false,
+} satisfies AddEventListenerOptions;
 
 const previewGeometryCache = new Map<string, TerminalGeometry>();
 const terminalInputOwners = new Map<string, TerminalInputOwner>();
@@ -63,6 +75,7 @@ export function TerminalView({
   agentSessionId,
   interactive = true,
   inputEnabled: inputEnabledProp,
+  mobileTouchMode = false,
   suspended = false,
 }: TerminalViewProps) {
   const inputEnabled = inputEnabledProp ?? interactive;
@@ -113,6 +126,9 @@ export function TerminalView({
     let handleTerminalFocusOut: ((event: FocusEvent) => void) | null = null;
     let handleWindowBlur: (() => void) | null = null;
     let handleWindowFocus: (() => void) | null = null;
+    let handleMobileTouchStart: ((event: TouchEvent) => void) | null = null;
+    let handleMobileTouchMove: ((event: TouchEvent) => void) | null = null;
+    let handleMobileTouchEnd: ((event: TouchEvent) => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
       | null = null;
@@ -190,9 +206,10 @@ export function TerminalView({
       stage.style.transform = `translate(-50%, -50%) scale(${Math.max(scale, 0.01)})`;
     };
 
+    const initialFontSize = mobileTouchMode ? loadMobileTerminalFontSize() : 14;
     const term = new Terminal({
       cursorBlink: inputEnabledRef.current,
-      fontSize: 14,
+      fontSize: initialFontSize,
       fontFamily: '"IBM Plex Mono", "SFMono-Regular", monospace',
       theme: {
         background: "#0e1217",
@@ -586,6 +603,165 @@ export function TerminalView({
       timeoutIds.push(window.setTimeout(fitTerminal, 96));
     };
 
+    if (mobileTouchMode && interactive) {
+      const touchState: {
+        lastY: number;
+        mode: "idle" | "pinch" | "scroll";
+        scrollRemainder: number;
+        startDistance: number;
+        startFontSize: number;
+      } = {
+        lastY: 0,
+        mode: "idle",
+        scrollRemainder: 0,
+        startDistance: 0,
+        startFontSize: initialFontSize,
+      };
+
+      const getLineHeight = () => {
+        const fontSize =
+          typeof term.options.fontSize === "number"
+            ? term.options.fontSize
+            : initialFontSize;
+        const lineHeight =
+          typeof term.options.lineHeight === "number"
+            ? term.options.lineHeight
+            : 1;
+
+        return Math.max(8, fontSize * lineHeight);
+      };
+
+      const shouldIgnoreMobileTouch = (target: EventTarget | null) =>
+        target instanceof HTMLElement &&
+        target.closest(".terminal-mobile-bottom-btn") !== null;
+
+      const preventMobileTouchDefault = (event: TouchEvent) => {
+        if (event.cancelable) {
+          event.preventDefault();
+        }
+      };
+
+      handleMobileTouchStart = (event) => {
+        if (shouldIgnoreMobileTouch(event.target)) {
+          return;
+        }
+
+        if (event.touches.length === 1) {
+          preventMobileTouchDefault(event);
+          touchState.mode = "scroll";
+          touchState.lastY = event.touches[0]!.clientY;
+          touchState.scrollRemainder = 0;
+          return;
+        }
+
+        if (event.touches.length >= 2) {
+          preventMobileTouchDefault(event);
+          touchState.mode = "pinch";
+          touchState.startDistance = measureTouchDistance(
+            event.touches[0]!,
+            event.touches[1]!,
+          );
+          touchState.startFontSize =
+            typeof term.options.fontSize === "number"
+              ? term.options.fontSize
+              : initialFontSize;
+        }
+      };
+
+      handleMobileTouchMove = (event) => {
+        if (shouldIgnoreMobileTouch(event.target)) {
+          return;
+        }
+
+        if (event.touches.length === 1 && touchState.mode === "scroll") {
+          preventMobileTouchDefault(event);
+          const nextY = event.touches[0]!.clientY;
+          const deltaY = nextY - touchState.lastY;
+          const result = computeMobileTerminalScrollLines({
+            accumulatedDeltaY: touchState.scrollRemainder + deltaY,
+            lineHeight: getLineHeight(),
+          });
+
+          touchState.lastY = nextY;
+          touchState.scrollRemainder = result.remainingDeltaY;
+          if (result.scrollLines !== 0) {
+            term.scrollLines(result.scrollLines);
+          }
+          return;
+        }
+
+        if (event.touches.length >= 2) {
+          preventMobileTouchDefault(event);
+          const nextDistance = measureTouchDistance(
+            event.touches[0]!,
+            event.touches[1]!,
+          );
+          const nextFontSize = computeMobilePinchFontSize({
+            currentDistance: nextDistance,
+            startDistance: touchState.startDistance,
+            startFontSize: touchState.startFontSize,
+          });
+
+          if (nextFontSize !== term.options.fontSize) {
+            term.options.fontSize = nextFontSize;
+            saveMobileTerminalFontSize(nextFontSize);
+            fitTerminal();
+            flushResize();
+          }
+        }
+      };
+
+      handleMobileTouchEnd = (event) => {
+        if (shouldIgnoreMobileTouch(event.target)) {
+          return;
+        }
+
+        if (event.touches.length === 0) {
+          touchState.mode = "idle";
+          touchState.scrollRemainder = 0;
+          return;
+        }
+
+        if (event.touches.length === 1) {
+          touchState.mode = "scroll";
+          touchState.lastY = event.touches[0]!.clientY;
+          touchState.scrollRemainder = 0;
+          return;
+        }
+
+        touchState.mode = "pinch";
+        touchState.startDistance = measureTouchDistance(
+          event.touches[0]!,
+          event.touches[1]!,
+        );
+        touchState.startFontSize =
+          typeof term.options.fontSize === "number"
+            ? term.options.fontSize
+            : initialFontSize;
+      };
+
+      container.addEventListener(
+        "touchstart",
+        handleMobileTouchStart,
+        MOBILE_TOUCH_LISTENER_OPTIONS,
+      );
+      container.addEventListener(
+        "touchmove",
+        handleMobileTouchMove,
+        MOBILE_TOUCH_LISTENER_OPTIONS,
+      );
+      container.addEventListener(
+        "touchend",
+        handleMobileTouchEnd,
+        MOBILE_TOUCH_LISTENER_OPTIONS,
+      );
+      container.addEventListener(
+        "touchcancel",
+        handleMobileTouchEnd,
+        MOBILE_TOUCH_LISTENER_OPTIONS,
+      );
+    }
+
     const enableTerminalInput = () => {
       if (replayComplete) {
         return;
@@ -902,6 +1078,32 @@ export function TerminalView({
       if (handleTerminalFocusIn) {
         container.removeEventListener("focusin", handleTerminalFocusIn, true);
       }
+      if (handleMobileTouchStart) {
+        container.removeEventListener(
+          "touchstart",
+          handleMobileTouchStart,
+          MOBILE_TOUCH_LISTENER_OPTIONS,
+        );
+      }
+      if (handleMobileTouchMove) {
+        container.removeEventListener(
+          "touchmove",
+          handleMobileTouchMove,
+          MOBILE_TOUCH_LISTENER_OPTIONS,
+        );
+      }
+      if (handleMobileTouchEnd) {
+        container.removeEventListener(
+          "touchend",
+          handleMobileTouchEnd,
+          MOBILE_TOUCH_LISTENER_OPTIONS,
+        );
+        container.removeEventListener(
+          "touchcancel",
+          handleMobileTouchEnd,
+          MOBILE_TOUCH_LISTENER_OPTIONS,
+        );
+      }
       if (handleDocumentPointerDownCapture) {
         document.removeEventListener(
           "pointerdown",
@@ -960,12 +1162,12 @@ export function TerminalView({
       pendingResizeRef.current = null;
       terminalInputReadyRef.current = false;
     };
-  }, [agentSessionId, interactive, suspended]);
+  }, [agentSessionId, interactive, mobileTouchMode, suspended]);
 
   return (
     <div
       ref={containerRef}
-      className={`terminal-view ${interactive ? "terminal-view-live" : "terminal-view-preview"} ${inputEnabled ? "terminal-view-input-active" : "terminal-view-input-monitor"}`}
+      className={`terminal-view ${interactive ? "terminal-view-live" : "terminal-view-preview"} ${inputEnabled ? "terminal-view-input-active" : "terminal-view-input-monitor"}${mobileTouchMode ? " terminal-view-mobile-touch" : ""}`}
       style={{
         width: "100%",
         height: "100%",
@@ -974,6 +1176,16 @@ export function TerminalView({
     >
       {!interactive && !suspended && (
         <div ref={stageRef} className="terminal-view-stage" />
+      )}
+      {mobileTouchMode && interactive && (
+        <button
+          className="terminal-mobile-bottom-btn"
+          onClick={() => termRef.current?.scrollToBottom()}
+          title="回到终端底部并继续看最新输出"
+          type="button"
+        >
+          底部
+        </button>
       )}
     </div>
   );

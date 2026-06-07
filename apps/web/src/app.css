@@ -23,8 +23,29 @@ body {
   min-height: var(--app-height);
 }
 
+html.mobile-terminal-route {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.mobile-terminal-route {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: var(--app-height);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 #root {
   min-height: var(--app-height);
+}
+
+body.mobile-terminal-route #root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 button,
@@ -241,6 +262,7 @@ input {
   cursor: pointer;
   font-size: 12px;
   line-height: 1.2;
+  text-decoration: none;
   white-space: nowrap;
   transition:
     background 0.16s ease,
@@ -1700,6 +1722,253 @@ input {
 .terminal-view-preview .terminal-view-stage {
   position: absolute;
   pointer-events: none;
+}
+
+.terminal-view-mobile-touch {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.terminal-view-mobile-touch .xterm,
+.terminal-view-mobile-touch .xterm-screen,
+.terminal-view-mobile-touch .xterm-viewport {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+.terminal-mobile-bottom-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 20;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 152, 0, 0.34);
+  border-radius: 999px;
+  background: rgba(14, 18, 23, 0.82);
+  color: #ffd1a1;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+.terminal-mobile-bottom-btn:hover {
+  background: rgba(255, 152, 0, 0.18);
+}
+
+/* ===== Mobile Workbench ===== */
+.mobile-workbench-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: var(--app-height);
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 143, 31, 0.12),
+      transparent 32%
+    ),
+    linear-gradient(180deg, #111820 0%, #070b10 100%);
+  color: #f4f1ea;
+}
+
+.mobile-workbench-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  flex-shrink: 0;
+  padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 14, 19, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-workbench-desktop-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(246, 178, 107, 0.3);
+  border-radius: 10px;
+  background: rgba(246, 178, 107, 0.1);
+  color: #ffd1a1;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.mobile-workbench-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mobile-workbench-title strong {
+  overflow: hidden;
+  color: #ffe0ad;
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-workbench-title span {
+  overflow: hidden;
+  color: rgba(244, 241, 234, 0.6);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-session-switcher {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: rgba(244, 241, 234, 0.64);
+  font-size: 12px;
+}
+
+.mobile-session-switcher select {
+  min-width: 0;
+  height: 34px;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(4, 7, 11, 0.8);
+  color: rgba(244, 241, 234, 0.88);
+}
+
+.mobile-terminal-surface {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.mobile-terminal-frame {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #0e1217;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.mobile-terminal-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  background: rgba(9, 13, 18, 0.96);
+  scrollbar-width: none;
+}
+
+.mobile-terminal-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-terminal-key {
+  flex: 0 0 auto;
+  min-width: 48px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 241, 234, 0.86);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mobile-terminal-key--danger {
+  border-color: rgba(255, 100, 100, 0.42);
+  background: rgba(181, 55, 55, 0.18);
+  color: #ffb0a2;
+}
+
+.mobile-terminal-key:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mobile-agent-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(9, 13, 18, 0.98);
+  touch-action: manipulation;
+}
+
+.mobile-agent-composer-input {
+  width: 100%;
+  max-height: 120px;
+  min-height: 68px;
+  resize: vertical;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: rgba(4, 7, 11, 0.84);
+  color: #f4f1ea;
+  font-size: 14px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.mobile-agent-composer-input:focus {
+  border-color: rgba(255, 152, 0, 0.48);
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.12);
+}
+
+.mobile-agent-composer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mobile-agent-composer-btn {
+  flex: 1;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(244, 241, 234, 0.82);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mobile-agent-composer-btn--primary {
+  border-color: rgba(246, 178, 107, 0.38);
+  background: rgba(246, 178, 107, 0.16);
+  color: #ffe0ad;
+}
+
+.mobile-agent-composer-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mobile-workbench-error {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  background: rgba(181, 55, 55, 0.2);
+  color: #ffb0a2;
+  font-size: 12px;
 }
 
 .quick-tmux-backdrop {

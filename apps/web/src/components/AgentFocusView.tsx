@@ -24,6 +24,7 @@ interface AgentFocusViewProps {
   onExit: () => void;
   onReconnect: (id: string) => void;
   onRename?: (id: string) => void;
+  mobileTerminalTouchMode?: boolean;
   useLightweightTerminalPreview?: boolean;
 }
 
@@ -112,6 +113,7 @@ export function AgentFocusView({
   onExit,
   onReconnect,
   onRename,
+  mobileTerminalTouchMode = false,
   useLightweightTerminalPreview = true,
 }: AgentFocusViewProps) {
   const [terminalLayoutMode, setTerminalLayoutMode] =
@@ -660,6 +662,7 @@ export function AgentFocusView({
                           agentSessionId={session.id}
                           interactive={true}
                           inputEnabled={isActiveInputPane}
+                          mobileTouchMode={mobileTerminalTouchMode}
                         />
                       </Suspense>
                     ) : (

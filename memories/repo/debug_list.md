@@ -40,3 +40,5 @@
 - commit `fc57a80` 引入的终端焦点保留修复过度：`rememberExternalPointerIntent` 仅对受保护目标记录意图，导致点击非保护元素时终端抢回焦点；`hasIntentionalExternalFocus` 对非保护、非 body 元素直接返回 false 加剧了问题。修复为 pointerdown 统一记录意图 + 纯时间戳比较，不再区分 active element 类型。
 - VS Code Web 与终端来回切换两轮后，点击 VS Code iframe 内部无法重新输入：上一版只依赖父文档 `pointerdown` 记录外部意图，但 iframe 内点击不稳定冒到父页面。修复为在父窗口 `blur` 和被动终端聚焦前，根据当前 `document.activeElement` 将 hovered iframe 补记为用户外部焦点意图，并补 VS Code -> 终端 -> VS Code round-trip e2e 回归。
 - 轻量预览下浏览器内存和网络仍持续增长：资源诊断显示 `/ws/agent-sessions` 全量快照达到数百 msg/s、数 MB/s；根因是每个终端输出帧都触发一次全量 snapshot，前端持续 JSON 解析和 React 更新。修复为后端对输出触发的 snapshot 做 trailing 合并广播，结构性操作仍即时刷新，并避免 observe-only 会话输出时创建无效 awaiting_input timer。
+- 手机浏览器查看 Codex 长上下文终端时，终端区域下拉会触发浏览器下拉刷新，或只滑动页面不滑动 xterm 历史：根因是桌面页面滚动结构没有锁住根滚动链路；首版 touch 监听在冒泡阶段，遇到 xterm viewport/浏览器手势竞争时拦截不够早，且桌面聚焦页没有启用手机触控模式。修复为新增 `/mobile` 手机终端页锁定 `html/body/#root` 滚动，并让 `TerminalView` 手机触控模式用捕获阶段的非 passive `touchstart/touchmove` 接管单指滑动、滚动 xterm 历史，双指缩放字号；触屏设备的桌面聚焦页也启用同一逻辑。
+- 手机访问 `/mobile` 进不去或 404：根因是部分运行入口只暴露根页面或只启动后端，history route 依赖前端服务提供 SPA fallback。修复为手机端按钮改用 `/?view=mobile` 根路径 query 入口，并保留 `/mobile`、`/m`、`#/mobile` 兼容解析。
