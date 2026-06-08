@@ -611,6 +611,96 @@ test("file browser follows the active monitor terminal when the side panel is op
   }
 });
 
+test("file browser stays mounted and retargets during repeated monitor terminal switches", async ({
+  page,
+  request,
+}) => {
+  const fixtureA = setupFixture();
+  const fixtureB = setupFixture();
+  const sessionAName = `file-browser-repeat-a-${Date.now()}`;
+  const sessionBName = `file-browser-repeat-b-${Date.now()}`;
+  let sessionAId: string | undefined;
+  let sessionBId: string | undefined;
+
+  try {
+    sessionAId = await launchMockSession(
+      request,
+      sessionAName,
+      fixtureA.rootDir,
+    );
+    sessionBId = await launchMockSession(
+      request,
+      sessionBName,
+      fixtureB.rootDir,
+    );
+
+    await focusSession(page, sessionAName);
+    await page.getByRole("button", { name: /屏幕布局/ }).click();
+    await page.getByRole("menuitemradio", { name: /左右双屏/ }).click();
+
+    const drawerA = await openFileBrowserForFocusedSession(page);
+    await expect(drawerA.locator(".file-browser-path-input")).toHaveValue(
+      fixtureA.rootDir,
+    );
+
+    const firstPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+    );
+    const secondPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+    );
+    await secondPane
+      .getByRole("combobox", { name: "选择第 2 个监控终端" })
+      .selectOption(sessionBId!);
+
+    await secondPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .locator(".file-browser-path-input"),
+    ).toHaveValue(fixtureB.rootDir);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .getByTestId("file-entry-note.txt"),
+    ).toBeVisible();
+
+    await firstPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .locator(".file-browser-path-input"),
+    ).toHaveValue(fixtureA.rootDir);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .getByTestId("file-entry-note.txt"),
+    ).toBeVisible();
+
+    await secondPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .locator(".file-browser-path-input"),
+    ).toHaveValue(fixtureB.rootDir);
+    await expect(
+      page
+        .getByTestId("file-browser-drawer")
+        .getByTestId("file-entry-note.txt"),
+    ).toBeVisible();
+  } finally {
+    await deleteSessionIfPresent(request, sessionAId);
+    await deleteSessionIfPresent(request, sessionBId);
+    rmSync(fixtureA.rootDir, { recursive: true, force: true });
+    rmSync(fixtureA.uploadFilePath, { force: true });
+    rmSync(fixtureB.rootDir, { recursive: true, force: true });
+    rmSync(fixtureB.uploadFilePath, { force: true });
+  }
+});
+
 test("monitor terminal switching does not change the focused side-panel session when no side panel is open", async ({
   page,
   request,

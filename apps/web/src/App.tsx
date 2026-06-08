@@ -105,6 +105,17 @@ interface FocusViewState {
   viewMode: ViewMode;
 }
 
+function getInitialSidePanelTool(
+  focusedId: string | null,
+  states: Record<string, FileBrowserSessionState>,
+): SidePanelTool | null {
+  if (!focusedId) {
+    return null;
+  }
+
+  return states[focusedId]?.activeTool ?? null;
+}
+
 function buildFileBrowserDefaultHost(
   session: AgentSessionRecord,
   sshHosts: SshHostPreset[],
@@ -298,6 +309,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export default function App() {
   const initialFocusViewState = useMemo(() => loadFocusViewState(), []);
+  const initialSidePanelSessionStates = useMemo(
+    () => loadSidePanelSessionStates(),
+    [],
+  );
   const [snapshot, setSnapshot] = useState<ListAgentSessionsResponse | null>(
     null,
   );
@@ -318,7 +333,14 @@ export default function App() {
     useState<FileBrowserUiState>(loadFileBrowserUiState);
   const [fileBrowserSessionStates, setFileBrowserSessionStates] = useState<
     Record<string, FileBrowserSessionState>
-  >(loadSidePanelSessionStates);
+  >(initialSidePanelSessionStates);
+  const [openSidePanelTool, setOpenSidePanelTool] =
+    useState<SidePanelTool | null>(() =>
+      getInitialSidePanelTool(
+        initialFocusViewState.focusedId,
+        initialSidePanelSessionStates,
+      ),
+    );
   const [vscodeCacheSessionIds, setVscodeCacheSessionIds] = useState<string[]>(
     [],
   );
@@ -489,6 +511,7 @@ export default function App() {
     if (!isLoading && focusedId && !knownIds.has(focusedId)) {
       setFocusedId(null);
       setActiveTerminalSessionId(null);
+      setOpenSidePanelTool(null);
       setViewMode("grid");
     }
 
@@ -547,34 +570,85 @@ export default function App() {
     setViewMode("grid");
     setFocusedId(null);
     setActiveTerminalSessionId(null);
+    setOpenSidePanelTool(null);
   }, []);
 
+  function setExclusiveSidePanelToolForSession(
+    session: AgentSessionRecord,
+    activeTool: SidePanelTool,
+  ) {
+    setFileBrowserSessionStates((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).map(([sessionId, state]) => [
+          sessionId,
+          sessionId === session.id ? state : { ...state, activeTool: null },
+        ]),
+      );
+      const existing =
+        current[session.id] ?? buildDefaultSidePanelState(session, sshHosts);
+
+      return {
+        ...next,
+        [session.id]: {
+          ...existing,
+          activeTool,
+        },
+      };
+    });
+  }
+
+  function closeSidePanelToolForSession(sessionId: string) {
+    setOpenSidePanelTool(null);
+    setFileBrowserSessionStates((current) => {
+      const existing = current[sessionId];
+      if (!existing) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [sessionId]: {
+          ...existing,
+          activeTool: null,
+        },
+      };
+    });
+  }
+
   function handleSwitchFocus(id: string) {
-    const activeTool = focusedSidePanelState?.activeTool ?? null;
     const targetSession = sessions.find((session) => session.id === id);
 
-    if (sidePanelOpen && activeTool && targetSession) {
-      setFileBrowserSessionStates((current) => {
-        const existing =
-          current[id] ?? buildDefaultSidePanelState(targetSession, sshHosts);
-
-        return {
-          ...current,
-          [id]: {
-            ...existing,
-            activeTool,
-          },
-        };
-      });
+    if (openSidePanelTool && targetSession) {
+      setExclusiveSidePanelToolForSession(targetSession, openSidePanelTool);
+      setFocusedId(id);
     }
 
-    setFocusedId(id);
     setActiveTerminalSessionId(id);
   }
 
-  const handleActiveTerminalSessionChange = useCallback((id: string | null) => {
-    setActiveTerminalSessionId(id);
-  }, []);
+  const handleActiveTerminalSessionChange = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        setActiveTerminalSessionId(null);
+        return;
+      }
+
+      setActiveTerminalSessionId(id);
+
+      if (!openSidePanelTool) {
+        return;
+      }
+
+      const targetSession = sessions.find((session) => session.id === id);
+      if (!targetSession) {
+        return;
+      }
+
+      setExclusiveSidePanelToolForSession(targetSession, openSidePanelTool);
+      setFocusedId(id);
+    },
+    [openSidePanelTool, sessions, sshHosts],
+  );
 
   const handleMobileSwitchSession = useCallback((id: string) => {
     setFocusedId(id);
@@ -697,10 +771,8 @@ export default function App() {
     panelAvailable,
     focusedSession,
   });
-  const fileBrowserOpen =
-    panelAvailable && focusedSidePanelState?.activeTool === "files";
-  const vscodeOpen =
-    panelAvailable && focusedSidePanelState?.activeTool === "vscode";
+  const fileBrowserOpen = panelAvailable && openSidePanelTool === "files";
+  const vscodeOpen = panelAvailable && openSidePanelTool === "vscode";
   const sidePanelOpen = fileBrowserOpen || vscodeOpen;
   const activeVsCodeSessionId =
     vscodeOpen && focusedSession ? focusedSession.id : null;
@@ -994,36 +1066,11 @@ export default function App() {
             return;
           }
 
-          if (targetSession.id !== focusedId) {
-            setFocusedId(targetSession.id);
-          }
-          setActiveTerminalSessionId(targetSession.id);
-
-          setFileBrowserSessionStates((current) => {
-            const existing =
-              current[targetSession.id] ??
-              (targetSession.id === focusedSession?.id
-                ? focusedSidePanelState
-                : null) ??
-              buildDefaultSidePanelState(targetSession, sshHosts);
-
-            return {
-              ...current,
-              [targetSession.id]: {
-                ...existing,
-                activeTool:
-                  targetSession.id === focusedSession?.id &&
-                  fileBrowserOpen &&
-                  existing.activeTool === "files"
-                    ? null
-                    : "files",
-              },
-            };
-          });
-        }}
-        onToggleVsCode={() => {
-          const targetSession = sidePanelTargetSession;
-          if (!targetSession || !vscodeAvailable) {
+          if (
+            openSidePanelTool === "files" &&
+            targetSession.id === focusedSession?.id
+          ) {
+            closeSidePanelToolForSession(targetSession.id);
             return;
           }
 
@@ -1031,28 +1078,29 @@ export default function App() {
             setFocusedId(targetSession.id);
           }
           setActiveTerminalSessionId(targetSession.id);
+          setOpenSidePanelTool("files");
+          setExclusiveSidePanelToolForSession(targetSession, "files");
+        }}
+        onToggleVsCode={() => {
+          const targetSession = sidePanelTargetSession;
+          if (!targetSession || !vscodeAvailable) {
+            return;
+          }
 
-          setFileBrowserSessionStates((current) => {
-            const existing =
-              current[targetSession.id] ??
-              (targetSession.id === focusedSession?.id
-                ? focusedSidePanelState
-                : null) ??
-              buildDefaultSidePanelState(targetSession, sshHosts);
+          if (
+            openSidePanelTool === "vscode" &&
+            targetSession.id === focusedSession?.id
+          ) {
+            closeSidePanelToolForSession(targetSession.id);
+            return;
+          }
 
-            return {
-              ...current,
-              [targetSession.id]: {
-                ...existing,
-                activeTool:
-                  targetSession.id === focusedSession?.id &&
-                  vscodeOpen &&
-                  existing.activeTool === "vscode"
-                    ? null
-                    : "vscode",
-              },
-            };
-          });
+          if (targetSession.id !== focusedId) {
+            setFocusedId(targetSession.id);
+          }
+          setActiveTerminalSessionId(targetSession.id);
+          setOpenSidePanelTool("vscode");
+          setExclusiveSidePanelToolForSession(targetSession, "vscode");
         }}
         onToggleVsCodeIframeCacheMode={handleToggleVsCodeIframeCacheMode}
         onReleaseVsCodeIframeCache={handleReleaseVsCodeIframeCache}
