@@ -14,6 +14,7 @@
 - Codex CLI 运行后鼠标滚轮偶发变成输入历史上下翻页：xterm.js 会在 TUI 鼠标追踪或无 scrollback 路径中把 wheel 转成鼠标协议/方向键输入；修复为前端接管 wheel，只滚动 xterm scrollback 并阻止 wheel 进入 stdin。
 - 多屏或完整预览终端偶发无法滚动上下文：wheel 只挂在 xterm 内部 handler，事件落在外层容器、缩放空白区或非输入预览终端时可能漏掉；修复为 `TerminalView` 容器捕获阶段统一接管 wheel，所有终端视图都滚动自己的 scrollback 并阻止进入 stdin。
 - 运行中终端滚上去后马上被实时输出拉回底部：live `term.write()` 持续刷新底部跟随，覆盖用户刚选的 scrollback viewport；修复为滚轮离开底部后短暂锁定 viewport，新输出写入完成后恢复到该行，回到底部时解除锁定。
+- 很多运行中终端滚轮仍控制不了上下文：旧用户滚动锁只有 10 秒，长输出终端停留阅读超过 10 秒后会再次被 live output 拉回底部；wheel 事件也可能落在终端上方的遮罩、空白层或 document-level 目标上，绕过 `.terminal-view` 容器。修复为把用户滚动锁改成“只要未回到底部就持续锁定”，并增加 document capture 兜底，鼠标坐标落在真实 xterm 区域内时一律滚动对应终端 scrollback。
 - 终端 focus-report mock 未进入 raw mode 导致测试假红：修复为断言前先切 raw mode。
 - Secondary DA 应答污染 shell 提示符：修复为只过滤会造成噪音的 Secondary DA，保留必要握手应答。
 - 非交互 tmux 缩略图回写 resize 导致真实 pane 缩小：修复为缓存 live geometry，在前端做本地缩放预览。

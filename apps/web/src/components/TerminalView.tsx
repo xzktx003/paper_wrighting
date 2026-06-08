@@ -65,7 +65,6 @@ const DEFAULT_PREVIEW_GEOMETRY: TerminalGeometry = {
 
 const EXTERNAL_FOCUS_GRACE_MS = 750;
 const PASSIVE_FOCUS_REPAIR_INTERVAL_MS = 500;
-const USER_SCROLL_LOCK_MS = 10_000;
 const MOBILE_TOUCH_LISTENER_OPTIONS = {
   capture: true,
   passive: false,
@@ -90,7 +89,7 @@ export function TerminalView({
   const pendingResizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const inputEnabledRef = useRef(inputEnabled);
   const terminalInputReadyRef = useRef(false);
-  const userScrollLockUntilRef = useRef(0);
+  const userScrollLockedRef = useRef(false);
 
   useEffect(() => {
     inputEnabledRef.current = inputEnabled;
@@ -117,7 +116,7 @@ export function TerminalView({
     if (!container || !stage) return;
 
     terminalInputReadyRef.current = false;
-    userScrollLockUntilRef.current = 0;
+    userScrollLockedRef.current = false;
 
     const timeoutIds: number[] = [];
     const intervalIds: number[] = [];
@@ -135,6 +134,7 @@ export function TerminalView({
     let handleMobileTouchMove: ((event: TouchEvent) => void) | null = null;
     let handleMobileTouchEnd: ((event: TouchEvent) => void) | null = null;
     let handleTerminalWheelCapture: ((event: WheelEvent) => void) | null = null;
+    let handleDocumentWheelCapture: ((event: WheelEvent) => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
       | null = null;
@@ -259,25 +259,21 @@ export function TerminalView({
     const refreshUserScrollLock = () => {
       const activeBuffer = term.buffer.active;
       if (activeBuffer.viewportY < activeBuffer.baseY) {
-        userScrollLockUntilRef.current = Date.now() + USER_SCROLL_LOCK_MS;
+        userScrollLockedRef.current = true;
         return;
       }
 
-      userScrollLockUntilRef.current = 0;
+      userScrollLockedRef.current = false;
     };
 
     const writeTerminalOutput = (data: string) => {
       const preserveViewport =
-        userScrollLockUntilRef.current > Date.now() &&
+        userScrollLockedRef.current &&
         term.buffer.active.viewportY < term.buffer.active.baseY;
       const viewportYBeforeWrite = term.buffer.active.viewportY;
 
       term.write(data, () => {
-        if (
-          disposed ||
-          !preserveViewport ||
-          userScrollLockUntilRef.current <= Date.now()
-        ) {
+        if (disposed || !preserveViewport || !userScrollLockedRef.current) {
           return;
         }
 
@@ -315,6 +311,16 @@ export function TerminalView({
         term.scrollLines(result.scrollLines);
         refreshUserScrollLock();
       }
+    };
+
+    const eventPointIsInsideContainer = (event: WheelEvent): boolean => {
+      const rect = container.getBoundingClientRect();
+      return (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      );
     };
 
     const isProtectedExternalFocusTarget = (
@@ -1095,6 +1101,28 @@ export function TerminalView({
     handleTerminalWheelCapture = (event) => {
       scrollTerminalWithWheel(event);
     };
+
+    handleDocumentWheelCapture = (event) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const path = event.composedPath();
+      if (path.includes(container)) {
+        return;
+      }
+
+      if (!eventPointIsInsideContainer(event)) {
+        return;
+      }
+
+      scrollTerminalWithWheel(event);
+    };
+
+    document.addEventListener("wheel", handleDocumentWheelCapture, {
+      capture: true,
+      passive: false,
+    });
     container.addEventListener("wheel", handleTerminalWheelCapture, {
       capture: true,
       passive: false,
@@ -1183,6 +1211,9 @@ export function TerminalView({
           true,
         );
       }
+      if (handleDocumentWheelCapture) {
+        document.removeEventListener("wheel", handleDocumentWheelCapture, true);
+      }
       if (handleDocumentPointerDownCapture) {
         document.removeEventListener(
           "pointerdown",
@@ -1260,7 +1291,7 @@ export function TerminalView({
         <button
           className="terminal-mobile-bottom-btn"
           onClick={() => {
-            userScrollLockUntilRef.current = 0;
+            userScrollLockedRef.current = false;
             termRef.current?.scrollToBottom();
           }}
           title="回到终端底部并继续看最新输出"
