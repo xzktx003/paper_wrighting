@@ -307,6 +307,9 @@ export default function App() {
   const [focusedId, setFocusedId] = useState<string | null>(
     initialFocusViewState.focusedId,
   );
+  const [activeTerminalSessionId, setActiveTerminalSessionId] = useState<
+    string | null
+  >(initialFocusViewState.focusedId);
   const [newSessionHost, setNewSessionHost] = useState<SelectedHost | null>(
     null,
   );
@@ -485,9 +488,16 @@ export default function App() {
 
     if (!isLoading && focusedId && !knownIds.has(focusedId)) {
       setFocusedId(null);
+      setActiveTerminalSessionId(null);
       setViewMode("grid");
     }
-  }, [focusedId, isLoading, sessions]);
+
+    if (activeTerminalSessionId && !knownIds.has(activeTerminalSessionId)) {
+      setActiveTerminalSessionId(
+        focusedId && knownIds.has(focusedId) ? focusedId : null,
+      );
+    }
+  }, [activeTerminalSessionId, focusedId, isLoading, sessions]);
 
   const filteredSessions = visibleSessions.filter((s) => {
     if (filters.host && (s.hostId ?? "local") !== filters.host) return false;
@@ -507,6 +517,7 @@ export default function App() {
 
   function handleFocusSession(id: string) {
     setFocusedId(id);
+    setActiveTerminalSessionId(id);
     setViewMode("focus");
   }
 
@@ -521,6 +532,7 @@ export default function App() {
         };
       });
       setFocusedId(session.id);
+      setActiveTerminalSessionId(session.id);
       setViewMode("focus");
       setQuickTmuxOpen(false);
 
@@ -534,14 +546,39 @@ export default function App() {
   const handleExitFocus = useCallback(() => {
     setViewMode("grid");
     setFocusedId(null);
+    setActiveTerminalSessionId(null);
   }, []);
 
   function handleSwitchFocus(id: string) {
+    const activeTool = focusedSidePanelState?.activeTool ?? null;
+    const targetSession = sessions.find((session) => session.id === id);
+
+    if (sidePanelOpen && activeTool && targetSession) {
+      setFileBrowserSessionStates((current) => {
+        const existing =
+          current[id] ?? buildDefaultSidePanelState(targetSession, sshHosts);
+
+        return {
+          ...current,
+          [id]: {
+            ...existing,
+            activeTool,
+          },
+        };
+      });
+    }
+
     setFocusedId(id);
+    setActiveTerminalSessionId(id);
   }
+
+  const handleActiveTerminalSessionChange = useCallback((id: string | null) => {
+    setActiveTerminalSessionId(id);
+  }, []);
 
   const handleMobileSwitchSession = useCallback((id: string) => {
     setFocusedId(id);
+    setActiveTerminalSessionId(id);
     setViewMode("focus");
     focusAgentSession({ agentSessionId: id })
       .then(setSnapshot)
@@ -639,6 +676,11 @@ export default function App() {
   const focusedSession: AgentSessionRecord | undefined = focusedId
     ? sessions.find((s) => s.id === focusedId)
     : undefined;
+  const activeTerminalSession: AgentSessionRecord | undefined =
+    activeTerminalSessionId
+      ? sessions.find((s) => s.id === activeTerminalSessionId)
+      : undefined;
+  const sidePanelTargetSession = activeTerminalSession ?? focusedSession;
   const focusedSidePanelState = useMemo(() => {
     if (!focusedSession) {
       return null;
@@ -947,41 +989,67 @@ export default function App() {
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
         }
         onToggleFileBrowser={() => {
-          if (!focusedSession) {
+          const targetSession = sidePanelTargetSession;
+          if (!targetSession) {
             return;
           }
 
+          if (targetSession.id !== focusedId) {
+            setFocusedId(targetSession.id);
+          }
+          setActiveTerminalSessionId(targetSession.id);
+
           setFileBrowserSessionStates((current) => {
             const existing =
-              current[focusedSession.id] ??
-              focusedSidePanelState ??
-              buildDefaultSidePanelState(focusedSession, sshHosts);
+              current[targetSession.id] ??
+              (targetSession.id === focusedSession?.id
+                ? focusedSidePanelState
+                : null) ??
+              buildDefaultSidePanelState(targetSession, sshHosts);
 
             return {
               ...current,
-              [focusedSession.id]: {
+              [targetSession.id]: {
                 ...existing,
-                activeTool: existing.activeTool === "files" ? null : "files",
+                activeTool:
+                  targetSession.id === focusedSession?.id &&
+                  fileBrowserOpen &&
+                  existing.activeTool === "files"
+                    ? null
+                    : "files",
               },
             };
           });
         }}
         onToggleVsCode={() => {
-          if (!focusedSession || !vscodeAvailable) {
+          const targetSession = sidePanelTargetSession;
+          if (!targetSession || !vscodeAvailable) {
             return;
           }
 
+          if (targetSession.id !== focusedId) {
+            setFocusedId(targetSession.id);
+          }
+          setActiveTerminalSessionId(targetSession.id);
+
           setFileBrowserSessionStates((current) => {
             const existing =
-              current[focusedSession.id] ??
-              focusedSidePanelState ??
-              buildDefaultSidePanelState(focusedSession, sshHosts);
+              current[targetSession.id] ??
+              (targetSession.id === focusedSession?.id
+                ? focusedSidePanelState
+                : null) ??
+              buildDefaultSidePanelState(targetSession, sshHosts);
 
             return {
               ...current,
-              [focusedSession.id]: {
+              [targetSession.id]: {
                 ...existing,
-                activeTool: existing.activeTool === "vscode" ? null : "vscode",
+                activeTool:
+                  targetSession.id === focusedSession?.id &&
+                  vscodeOpen &&
+                  existing.activeTool === "vscode"
+                    ? null
+                    : "vscode",
               },
             };
           });
@@ -1109,6 +1177,8 @@ export default function App() {
             <AgentFocusView
               focusedSession={focusedSession}
               sessions={sessions}
+              syncActiveTerminalWithFocus={sidePanelOpen}
+              onActiveTerminalSessionChange={handleActiveTerminalSessionChange}
               onSwitchFocus={handleSwitchFocus}
               onExit={handleExitFocus}
               onReconnect={handleReconnectSession}

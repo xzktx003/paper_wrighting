@@ -36,6 +36,8 @@ import {
 interface AgentFocusViewProps {
   focusedSession: AgentSessionRecord;
   sessions: AgentSessionRecord[];
+  syncActiveTerminalWithFocus?: boolean;
+  onActiveTerminalSessionChange?: (id: string | null) => void;
   onSwitchFocus: (id: string) => void;
   onExit: () => void;
   onReconnect: (id: string) => void;
@@ -136,6 +138,8 @@ function readTerminalMonitorDragPayload(
 export function AgentFocusView({
   focusedSession,
   sessions,
+  syncActiveTerminalWithFocus = false,
+  onActiveTerminalSessionChange,
   onSwitchFocus,
   onExit,
   onReconnect,
@@ -206,6 +210,9 @@ export function AgentFocusView({
   const safeActiveSlotId = activeSlotAvailable
     ? activeSlotId
     : (terminalSlots[0]?.id ?? DEFAULT_TERMINAL_MONITOR_SLOT_ID);
+  const activeTerminalSessionId =
+    terminalSlots.find((slot) => slot.id === safeActiveSlotId)?.sessionId ??
+    null;
   const activeLayoutOption =
     TERMINAL_MONITOR_LAYOUT_OPTIONS.find(
       (option) => option.mode === terminalLayoutMode,
@@ -222,6 +229,10 @@ export function AgentFocusView({
   useEffect(() => {
     saveFocusHeaderHeaderCollapsed(headerCollapsed);
   }, [headerCollapsed]);
+
+  useEffect(() => {
+    onActiveTerminalSessionChange?.(activeTerminalSessionId);
+  }, [activeTerminalSessionId, onActiveTerminalSessionChange]);
 
   useEffect(() => {
     if (!layoutMenuOpen) {
@@ -342,7 +353,7 @@ export function AgentFocusView({
     }
 
     setActiveSlotId(slot.id);
-    if (slot.sessionId !== focusedSession.id) {
+    if (syncActiveTerminalWithFocus && slot.sessionId !== focusedSession.id) {
       onSwitchFocus(slot.sessionId);
     }
   }
@@ -387,7 +398,7 @@ export function AgentFocusView({
       return next;
     });
     setActiveSlotId(slotId);
-    if (sessionId !== focusedSession.id) {
+    if (syncActiveTerminalWithFocus && sessionId !== focusedSession.id) {
       onSwitchFocus(sessionId);
     }
   }
@@ -414,7 +425,7 @@ export function AgentFocusView({
       return next;
     });
     setActiveSlotId(slotId);
-    if (sessionId !== focusedSession.id) {
+    if (syncActiveTerminalWithFocus && sessionId !== focusedSession.id) {
       onSwitchFocus(sessionId);
     }
   }
@@ -599,6 +610,7 @@ export function AgentFocusView({
     if (nextActiveSlot) {
       setActiveSlotId(nextActiveSlot.id);
       if (
+        syncActiveTerminalWithFocus &&
         nextActiveSlot.sessionId &&
         nextActiveSlot.sessionId !== focusedSession.id
       ) {

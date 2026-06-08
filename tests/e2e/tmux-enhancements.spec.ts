@@ -412,6 +412,103 @@ test("browser: 普通对话终端可以用鼠标滚轮浏览历史", async ({
   }
 });
 
+test("browser: 运行中终端滚轮浏览历史时不会被实时输出拉回底部", async ({
+  page,
+  request,
+}) => {
+  const displayName = `E2E Live Scroll ${Date.now()}`;
+  let sessionId: string | undefined;
+
+  try {
+    await page.setViewportSize({ width: 1600, height: 1200 });
+
+    const launchResponse = await request.post(
+      backendPath("/api/agent-launch/pty"),
+      {
+        data: {
+          workspaceId: "default",
+          displayName,
+          agentKind: "copilot",
+          command: "node ./scripts/mock-terminal-agent.mjs scroll-live",
+          workingDirectory: process.cwd(),
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    sessionId = (await launchResponse.json()).id;
+
+    await page.goto("/");
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await card.dblclick();
+
+    const terminal = page.locator(".focus-main .terminal-view");
+    await expect(terminal.locator(".xterm-viewport")).toBeVisible({
+      timeout: 15000,
+    });
+
+    const viewportState = async () =>
+      page.evaluate(() => {
+        const terminal = document.querySelector(
+          ".focus-main .terminal-view",
+        ) as
+          | (HTMLDivElement & {
+              __xterm?: {
+                buffer?: {
+                  active?: {
+                    baseY?: number;
+                    viewportY?: number;
+                  };
+                };
+              };
+            })
+          | null;
+        const active = terminal?.__xterm?.buffer?.active;
+
+        return {
+          baseY: active?.baseY ?? 0,
+          viewportY: active?.viewportY ?? 0,
+        };
+      });
+
+    await expect
+      .poll(async () => {
+        const state = await viewportState();
+        return state.baseY;
+      })
+      .toBeGreaterThan(0);
+
+    const before = await viewportState();
+    await terminal.hover();
+    await page.mouse.wheel(0, -1200);
+
+    await expect
+      .poll(async () => {
+        const state = await viewportState();
+        return state.viewportY;
+      })
+      .toBeLessThan(before.viewportY);
+
+    const afterWheel = await viewportState();
+    await page.waitForTimeout(1000);
+    const afterLiveOutput = await viewportState();
+
+    expect(afterLiveOutput.baseY).toBeGreaterThan(afterWheel.baseY);
+    expect(afterLiveOutput.viewportY).toBeLessThan(afterLiveOutput.baseY);
+    expect(afterLiveOutput.viewportY).toBeLessThanOrEqual(
+      afterWheel.viewportY + 1,
+    );
+  } finally {
+    if (sessionId) {
+      await request.delete(backendPath(`/api/agent-sessions/${sessionId}`));
+    }
+  }
+});
+
 test("browser: 多屏非输入终端也可以用鼠标滚轮浏览自己的历史", async ({
   page,
   request,

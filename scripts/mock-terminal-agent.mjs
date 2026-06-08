@@ -112,7 +112,7 @@ function runCprBurst() {
   scheduleNextQuery();
 }
 
-if (mode === "scroll") {
+if (mode === "scroll" || mode === "scroll-live") {
   for (let index = 1; index <= 240; index += 1) {
     emit(`scroll-line-${String(index).padStart(3, "0")}`);
   }
@@ -211,4 +211,13 @@ setInterval(() => {
   if (mode === "scroll") {
     emit("tick-scroll");
   }
+  if (mode === "scroll-live") {
+    emit(`tick-scroll-live-${Date.now()}`);
+  }
 }, 5000);
+
+setInterval(() => {
+  if (mode === "scroll-live") {
+    emit(`fast-scroll-live-${Date.now()}`);
+  }
+}, 120);

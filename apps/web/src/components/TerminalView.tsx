@@ -65,6 +65,7 @@ const DEFAULT_PREVIEW_GEOMETRY: TerminalGeometry = {
 
 const EXTERNAL_FOCUS_GRACE_MS = 750;
 const PASSIVE_FOCUS_REPAIR_INTERVAL_MS = 500;
+const USER_SCROLL_LOCK_MS = 10_000;
 const MOBILE_TOUCH_LISTENER_OPTIONS = {
   capture: true,
   passive: false,
@@ -89,6 +90,7 @@ export function TerminalView({
   const pendingResizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const inputEnabledRef = useRef(inputEnabled);
   const terminalInputReadyRef = useRef(false);
+  const userScrollLockUntilRef = useRef(0);
 
   useEffect(() => {
     inputEnabledRef.current = inputEnabled;
@@ -115,6 +117,7 @@ export function TerminalView({
     if (!container || !stage) return;
 
     terminalInputReadyRef.current = false;
+    userScrollLockUntilRef.current = 0;
 
     const timeoutIds: number[] = [];
     const intervalIds: number[] = [];
@@ -253,6 +256,37 @@ export function TerminalView({
       return Math.max(8, fontSize * lineHeight);
     };
 
+    const refreshUserScrollLock = () => {
+      const activeBuffer = term.buffer.active;
+      if (activeBuffer.viewportY < activeBuffer.baseY) {
+        userScrollLockUntilRef.current = Date.now() + USER_SCROLL_LOCK_MS;
+        return;
+      }
+
+      userScrollLockUntilRef.current = 0;
+    };
+
+    const writeTerminalOutput = (data: string) => {
+      const preserveViewport =
+        userScrollLockUntilRef.current > Date.now() &&
+        term.buffer.active.viewportY < term.buffer.active.baseY;
+      const viewportYBeforeWrite = term.buffer.active.viewportY;
+
+      term.write(data, () => {
+        if (
+          disposed ||
+          !preserveViewport ||
+          userScrollLockUntilRef.current <= Date.now()
+        ) {
+          return;
+        }
+
+        term.scrollToLine(
+          Math.min(viewportYBeforeWrite, term.buffer.active.baseY),
+        );
+      });
+    };
+
     const scrollTerminalWithWheel = (event: WheelEvent) => {
       if (event.cancelable) {
         event.preventDefault();
@@ -279,6 +313,7 @@ export function TerminalView({
       wheelScrollRemainder = result.remainingDeltaY;
       if (result.scrollLines !== 0) {
         term.scrollLines(result.scrollLines);
+        refreshUserScrollLock();
       }
     };
 
@@ -598,7 +633,7 @@ export function TerminalView({
         // before the server sent replay-complete. Without this, disableStdin
         // stays true permanently and the terminal silently ignores all input.
         enableTerminalInput();
-        term.write("\r\n\x1b[33m[连接已断开]\x1b[0m\r\n");
+        writeTerminalOutput("\r\n\x1b[33m[连接已断开]\x1b[0m\r\n");
       };
     }, 0);
 
@@ -816,13 +851,13 @@ export function TerminalView({
         const parsed = JSON.parse(payload) as TerminalControlFrame;
         if (parsed.__agentOrchestrator !== "terminal-control") {
           enableTerminalInput();
-          term.write(payload);
+          writeTerminalOutput(payload);
           scheduleTerminalFocusReport();
           return;
         }
 
         if (parsed.event === "replay" && typeof parsed.data === "string") {
-          term.write(parsed.data);
+          writeTerminalOutput(parsed.data);
           scheduleTerminalFocusReport();
           return;
         }
@@ -833,7 +868,7 @@ export function TerminalView({
         return;
       } catch {
         enableTerminalInput();
-        term.write(payload);
+        writeTerminalOutput(payload);
         scheduleTerminalFocusReport();
       }
     };
@@ -1224,7 +1259,10 @@ export function TerminalView({
       {mobileTouchMode && interactive && (
         <button
           className="terminal-mobile-bottom-btn"
-          onClick={() => termRef.current?.scrollToBottom()}
+          onClick={() => {
+            userScrollLockUntilRef.current = 0;
+            termRef.current?.scrollToBottom();
+          }}
           title="回到终端底部并继续看最新输出"
           type="button"
         >

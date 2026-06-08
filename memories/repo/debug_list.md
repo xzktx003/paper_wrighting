@@ -13,6 +13,7 @@
 - live stdin 过滤握手应答导致 Copilot CLI 等 TUI 卡死：修复为仅清洗 replay，不过滤 live stdin 的 DA/DSR/CPR 等应答。
 - Codex CLI 运行后鼠标滚轮偶发变成输入历史上下翻页：xterm.js 会在 TUI 鼠标追踪或无 scrollback 路径中把 wheel 转成鼠标协议/方向键输入；修复为前端接管 wheel，只滚动 xterm scrollback 并阻止 wheel 进入 stdin。
 - 多屏或完整预览终端偶发无法滚动上下文：wheel 只挂在 xterm 内部 handler，事件落在外层容器、缩放空白区或非输入预览终端时可能漏掉；修复为 `TerminalView` 容器捕获阶段统一接管 wheel，所有终端视图都滚动自己的 scrollback 并阻止进入 stdin。
+- 运行中终端滚上去后马上被实时输出拉回底部：live `term.write()` 持续刷新底部跟随，覆盖用户刚选的 scrollback viewport；修复为滚轮离开底部后短暂锁定 viewport，新输出写入完成后恢复到该行，回到底部时解除锁定。
 - 终端 focus-report mock 未进入 raw mode 导致测试假红：修复为断言前先切 raw mode。
 - Secondary DA 应答污染 shell 提示符：修复为只过滤会造成噪音的 Secondary DA，保留必要握手应答。
 - 非交互 tmux 缩略图回写 resize 导致真实 pane 缩小：修复为缓存 live geometry，在前端做本地缩放预览。
@@ -22,6 +23,7 @@
 - 远端 `10.30.0.24` 上直接创建 shell tmux 时，默认名 `10.30.0.24_shell_tmux` 会被旧版 tmux 3.0a 直接拒绝并报 `bad session name`：根因是 tmux 模式默认名仍保留 `.`；修复为 tmux 模式下把 host label 里的 `.` 也归一化成 `_`，生成 `10_30_0_24_shell_tmux` 这类 tmux-safe 名称。
 - 文件浏览器创建弹窗在输入清空时意外关闭：把草稿字符串误当作弹窗开关；修复为显式维护弹窗状态。
 - 文件浏览器在 A 会话折叠后，切到 B 会话再切回 A 会自动展开：折叠状态存在全局 UI 状态里，且 `sidePanelOpen=false` 时被 effect 清零；修复为把左右分栏折叠状态放进每个 `agentSession` 的侧栏状态，切换会话不再重置。
+- 多屏聚焦视图切换输入终端时文件系统/VS Code 跟随规则错误：active slot 和 App 级 `focusedSession` 总是强绑定；修复为只有侧栏工具已打开时才同步 focused session 并把当前工具类型带到目标 session，未打开工具时只切多屏输入窗格。
 - 服务端构建在文件下载路由处报 `archiver` 没有导出 `ZipArchive`，改默认导入后 Node ESM 又报 no default export：根因是 `archiver` v8 运行时导出 `ZipArchive`，但当前类型声明仍按旧 `export = archiver` 函数形态暴露；修复为 namespace runtime import，并在类型层显式声明 `ZipArchive` 构造器。
 - StrictMode 下 WebSocket cleanup 造成假断开提示：CONNECTING 阶段过早 close；修复为等到 `onopen` 后再关闭。
 - Playwright 只复用前端导致坏后端环境被误复用：修复为前后端分别做健康检查。

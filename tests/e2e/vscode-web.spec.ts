@@ -171,6 +171,85 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
   }
 });
 
+test("vscode web follows the active monitor terminal only when opened or explicitly requested", async ({
+  page,
+  request,
+}) => {
+  const sessionAName = `vscode-web-monitor-a-${Date.now()}`;
+  const sessionBName = `vscode-web-monitor-b-${Date.now()}`;
+  let sessionAId: string | undefined;
+  let sessionBId: string | undefined;
+
+  await page.route("**/api/agent-sessions/*/vscode-web", async (route) => {
+    const url = new URL(route.request().url());
+    const sessionId = url.pathname.split("/").slice(-2)[0];
+    const label = sessionId === sessionBId ? "editor-b" : "editor-a";
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "code-server",
+        url: `data:text/html,<html><body>${label}</body></html>`,
+        reused: false,
+        workingDirectory:
+          sessionId === sessionBId ? "/tmp/project-b" : "/tmp/project-a",
+      }),
+    });
+  });
+
+  try {
+    sessionAId = await launchMockSession(
+      request,
+      sessionAName,
+      "/tmp/project-a",
+    );
+    sessionBId = await launchMockSession(
+      request,
+      sessionBName,
+      "/tmp/project-b",
+    );
+
+    await page.goto("/");
+    await focusSession(page, sessionAName);
+    await page.getByRole("button", { name: /屏幕布局/ }).click();
+    await page.getByRole("menuitemradio", { name: /左右双屏/ }).click();
+
+    const secondPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+    );
+    await secondPane
+      .getByRole("combobox", { name: "选择第 2 个监控终端" })
+      .selectOption(sessionBId!);
+    await expect(secondPane).toHaveAttribute(
+      "data-terminal-pane-session",
+      sessionBId!,
+    );
+    await secondPane.locator(".terminal-view").click();
+
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    await page.getByTestId("vscode-toggle").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-b/,
+    );
+
+    const firstPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+    );
+    await firstPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-a/,
+    );
+  } finally {
+    await deleteSessionIfPresent(request, sessionAId);
+    await deleteSessionIfPresent(request, sessionBId);
+  }
+});
+
 test("vscode split view keeps editor focus after clicking back from the terminal", async ({
   page,
   request,

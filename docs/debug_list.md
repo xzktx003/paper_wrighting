@@ -39,6 +39,7 @@
 
 - 新建文件/目录弹窗把草稿名称字符串当作开关，输入框清空时弹窗直接卸载。修复为显式维护弹窗状态，并在名称为空时仅禁用提交而不关闭对话框。
 - 多会话聚焦视图中，某个终端的文件浏览器折叠后，切到其他会话再切回时会自动展开。根因是折叠状态保存在全局 UI 状态里，并在当前会话没有侧栏打开时被清零；修复为把左右分栏折叠状态保存到对应 `agentSession` 的侧栏状态中，切换会话不再互相覆盖。
+- 多屏聚焦视图里，切换输入终端时文件系统/VS Code 侧栏的跟随规则不符合预期：工具已打开时没有稳定切到对应终端的工具状态，工具未打开时又可能把外层 focused session 一起切走。根因是多屏 active slot 和 App 级 `focusedSession` 总是强绑定。修复为只有文件系统或 VS Code 已打开时才把 active terminal 同步到 `focusedSession`，并把当前工具类型带到目标 session；未打开工具时只切多屏输入窗格，不切侧栏绑定。
 - 服务端构建在文件下载路由处报 `archiver` 没有导出 `ZipArchive`，改成默认导入后又在 Node ESM 运行时报 no default export。根因是 `archiver` v8 运行时导出 `ZipArchive`，但当前类型声明仍按旧的 `export = archiver` 函数形态暴露。修复为使用 namespace runtime import，并在类型层显式声明 `ZipArchive` 构造器，保留本地/远端目录下载逻辑。
 
 ## VS Code Web 与 WebSocket 生命周期
@@ -71,5 +72,6 @@
 
 - Codex CLI 运行后，鼠标滚轮有时滚动上下文，有时变成输入框历史记录上下翻页。根因是 xterm.js 在 TUI 开启鼠标追踪或无 scrollback 路径时会把 wheel 事件转换为鼠标协议或 Up/Down 方向键序列转发给 PTY。修复为前端接管 `attachCustomWheelEventHandler`，自己计算并滚动 xterm scrollback，返回 `false` 阻止 wheel 进入 stdin；输入历史翻页只保留给键盘上下箭头。
 - 多屏或完整预览场景里，某个终端偶发无法用鼠标滚轮浏览上下文。根因是滚轮接管只挂在 xterm 内部自定义 wheel handler 上，事件落在终端外层容器、缩放后的空白区域或非输入预览终端时可能漏掉。修复为在 `TerminalView` 容器捕获阶段统一接管 wheel，所有终端视图都滚动自己的 xterm scrollback，并阻止 wheel 进入 stdin。
+- 运行中的终端已经接收到滚轮事件后，仍可能刚滚上去就被实时输出拉回底部，表现为“滚轮滑不动上下文”。根因是 live `term.write()` 在持续输出时会刷新底部跟随，覆盖用户刚选择的 scrollback 视口。修复为滚轮离开底部后短暂锁定用户查看的 viewport，新输出写入完成后恢复到该行；用户滚回底部或点击“底部”按钮后解除锁定。
 - commit `fc57a80` 引入的"保留显式用户焦点"修复过度：`rememberExternalPointerIntent` 只对"受保护目标"（input、iframe、dialog 等）记录外部点击意图，导致点击普通 div、按钮等非保护元素时终端立刻抢回焦点。`hasIntentionalExternalFocus` 里对非保护、非 body 元素直接返回 `false`，进一步放大了这个问题。修复为：1）`rememberExternalPointerIntent` 对 `.terminal-view` 以外的任意 `pointerdown` 都记录意图；2）`hasIntentionalExternalFocus` 简化为纯时间戳比较，不再区分 active element 类型。
 - VS Code Web 与终端来回切换两轮后，点击 VS Code iframe 内部无法重新输入。上一轮修复只覆盖父文档能收到 `pointerdown` 的外部点击；真实 iframe 内点击不会稳定冒到父页面，导致 `lastTerminalIntentAt` 仍然更新于外部意图之后，`handleWindowFocus` / 被动焦点修复又把 xterm-helper textarea 抢回。修复为在父窗口 `blur`、被动终端聚焦前，基于当前 `document.activeElement` 补记 hovered iframe 的外部焦点意图，并补 VS Code -> 终端 -> VS Code round-trip e2e 回归用例。
