@@ -250,6 +250,102 @@ test("vscode web follows the active monitor terminal only when opened or explici
   }
 });
 
+test("vscode side collapse state is controlled only by collapse buttons during monitor switches", async ({
+  page,
+  request,
+}) => {
+  const sessionAName = `vscode-web-collapse-a-${Date.now()}`;
+  const sessionBName = `vscode-web-collapse-b-${Date.now()}`;
+  let sessionAId: string | undefined;
+  let sessionBId: string | undefined;
+
+  await page.route("**/api/agent-sessions/*/vscode-web", async (route) => {
+    const url = new URL(route.request().url());
+    const sessionId = url.pathname.split("/").slice(-2)[0];
+    const label = sessionId === sessionBId ? "editor-b" : "editor-a";
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        provider: "code-server",
+        url: `data:text/html,<html><body>${label}</body></html>`,
+        reused: false,
+        workingDirectory:
+          sessionId === sessionBId ? "/tmp/project-b" : "/tmp/project-a",
+      }),
+    });
+  });
+
+  try {
+    sessionAId = await launchMockSession(
+      request,
+      sessionAName,
+      "/tmp/project-a",
+    );
+    sessionBId = await launchMockSession(
+      request,
+      sessionBName,
+      "/tmp/project-b",
+    );
+
+    await page.goto("/");
+    await focusSession(page, sessionAName);
+    await page.getByRole("button", { name: /屏幕布局/ }).click();
+    await page.getByRole("menuitemradio", { name: /左右双屏/ }).click();
+
+    const firstPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+    );
+    const secondPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+    );
+    await secondPane
+      .getByRole("combobox", { name: "选择第 2 个监控终端" })
+      .selectOption(sessionBId!);
+    await firstPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+
+    await page.getByTestId("vscode-toggle").click();
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-a/,
+    );
+
+    const sideShell = page.locator(".file-browser-shell");
+    const sideCollapseToggle = page.getByTestId("side-panel-collapse-toggle");
+
+    await sideCollapseToggle.click();
+    const collapsedBeforeSwitch = await sideShell.boundingBox();
+    expect((collapsedBeforeSwitch?.width ?? 0) < 10).toBeTruthy();
+
+    await secondPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-b/,
+    );
+    const collapsedAfterSwitch = await sideShell.boundingBox();
+    expect((collapsedAfterSwitch?.width ?? 0) < 10).toBeTruthy();
+
+    await sideCollapseToggle.click();
+    const expandedOnB = await sideShell.boundingBox();
+    expect((expandedOnB?.width ?? 0) > 200).toBeTruthy();
+
+    await firstPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
+      "src",
+      /editor-a/,
+    );
+    const expandedAfterSwitchBack = await sideShell.boundingBox();
+    expect((expandedAfterSwitchBack?.width ?? 0) > 200).toBeTruthy();
+  } finally {
+    await deleteSessionIfPresent(request, sessionAId);
+    await deleteSessionIfPresent(request, sessionBId);
+  }
+});
+
 test("vscode split view keeps editor focus after clicking back from the terminal", async ({
   page,
   request,
