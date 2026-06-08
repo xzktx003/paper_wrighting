@@ -95,7 +95,9 @@ interface FileBrowserUiState {
 
 interface FileBrowserSessionState {
   activeTool: SidePanelTool | null;
+  mainCollapsed: boolean;
   selectedHost: SelectedHost;
+  sideCollapsed: boolean;
 }
 
 interface FocusViewState {
@@ -149,7 +151,9 @@ function buildDefaultSidePanelState(
 ): FileBrowserSessionState {
   return {
     activeTool: null,
+    mainCollapsed: false,
     selectedHost: buildFileBrowserDefaultHost(session, sshHosts),
+    sideCollapsed: false,
   };
 }
 
@@ -219,7 +223,9 @@ function loadSidePanelSessionStates(): Record<string, FileBrowserSessionState> {
               value.activeTool === "files" || value.activeTool === "vscode"
                 ? value.activeTool
                 : null,
+            mainCollapsed: Boolean(value.mainCollapsed),
             selectedHost,
+            sideCollapsed: Boolean(value.sideCollapsed),
           },
         ];
       }),
@@ -677,8 +683,10 @@ export default function App() {
     );
   const sidePanelRendered =
     sidePanelOpen || renderedVsCodeSessionIds.length > 0;
-  const sidePanelCollapsed = sidePanelOpen && fileBrowserUiState.sideCollapsed;
-  const mainPanelCollapsed = sidePanelOpen && fileBrowserUiState.mainCollapsed;
+  const sidePanelCollapsed =
+    sidePanelOpen && Boolean(focusedSidePanelState?.sideCollapsed);
+  const mainPanelCollapsed =
+    sidePanelOpen && Boolean(focusedSidePanelState?.mainCollapsed);
 
   useEffect(() => {
     if (!vscodeOpen || !focusedSession) {
@@ -693,24 +701,6 @@ export default function App() {
       );
     });
   }, [focusedSession, vscodeOpen]);
-
-  useEffect(() => {
-    if (sidePanelOpen) {
-      return;
-    }
-
-    setFileBrowserUiState((current) => {
-      if (!current.sideCollapsed && !current.mainCollapsed) {
-        return current;
-      }
-
-      return {
-        ...current,
-        sideCollapsed: false,
-        mainCollapsed: false,
-      };
-    });
-  }, [sidePanelOpen]);
 
   const layoutMode = deriveLayoutMode({
     ...layoutState,
@@ -753,10 +743,7 @@ export default function App() {
 
   const beginFileBrowserResize = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (
-        fileBrowserUiState.sideCollapsed ||
-        fileBrowserUiState.mainCollapsed
-      ) {
+      if (sidePanelCollapsed || mainPanelCollapsed) {
         return;
       }
 
@@ -766,11 +753,7 @@ export default function App() {
       };
       event.preventDefault();
     },
-    [
-      fileBrowserUiState.mainCollapsed,
-      fileBrowserUiState.sideCollapsed,
-      fileBrowserUiState.width,
-    ],
+    [fileBrowserUiState.width, mainPanelCollapsed, sidePanelCollapsed],
   );
 
   const updateFileBrowserWidth = useCallback((clientX: number) => {
@@ -802,30 +785,48 @@ export default function App() {
       return;
     }
 
-    setFileBrowserUiState((current) => {
-      const nextSideCollapsed = !current.sideCollapsed;
+    setFileBrowserSessionStates((current) => {
+      if (!focusedSession || !focusedSidePanelState) {
+        return current;
+      }
+
+      const nextSideCollapsed = !focusedSidePanelState.sideCollapsed;
       return {
         ...current,
-        sideCollapsed: nextSideCollapsed,
-        mainCollapsed: nextSideCollapsed ? false : current.mainCollapsed,
+        [focusedSession.id]: {
+          ...focusedSidePanelState,
+          sideCollapsed: nextSideCollapsed,
+          mainCollapsed: nextSideCollapsed
+            ? false
+            : focusedSidePanelState.mainCollapsed,
+        },
       };
     });
-  }, [sidePanelOpen]);
+  }, [focusedSession, focusedSidePanelState, sidePanelOpen]);
 
   const toggleMainPanelCollapsed = useCallback(() => {
     if (!sidePanelOpen) {
       return;
     }
 
-    setFileBrowserUiState((current) => {
-      const nextMainCollapsed = !current.mainCollapsed;
+    setFileBrowserSessionStates((current) => {
+      if (!focusedSession || !focusedSidePanelState) {
+        return current;
+      }
+
+      const nextMainCollapsed = !focusedSidePanelState.mainCollapsed;
       return {
         ...current,
-        mainCollapsed: nextMainCollapsed,
-        sideCollapsed: nextMainCollapsed ? false : current.sideCollapsed,
+        [focusedSession.id]: {
+          ...focusedSidePanelState,
+          mainCollapsed: nextMainCollapsed,
+          sideCollapsed: nextMainCollapsed
+            ? false
+            : focusedSidePanelState.sideCollapsed,
+        },
       };
     });
-  }, [sidePanelOpen]);
+  }, [focusedSession, focusedSidePanelState, sidePanelOpen]);
 
   useEffect(() => {
     function handlePointerMove(event: MouseEvent) {

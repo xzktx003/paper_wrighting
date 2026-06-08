@@ -276,9 +276,9 @@ test("file browser supports real local browsing, edit, upload, download, and del
     await focusSession(page, displayName);
     const drawer = await openFileBrowserForFocusedSession(page);
 
-    await expect(
-      drawer.locator(".file-browser-breadcrumb").last(),
-    ).toContainText(path.basename(fixture.rootDir));
+    await expect(drawer.locator(".file-browser-path-input")).toHaveValue(
+      fixture.rootDir,
+    );
 
     await expect(drawer.getByTestId("file-entry-.secret.txt")).toHaveCount(0);
     await drawer.getByLabel("显示隐藏文件").check();
@@ -395,7 +395,9 @@ test("file browser create dialog supports creating an empty file", async ({
     await createDialog.locator("input").fill(createdFileName);
     await createDialog.getByRole("button", { name: "创建" }).click();
 
-    await expect(drawer.getByTestId(`file-entry-${createdFileName}`)).toBeVisible();
+    await expect(
+      drawer.getByTestId(`file-entry-${createdFileName}`),
+    ).toBeVisible();
     expect(existsSync(path.join(fixture.rootDir, createdFileName))).toBe(true);
   } finally {
     await deleteSessionIfPresent(request, sessionId);
@@ -403,7 +405,6 @@ test("file browser create dialog supports creating an empty file", async ({
     rmSync(fixture.uploadFilePath, { force: true });
   }
 });
-
 
 test("file browser editor keeps focus instead of the terminal stealing it back", async ({
   page,
@@ -484,7 +485,9 @@ test("file browser create dialog stays open when the name is temporarily empty",
 
     await expect(createDialog).toBeVisible();
     await expect(nameInput).toHaveValue("");
-    await expect(createDialog.getByRole("button", { name: "创建" })).toBeDisabled();
+    await expect(
+      createDialog.getByRole("button", { name: "创建" }),
+    ).toBeDisabled();
 
     await createDialog.getByRole("button", { name: "取消" }).click();
     await expect(createDialog).toHaveCount(0);
@@ -492,6 +495,59 @@ test("file browser create dialog stays open when the name is temporarily empty",
     await deleteSessionIfPresent(request, sessionId);
     rmSync(fixture.rootDir, { recursive: true, force: true });
     rmSync(fixture.uploadFilePath, { force: true });
+  }
+});
+
+test("file browser side collapse state survives switching away and back to the session", async ({
+  page,
+  request,
+}) => {
+  const fixtureA = setupFixture();
+  const fixtureB = setupFixture();
+  const sessionAName = `file-browser-collapse-a-${Date.now()}`;
+  const sessionBName = `file-browser-collapse-b-${Date.now()}`;
+  let sessionAId: string | undefined;
+  let sessionBId: string | undefined;
+
+  try {
+    sessionAId = await launchMockSession(
+      request,
+      sessionAName,
+      fixtureA.rootDir,
+    );
+    sessionBId = await launchMockSession(
+      request,
+      sessionBName,
+      fixtureB.rootDir,
+    );
+
+    await focusSession(page, sessionAName);
+    const drawerA = await openFileBrowserForFocusedSession(page);
+    await expect(drawerA.getByTestId("file-entry-note.txt")).toBeVisible();
+
+    const sideShell = page.locator(".file-browser-shell");
+    const sideCollapseToggle = page.getByTestId("side-panel-collapse-toggle");
+
+    await sideCollapseToggle.click();
+    const collapsedSideBeforeSwitch = await sideShell.boundingBox();
+    expect((collapsedSideBeforeSwitch?.width ?? 0) < 10).toBeTruthy();
+
+    await switchFocusedSession(page, sessionBName);
+    await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0);
+
+    await switchFocusedSession(page, sessionAName);
+    const restoredCollapsedSideShell = await sideShell.boundingBox();
+    expect((restoredCollapsedSideShell?.width ?? 0) < 10).toBeTruthy();
+
+    await sideCollapseToggle.click();
+    await expect(drawerA.getByTestId("file-entry-note.txt")).toBeVisible();
+  } finally {
+    await deleteSessionIfPresent(request, sessionAId);
+    await deleteSessionIfPresent(request, sessionBId);
+    rmSync(fixtureA.rootDir, { recursive: true, force: true });
+    rmSync(fixtureA.uploadFilePath, { force: true });
+    rmSync(fixtureB.rootDir, { recursive: true, force: true });
+    rmSync(fixtureB.uploadFilePath, { force: true });
   }
 });
 
@@ -549,9 +605,9 @@ test("file browser is scoped per focused session, keeps splitter behavior, and s
 
     await drawer.getByTestId("file-entry-nested").dblclick();
     await expect(drawer.getByTestId("file-entry-inside.txt")).toBeVisible();
-    await expect(
-      drawer.locator(".file-browser-breadcrumb").last(),
-    ).toContainText("nested");
+    await expect(drawer.locator(".file-browser-path-input")).toHaveValue(
+      /nested$/,
+    );
 
     const mainSplitter = page.getByTestId("file-browser-main-splitter");
     const drawerBefore = await drawer.boundingBox();
@@ -647,8 +703,8 @@ test("file browser is scoped per focused session, keeps splitter behavior, and s
       restoredDrawer.getByTestId("file-entry-inside.txt"),
     ).toBeVisible();
     await expect(
-      restoredDrawer.locator(".file-browser-breadcrumb").last(),
-    ).toContainText("nested");
+      restoredDrawer.locator(".file-browser-path-input"),
+    ).toHaveValue(/nested$/);
 
     await page.getByRole("button", { name: "返回宫格" }).click();
     await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0);

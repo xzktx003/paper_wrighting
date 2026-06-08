@@ -131,6 +131,7 @@ export function TerminalView({
     let handleMobileTouchStart: ((event: TouchEvent) => void) | null = null;
     let handleMobileTouchMove: ((event: TouchEvent) => void) | null = null;
     let handleMobileTouchEnd: ((event: TouchEvent) => void) | null = null;
+    let handleTerminalWheelCapture: ((event: WheelEvent) => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
       | null = null;
@@ -250,6 +251,35 @@ export function TerminalView({
           : 1;
 
       return Math.max(8, fontSize * lineHeight);
+    };
+
+    const scrollTerminalWithWheel = (event: WheelEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      if (inputEnabledRef.current) {
+        rememberTerminalIntent();
+        focusInteractiveTerminal(true);
+      }
+
+      const result = computeTerminalWheelScrollLines({
+        deltaMode: event.deltaMode,
+        deltaY: event.deltaY,
+        lineHeight: getTerminalLineHeight(),
+        pageHeight: Math.max(
+          getTerminalLineHeight(),
+          stage.clientHeight || term.rows * getTerminalLineHeight(),
+        ),
+        previousDeltaY: wheelScrollRemainder,
+      });
+
+      wheelScrollRemainder = result.remainingDeltaY;
+      if (result.scrollLines !== 0) {
+        term.scrollLines(result.scrollLines);
+      }
     };
 
     const isProtectedExternalFocusTarget = (
@@ -888,32 +918,7 @@ export function TerminalView({
       };
 
       term.attachCustomWheelEventHandler((event) => {
-        if (event.cancelable) {
-          event.preventDefault();
-        }
-        event.stopPropagation();
-
-        if (inputEnabledRef.current) {
-          rememberTerminalIntent();
-          focusInteractiveTerminal(true);
-        }
-
-        const result = computeTerminalWheelScrollLines({
-          deltaMode: event.deltaMode,
-          deltaY: event.deltaY,
-          lineHeight: getTerminalLineHeight(),
-          pageHeight: Math.max(
-            getTerminalLineHeight(),
-            stage.clientHeight || term.rows * getTerminalLineHeight(),
-          ),
-          previousDeltaY: wheelScrollRemainder,
-        });
-
-        wheelScrollRemainder = result.remainingDeltaY;
-        if (result.scrollLines !== 0) {
-          term.scrollLines(result.scrollLines);
-        }
-
+        scrollTerminalWithWheel(event);
         return false;
       });
 
@@ -1052,6 +1057,14 @@ export function TerminalView({
       scheduleFocusInteractiveTerminal();
     }
 
+    handleTerminalWheelCapture = (event) => {
+      scrollTerminalWithWheel(event);
+    };
+    container.addEventListener("wheel", handleTerminalWheelCapture, {
+      capture: true,
+      passive: false,
+    });
+
     term.onResize(({ cols, rows }) => {
       if (!isPreview) {
         cachePreviewGeometry(cols, rows);
@@ -1126,6 +1139,13 @@ export function TerminalView({
           "touchcancel",
           handleMobileTouchEnd,
           MOBILE_TOUCH_LISTENER_OPTIONS,
+        );
+      }
+      if (handleTerminalWheelCapture) {
+        container.removeEventListener(
+          "wheel",
+          handleTerminalWheelCapture,
+          true,
         );
       }
       if (handleDocumentPointerDownCapture) {

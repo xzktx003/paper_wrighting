@@ -412,6 +412,98 @@ test("browser: 普通对话终端可以用鼠标滚轮浏览历史", async ({
   }
 });
 
+test("browser: 多屏非输入终端也可以用鼠标滚轮浏览自己的历史", async ({
+  page,
+  request,
+}) => {
+  const firstDisplayName = `E2E Scroll Pane A ${Date.now()}`;
+  const secondDisplayName = `E2E Scroll Pane B ${Date.now()}`;
+  let firstSessionId: string | undefined;
+  let secondSessionId: string | undefined;
+
+  try {
+    await page.setViewportSize({ width: 1600, height: 1200 });
+
+    for (const displayName of [firstDisplayName, secondDisplayName]) {
+      const launchResponse = await request.post(
+        backendPath("/api/agent-launch/pty"),
+        {
+          data: {
+            workspaceId: "default",
+            displayName,
+            agentKind: "copilot",
+            command: "node ./scripts/mock-terminal-agent.mjs scroll",
+            workingDirectory: process.cwd(),
+          },
+        },
+      );
+
+      expect(launchResponse.ok()).toBeTruthy();
+      const id = (await launchResponse.json()).id as string;
+      if (!firstSessionId) {
+        firstSessionId = id;
+      } else {
+        secondSessionId = id;
+      }
+    }
+
+    await page.goto("/");
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: firstDisplayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await card.dblclick();
+
+    await page.getByRole("button", { name: /屏幕布局/ }).click();
+    await page.getByRole("menuitemradio", { name: /左右双屏/ }).click();
+
+    const secondPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+    );
+    await expect(secondPane).toHaveAttribute(
+      "data-terminal-pane-session",
+      secondSessionId!,
+    );
+    await expect(secondPane.locator(".xterm-viewport")).toBeVisible({
+      timeout: 15000,
+    });
+
+    const secondPaneViewportY = async () =>
+      page.evaluate(() => {
+        const terminal = document.querySelector(
+          '[data-terminal-pane-slot="terminal-monitor-slot-2"] .terminal-view',
+        ) as
+          | (HTMLDivElement & {
+              __xterm?: {
+                buffer?: { active?: { viewportY?: number } };
+              };
+            })
+          | null;
+
+        return terminal?.__xterm?.buffer?.active?.viewportY ?? 0;
+      });
+
+    await expect.poll(secondPaneViewportY).toBeGreaterThan(0);
+
+    const before = await secondPaneViewportY();
+    await secondPane.locator(".terminal-view").hover();
+    await page.mouse.wheel(0, -1200);
+    await expect.poll(secondPaneViewportY).toBeLessThan(before);
+  } finally {
+    if (firstSessionId) {
+      await request.delete(
+        backendPath(`/api/agent-sessions/${firstSessionId}`),
+      );
+    }
+    if (secondSessionId) {
+      await request.delete(
+        backendPath(`/api/agent-sessions/${secondSessionId}`),
+      );
+    }
+  }
+});
+
 test("browser: 调整窗口大小会把新的终端尺寸同步到 PTY", async ({
   page,
   request,
