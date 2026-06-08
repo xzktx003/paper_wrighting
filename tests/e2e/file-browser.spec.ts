@@ -498,7 +498,7 @@ test("file browser create dialog stays open when the name is temporarily empty",
   }
 });
 
-test("file browser side collapse state survives switching away and back to the session", async ({
+test("file browser side collapse state is global while switching sessions", async ({
   page,
   request,
 }) => {
@@ -533,9 +533,12 @@ test("file browser side collapse state survives switching away and back to the s
     expect((collapsedSideBeforeSwitch?.width ?? 0) < 10).toBeTruthy();
 
     await switchFocusedSession(page, sessionBName);
-    await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0);
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    const collapsedSideAfterSwitch = await sideShell.boundingBox();
+    expect((collapsedSideAfterSwitch?.width ?? 0) < 10).toBeTruthy();
 
     await switchFocusedSession(page, sessionAName);
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
     const restoredCollapsedSideShell = await sideShell.boundingBox();
     expect((restoredCollapsedSideShell?.width ?? 0) < 10).toBeTruthy();
 
@@ -663,6 +666,75 @@ test("open file browser retargets to a monitor terminal that never opened files 
       fixtureB.rootDir,
     );
     await expect(drawerB.getByTestId("file-entry-note.txt")).toBeVisible();
+  } finally {
+    await deleteSessionIfPresent(request, sessionAId);
+    await deleteSessionIfPresent(request, sessionBId);
+    rmSync(fixtureA.rootDir, { recursive: true, force: true });
+    rmSync(fixtureA.uploadFilePath, { force: true });
+    rmSync(fixtureB.rootDir, { recursive: true, force: true });
+    rmSync(fixtureB.uploadFilePath, { force: true });
+  }
+});
+
+test("file browser collapse state is controlled only by collapse buttons during monitor switches", async ({
+  page,
+  request,
+}) => {
+  const fixtureA = setupFixture();
+  const fixtureB = setupFixture();
+  const sessionAName = `file-browser-global-collapse-a-${Date.now()}`;
+  const sessionBName = `file-browser-global-collapse-b-${Date.now()}`;
+  let sessionAId: string | undefined;
+  let sessionBId: string | undefined;
+
+  try {
+    sessionAId = await launchMockSession(
+      request,
+      sessionAName,
+      fixtureA.rootDir,
+    );
+    sessionBId = await launchMockSession(
+      request,
+      sessionBName,
+      fixtureB.rootDir,
+    );
+
+    await focusSession(page, sessionAName);
+    await page.getByRole("button", { name: /屏幕布局/ }).click();
+    await page.getByRole("menuitemradio", { name: /左右双屏/ }).click();
+
+    const firstPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+    );
+    const secondPane = page.locator(
+      '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+    );
+    await secondPane
+      .getByRole("combobox", { name: "选择第 2 个监控终端" })
+      .selectOption(sessionBId!);
+
+    await openFileBrowserForFocusedSession(page);
+
+    const sideShell = page.locator(".file-browser-shell");
+    const sideCollapseToggle = page.getByTestId("side-panel-collapse-toggle");
+
+    await sideCollapseToggle.click();
+    const collapsedBeforeSwitch = await sideShell.boundingBox();
+    expect((collapsedBeforeSwitch?.width ?? 0) < 10).toBeTruthy();
+
+    await secondPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
+    const collapsedAfterSwitch = await sideShell.boundingBox();
+    expect((collapsedAfterSwitch?.width ?? 0) < 10).toBeTruthy();
+
+    await sideCollapseToggle.click();
+    const expandedOnB = await sideShell.boundingBox();
+    expect((expandedOnB?.width ?? 0) > 200).toBeTruthy();
+
+    await firstPane.locator(".terminal-view").click();
+    await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    const expandedAfterSwitchBack = await sideShell.boundingBox();
+    expect((expandedAfterSwitchBack?.width ?? 0) > 200).toBeTruthy();
   } finally {
     await deleteSessionIfPresent(request, sessionAId);
     await deleteSessionIfPresent(request, sessionBId);
