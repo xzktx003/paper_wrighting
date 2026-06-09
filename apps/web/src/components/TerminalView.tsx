@@ -313,6 +313,14 @@ export function TerminalView({
       }
     };
 
+    const eventStartsInTerminalWheelBlocker = (event: WheelEvent): boolean => {
+      const target = event.target;
+      return (
+        target instanceof Element &&
+        Boolean(target.closest(".discovery-overlay"))
+      );
+    };
+
     const eventPointIsInsideContainer = (event: WheelEvent): boolean => {
       const rect = container.getBoundingClientRect();
       return (
@@ -1104,6 +1112,10 @@ export function TerminalView({
 
     handleDocumentWheelCapture = (event) => {
       if (event.defaultPrevented) {
+        return;
+      }
+
+      if (eventStartsInTerminalWheelBlocker(event)) {
         return;
       }
 

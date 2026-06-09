@@ -820,6 +820,143 @@ test("browser: 终端区域内的 document-level wheel 也会滚动对应终端�
   }
 });
 
+test("browser: tmux 扫描弹层上的滚轮只滚动扫描结果，不穿透滚动后方单屏终端", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+
+  const displayName = `E2E Wheel Overlay ${Date.now()}`;
+  const tmuxPrefix = `e2e-wheel-overlay-${Date.now()}`;
+  const tmuxSessionNames = Array.from(
+    { length: 24 },
+    (_, index) => `${tmuxPrefix}-${String(index + 1).padStart(2, "0")}`,
+  );
+  let sessionId: string | undefined;
+
+  for (const sessionName of tmuxSessionNames) {
+    killTmuxSession(sessionName);
+  }
+
+  try {
+    await page.setViewportSize({ width: 1400, height: 720 });
+
+    const launchResponse = await request.post(
+      backendPath("/api/agent-launch/pty"),
+      {
+        data: {
+          workspaceId: "default",
+          displayName,
+          agentKind: "copilot",
+          command: "node ./scripts/mock-terminal-agent.mjs scroll",
+          workingDirectory: process.cwd(),
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    sessionId = (await launchResponse.json()).id;
+
+    for (const sessionName of tmuxSessionNames) {
+      runTmux([
+        "new-session",
+        "-d",
+        "-s",
+        sessionName,
+        "-c",
+        process.cwd(),
+        "sleep 60",
+      ]);
+    }
+
+    await page.goto("/");
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await card.dblclick();
+
+    const terminal = page.locator(".focus-main .terminal-view");
+    await expect(terminal).toBeVisible({ timeout: 15000 });
+
+    const terminalViewport = async () =>
+      page.evaluate(() => {
+        const terminalElement = document.querySelector(
+          ".focus-main .terminal-view",
+        ) as
+          | (HTMLDivElement & {
+              __xterm?: {
+                buffer?: { active?: { baseY?: number; viewportY?: number } };
+              };
+            })
+          | null;
+        const active = terminalElement?.__xterm?.buffer?.active;
+
+        return {
+          baseY: active?.baseY ?? 0,
+          viewportY: active?.viewportY ?? 0,
+        };
+      });
+
+    await expect
+      .poll(async () => (await terminalViewport()).baseY)
+      .toBeGreaterThan(0);
+
+    await terminal.hover();
+    await page.mouse.wheel(0, -1200);
+
+    await expect
+      .poll(async () => {
+        const state = await terminalViewport();
+        return state.viewportY < state.baseY;
+      })
+      .toBeTruthy();
+
+    const terminalBeforeOverlayWheel = await terminalViewport();
+
+    await page.getByTestId("scan-menu-toggle").click();
+    await page.getByTestId("btn-扫描 tmux").click();
+    await page.locator(".host-dropdown-item", { hasText: "本机" }).click();
+
+    const dialog = page.locator(".discovery-dialog");
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(dialog.locator(".discovery-item").first()).toBeVisible({
+      timeout: 15000,
+    });
+
+    const list = dialog.locator(".discovery-list");
+    await expect
+      .poll(
+        async () =>
+          list.evaluate(
+            (element) => element.scrollHeight > element.clientHeight,
+          ),
+        { timeout: 15000 },
+      )
+      .toBeTruthy();
+
+    await list.hover();
+    await page.mouse.wheel(0, 1200);
+
+    await expect
+      .poll(async () => list.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+
+    const terminalAfterOverlayWheel = await terminalViewport();
+    expect(terminalAfterOverlayWheel.viewportY).toBe(
+      terminalBeforeOverlayWheel.viewportY,
+    );
+  } finally {
+    if (sessionId) {
+      await request.delete(backendPath(`/api/agent-sessions/${sessionId}`));
+    }
+    for (const sessionName of tmuxSessionNames) {
+      killTmuxSession(sessionName);
+    }
+  }
+});
+
 test("browser: 多屏非输入终端也可以用鼠标滚轮浏览自己的历史", async ({
   page,
   request,
