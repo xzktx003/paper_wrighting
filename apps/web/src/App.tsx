@@ -64,6 +64,7 @@ import { isMobileWorkbenchLocation } from "./lib/mobile-workbench-route";
 import {
   loadVsCodeIframeCacheMode,
   releaseVsCodeCacheSessionIds,
+  resolveLightweightTerminalPreviewForVsCodeCacheMode,
   resolveRenderedVsCodeSessionIds,
   saveVsCodeIframeCacheMode,
   toggleVsCodeIframeCacheMode,
@@ -734,13 +735,16 @@ export default function App() {
   }
 
   function handleToggleVsCodeIframeCacheMode() {
-    setVscodeIframeCacheMode((current) => {
-      const next = toggleVsCodeIframeCacheMode(current);
-      if (next === "memory-saving") {
-        setVscodeCacheSessionIds(retainedVsCodeSessionIds);
-      }
-      return next;
-    });
+    const next = toggleVsCodeIframeCacheMode(vscodeIframeCacheMode);
+
+    setVscodeIframeCacheMode(next);
+    setUseLightweightTerminalPreview(
+      resolveLightweightTerminalPreviewForVsCodeCacheMode(next),
+    );
+
+    if (next === "memory-saving") {
+      setVscodeCacheSessionIds(retainedVsCodeSessionIds);
+    }
   }
 
   function handleReleaseVsCodeIframeCache() {

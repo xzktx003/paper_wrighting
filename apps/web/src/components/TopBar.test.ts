@@ -22,7 +22,12 @@ function installDocumentStub() {
   });
 }
 
-function makeSession(id: string): AgentSessionRecord {
+function makeSession(
+  id: string,
+  interactionState:
+    | AgentSessionRecord["interactionState"]
+    | "awaiting_input" = "running",
+): AgentSessionRecord {
   return {
     id,
     workspaceId: "default",
@@ -30,11 +35,11 @@ function makeSession(id: string): AgentSessionRecord {
     agentKind: "codex",
     displayName: id,
     connectionState: "online",
-    interactionState: "running",
-  };
+    interactionState,
+  } as unknown as AgentSessionRecord;
 }
 
-function renderTopBar() {
+function renderTopBar(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   installDocumentStub();
 
   return renderToStaticMarkup(
@@ -58,6 +63,7 @@ function renderTopBar() {
       onOpenNewSession: () => {},
       onScanTmux: () => {},
       onScanApps: () => {},
+      ...overrides,
     }),
   );
 }
@@ -79,5 +85,16 @@ describe("TopBar", () => {
     assert.doesNotMatch(markup, />资源诊断</);
     assert.doesNotMatch(markup, />手机端</);
     assert.doesNotMatch(markup, />轻量预览：开</);
+  });
+
+  it("does not render an awaiting-input stat even if stale session data contains that state", () => {
+    const markup = renderTopBar({
+      sessions: [makeSession("session-1", "awaiting_input")],
+      fileBrowserAvailable: false,
+      vscodeAvailable: false,
+    });
+
+    assert.doesNotMatch(markup, /stat-awaiting/);
+    assert.doesNotMatch(markup, /等待输入/);
   });
 });

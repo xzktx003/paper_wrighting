@@ -16,6 +16,7 @@ import {
   recordTerminalFrame,
   registerTerminalWebSocket,
 } from "../lib/resource-diagnostics";
+import { decodeOsc52ClipboardPayload } from "../lib/osc52-clipboard";
 import {
   hasIntentionalExternalFocus,
   shouldPromoteExternalFocusToUserIntent,
@@ -228,6 +229,85 @@ export function TerminalView({
     applyPreviewLayout();
     term.open(stage);
     container.__xterm = term;
+
+    const copyTextToClipboard = (text: string) => {
+      if (disposed || !text) {
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {
+          fallbackExecCopy(text);
+        });
+        return;
+      }
+
+      fallbackExecCopy(text);
+    };
+
+    let lastCopiedSelection = "";
+    const copyTerminalSelectionToClipboard = () => {
+      if (disposed || !term.hasSelection()) {
+        return;
+      }
+      const text = term.getSelection();
+      if (!text || text === lastCopiedSelection) {
+        return;
+      }
+      lastCopiedSelection = text;
+      copyTextToClipboard(text);
+    };
+
+    function fallbackExecCopy(text: string) {
+      try {
+        const helper = document.createElement("textarea");
+        helper.value = text;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.top = "0";
+        helper.style.left = "0";
+        helper.style.opacity = "0";
+        helper.style.pointerEvents = "none";
+        document.body.appendChild(helper);
+        const previousActive = document.activeElement as HTMLElement | null;
+        helper.focus();
+        helper.select();
+        document.execCommand("copy");
+        document.body.removeChild(helper);
+        previousActive?.focus?.();
+      } catch {
+        /* execCommand path unavailable; nothing more to do */
+      }
+    }
+
+    const osc52ClipboardDisposable = term.parser.registerOscHandler(
+      52,
+      (data) => {
+        const text = decodeOsc52ClipboardPayload(data);
+        if (text) {
+          copyTextToClipboard(text);
+        }
+
+        return true;
+      },
+    );
+
+    const handleStageMouseUp = () => {
+      copyTerminalSelectionToClipboard();
+    };
+    stage.addEventListener("mouseup", handleStageMouseUp);
+
+    const handleStageCopyKey = (event: KeyboardEvent) => {
+      const isCopyChord =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        (event.key === "c" || event.key === "C");
+      if (!isCopyChord || !term.hasSelection()) {
+        return;
+      }
+      copyTerminalSelectionToClipboard();
+    };
+    stage.addEventListener("keydown", handleStageCopyKey);
     const getHelperTextarea = () =>
       container.querySelector(
         ".xterm-helper-textarea",
@@ -1058,6 +1138,9 @@ export function TerminalView({
       disposed = true;
       window.removeEventListener("resize", handleWindowResize);
       resizeObserver.disconnect();
+      osc52ClipboardDisposable.dispose();
+      stage.removeEventListener("mouseup", handleStageMouseUp);
+      stage.removeEventListener("keydown", handleStageCopyKey);
       if (handlePointerDownCapture) {
         container.removeEventListener(
           "pointerdown",

@@ -5,6 +5,8 @@ import type {
   ListAgentSessionsResponse,
 } from "@agent-orchestrator/shared";
 
+test.use({ ignoreHTTPSErrors: true });
+
 function makeSession(
   overrides: Partial<AgentSessionRecord>,
 ): AgentSessionRecord {
@@ -183,12 +185,13 @@ test("preview mode toggle restores full terminal previews on demand", async ({
 
   await page.getByTestId("display-menu-toggle").click();
   const toggle = page.getByTestId("terminal-preview-mode-toggle");
-  await expect(toggle).toHaveText("轻量预览：开");
+  const toggleLabel = toggle.locator("span").first();
+  await expect(toggleLabel).toHaveText("轻量预览：开");
   expect(await terminalWebSocketUrls(page)).toEqual([]);
 
   await toggle.click();
 
-  await expect(toggle).toHaveText("完整预览");
+  await expect(toggleLabel).toHaveText("完整预览");
   await expect(page.locator(".grid-card-terminal .terminal-view")).toHaveCount(
     2,
   );
@@ -201,6 +204,67 @@ test("preview mode toggle restores full terminal previews on demand", async ({
   expect(await terminalWebSocketUrls(page)).toContainEqual(
     expect.stringContaining("/beta-session/terminal"),
   );
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("terminal-preview-mode")),
+    )
+    .toBe("full");
+});
+
+test("VS Code preserve-state profile restores full terminal previews for running panes", async ({
+  page,
+}) => {
+  await mockSessions(page, [
+    makeSession({
+      id: "alpha-session",
+      displayName: "Alpha Session",
+      outputPreview: "alpha ready",
+    }),
+    makeSession({
+      id: "beta-session",
+      displayName: "Beta Session",
+      outputPreview: "beta ready",
+    }),
+  ]);
+
+  await page.goto("/");
+
+  await page.getByTestId("tools-menu-toggle").click();
+  const vscodeProfileToggle = page.getByTestId("vscode-cache-mode-toggle");
+  const vscodeProfileLabel = vscodeProfileToggle.locator("span").first();
+  await expect(vscodeProfileLabel).toHaveText("VS Code 省内存");
+  await page.getByTestId("display-menu-toggle").click();
+  const terminalPreviewToggle = page.getByTestId("terminal-preview-mode-toggle");
+  const terminalPreviewLabel = terminalPreviewToggle.locator("span").first();
+  await expect(terminalPreviewLabel).toHaveText("轻量预览：开");
+  await expect(
+    page.locator(".grid-card-terminal .terminal-preview"),
+  ).toHaveCount(2);
+  expect(await terminalWebSocketUrls(page)).toEqual([]);
+
+  await page.getByTestId("tools-menu-toggle").click();
+  await vscodeProfileToggle.click();
+
+  await expect(vscodeProfileLabel).toHaveText("VS Code 保持状态");
+  await page.getByTestId("display-menu-toggle").click();
+  await expect(terminalPreviewLabel).toHaveText("完整预览");
+  await expect(page.locator(".grid-card-terminal .terminal-view")).toHaveCount(
+    2,
+  );
+  await expect(
+    page.locator(".grid-card-terminal .terminal-preview"),
+  ).toHaveCount(0);
+  await expect
+    .poll(() => terminalWebSocketUrls(page))
+    .toContainEqual(expect.stringContaining("/alpha-session/terminal"));
+  expect(await terminalWebSocketUrls(page)).toContainEqual(
+    expect.stringContaining("/beta-session/terminal"),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("vscode-iframe-cache-mode")),
+    )
+    .toBe("preserve-state");
   await expect
     .poll(() =>
       page.evaluate(() => localStorage.getItem("terminal-preview-mode")),

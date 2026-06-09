@@ -10,6 +10,7 @@
 - 远端文件浏览在真实 SSH 主机上统一报 `All configured authentication methods failed`：终端链路依赖系统 `ssh`，能吃到默认私钥；SFTP 链路直接用 `ssh2`，之前只在 `identityFile` 显式存在时才带私钥，导致未写 `IdentityFile` 的主机全部认证失败。修复为 SFTP 认证支持显式 key、标准默认私钥回退，并兼容 `SSH_AUTH_SOCK`。
 - 远端 SSH 会话在线时，文件浏览器首屏偶发空白并报 `write ECONNRESET` / `No response from server`：`SftpService` 在连接还没 `ready` 时就把连接放进池里，UI 初始化打出的并发 `/api/fs/list` 会抢到半初始化连接。修复为复用连接前必须等待 `ready`，并在连接失败时及时把坏连接移出池。
 - 远端 SSH 会话已经退出时，kanban 终端只剩 `[连接已断开]`：PTY runtime 退出就删除 handle，terminal websocket 后续重连拿不到 scrollback，只能 4004 关闭，导致真实错误（例如 `fatal: Gerrit Code Review: exec: not found`）被泛化提示覆盖。修复为 runtime 已退出但 session 仍存在时，从 registry 的历史输出回放 terminal 内容。
+- tmux mouse mode 下 pane 内拖拽选择停留在 tmux/TUI 内，浏览器侧 xterm 没有 selection 可复制：修复为 `TerminalView` 支持 OSC 52 clipboard 写入，让 tmux copy-mode 负责选择边界并把内容写入浏览器剪贴板。
 - live stdin 过滤握手应答导致 Copilot CLI 等 TUI 卡死：修复为仅清洗 replay，不过滤 live stdin 的 DA/DSR/CPR 等应答。
 - 终端 focus-report mock 未进入 raw mode 导致测试假红：修复为断言前先切 raw mode。
 - Secondary DA 应答污染 shell 提示符：修复为只过滤会造成噪音的 Secondary DA，保留必要握手应答。
@@ -22,6 +23,8 @@
 - 服务端构建在文件下载路由处报 `archiver` 没有导出 `ZipArchive`，改默认导入后 Node ESM 又报 no default export：根因是 `archiver` v8 运行时导出 `ZipArchive`，但当前类型声明仍按旧 `export = archiver` 函数形态暴露；修复为 namespace runtime import，并在类型层显式声明 `ZipArchive` 构造器。
 - StrictMode 下 WebSocket cleanup 造成假断开提示：CONNECTING 阶段过早 close；修复为等到 `onopen` 后再关闭。
 - Playwright 只复用前端导致坏后端环境被误复用：修复为前后端分别做健康检查。
+- HTTPS dev server 已运行时 Playwright 仍探测 HTTP 或因本地证书失败：修复为支持 `PLAYWRIGHT_FRONTEND_PROTOCOL`，HTTPS 下启用 `ignoreHTTPSErrors`，并给 `terminal-preview` e2e 补齐 HTTPS 证书忽略设置。
+- `pnpm dev` / `restart-dev.sh` 页面能起但 API 代理可能错连：后端和脚本默认 `3200/3100`，但 Vite 配置仍写死前端 `3000`、后端代理 `4000`，且没复用 `resolveWebDevConfig`；修复为统一走 `resolveWebDevConfig`，按 `WEB_BACKEND_PORT -> SERVER_PORT -> PORT -> 3200` 解析代理，并同步 `.env.example`。
 - Playwright Chromium 缺系统库时浏览器测试无法启动：沉淀了本地 `.deb` + `LD_LIBRARY_PATH` 的 rootless workaround。
 - idle cleanup timer 未 `.unref()` 导致 `pnpm -r test` 不退出：修复为统一 `.unref()` 并补 `hasRef() === false` 回归。
 - `awaiting_input` 单测在高负载下偶发超时：修复策略是收紧测试 override，而不是改全局默认值。
@@ -37,6 +40,7 @@
 - `10.30.0.23` / `10.30.0.21_host` 这类远端主机仍然打不开 VS Code。根因分两层：一是部分机器没装 standalone `code-server`；二是 remote VS Code 的 configless tunnel 虽然避开了 ssh config 里的 `RemoteForward` 污染，却没有先解析 ssh config 的 alias / port / identity，导致 alias 主机和“IP 但靠 ssh config 改端口”的主机都把 tunnel 连错。修复为在目标机补装 standalone `code-server`，并让 tunnel 在 `ssh -F /dev/null` 前先通过 `ssh -G` 解析真实 `hostname/port/identityfile` 再连接。
 - 看板通过本地 `/vscode` 代理打开 VS Code Web 时，HTTPS 页面里的图片预览仍可能加载失败。根因是代理层只把后端看到的 `request.protocol/host` 转发给上游 `code-server`；当前端页面是 HTTPS、后端却是本地 HTTP 代理时，上游会误以为公开入口仍是 `http + 本地端口`，进而生成错误的预览资源来源。修复为让 `/vscode` 代理也优先根据浏览器 `Origin/Referer` 或既有转发头推导公开 `host/protocol`，再透传给上游。
 - 本地 HTTPS 已回退到 OpenSSL 自签证书时，VS Code Web 的 webview / 图片预览会继续报 service worker 的 SSL 证书错误。根因是浏览器不会为不受信任的证书注册 service worker，而旧脚本在“复用已有证书”路径上没有持续告警，也不会在之后装好 `mkcert` 时自动升级掉旧自签证书。修复为修正 IP SAN 匹配、为脚本生成的证书记录 generator metadata，并在复用 OpenSSL 自签证书时持续警告；检测到 `mkcert` 后则自动重签为受信任证书。
+- 点击 `VS Code保持状态` 后运行中的非聚焦终端窗格仍只显示轻量预览：`vscodeIframeCacheMode` 只保留 VS Code iframe，未同步切换 `useLightweightTerminalPreview`；修复为把 VS Code cache profile 与终端预览保真度联动，保持状态时完整渲染运行终端窗格，省内存时恢复轻量预览。
 - commit `fc57a80` 引入的终端焦点保留修复过度：`rememberExternalPointerIntent` 仅对受保护目标记录意图，导致点击非保护元素时终端抢回焦点；`hasIntentionalExternalFocus` 对非保护、非 body 元素直接返回 false 加剧了问题。修复为 pointerdown 统一记录意图 + 纯时间戳比较，不再区分 active element 类型。
 - VS Code Web 与终端来回切换两轮后，点击 VS Code iframe 内部无法重新输入：上一版只依赖父文档 `pointerdown` 记录外部意图，但 iframe 内点击不稳定冒到父页面。修复为在父窗口 `blur` 和被动终端聚焦前，根据当前 `document.activeElement` 将 hovered iframe 补记为用户外部焦点意图，并补 VS Code -> 终端 -> VS Code round-trip e2e 回归。
 - 轻量预览下浏览器内存和网络仍持续增长：资源诊断显示 `/ws/agent-sessions` 全量快照达到数百 msg/s、数 MB/s；根因是每个终端输出帧都触发一次全量 snapshot，前端持续 JSON 解析和 React 更新。修复为后端对输出触发的 snapshot 做 trailing 合并广播，结构性操作仍即时刷新，并避免 observe-only 会话输出时创建无效 awaiting_input timer。

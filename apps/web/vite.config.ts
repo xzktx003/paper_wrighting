@@ -35,30 +35,23 @@ export default defineConfig(({ mode }) => {
     ...loadEnv(mode, resolve(__dirname, '../..'), ''),
   };
 
-  const BACKEND_HOST = env.WEB_BACKEND_HOST?.trim() || 'localhost';
-  const BACKEND_PORT = Number(
-    env.WEB_BACKEND_PORT ?? env.SERVER_PORT ?? env.PORT ?? 4000,
-  );
-  const HTTP_BACKEND = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
-  const WS_BACKEND = `ws://${BACKEND_HOST}:${BACKEND_PORT}`;
-
+  const webConfig = resolveWebDevConfig(env);
   const WEB_HOST = env.WEB_HOST?.trim() || '0.0.0.0';
-  const WEB_PORT = Number(env.WEB_PORT ?? 3000);
 
   return {
     plugins: [react()],
     server: {
       host: WEB_HOST,
-      port: WEB_PORT,
+      port: webConfig.webPort,
       https: readHttpsConfig(env),
       proxy: {
-        '/api': HTTP_BACKEND,
+        '/api': webConfig.apiTarget,
         '/vscode': {
-          target: HTTP_BACKEND,
+          target: webConfig.apiTarget,
           ws: true,
         },
         '/ws': {
-          target: WS_BACKEND,
+          target: webConfig.wsTarget,
           ws: true,
         },
       },

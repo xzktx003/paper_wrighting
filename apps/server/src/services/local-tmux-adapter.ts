@@ -148,6 +148,61 @@ function buildTmuxStatusPreview(sessionInfo: TmuxSessionInfo): string {
 export class LocalTmuxAdapter {
   constructor(private readonly registry: AgentSessionRegistry) {}
 
+  async renameSession(
+    agentSession: AgentSessionRecord,
+    nextName: string,
+  ): Promise<AgentSessionRecord> {
+    const currentTmuxSession = agentSession.transportRef?.tmuxSession;
+    if (!currentTmuxSession) {
+      return this.registry.updateSession(agentSession.id, {
+        displayName: nextName,
+      });
+    }
+
+    const paneId = agentSession.transportRef?.tmuxPane;
+    const sshTarget = agentSession.sshTarget;
+
+    if (sshTarget) {
+      const remoteCommands = [
+        `tmux rename-session -t ${quoteForPosixShell(currentTmuxSession)} ${quoteForPosixShell(nextName)}`,
+      ];
+      if (paneId) {
+        remoteCommands.push(
+          `tmux select-pane -t ${quoteForPosixShell(paneId)} -T ${quoteForPosixShell(nextName)}`,
+        );
+      }
+      await this.runRemoteCommand(sshTarget, remoteCommands.join(" && "));
+    } else {
+      await this.runTmux([
+        "rename-session",
+        "-t",
+        currentTmuxSession,
+        nextName,
+      ]);
+      if (paneId) {
+        await this.runTmux(["select-pane", "-t", paneId, "-T", nextName]);
+      }
+    }
+
+    const sshHost = sshTarget?.host ?? agentSession.transportRef?.sshHost;
+    const nextRuntimeId = agentSession.transportRef?.runtimeId?.startsWith(
+      "tmux:",
+    )
+      ? sshHost
+        ? `tmux:${sshHost}:${nextName}`
+        : `tmux:${nextName}`
+      : agentSession.transportRef?.runtimeId;
+
+    return this.registry.updateSession(agentSession.id, {
+      displayName: nextName,
+      workspaceId: nextName,
+      transportRef: {
+        tmuxSession: nextName,
+        ...(nextRuntimeId ? { runtimeId: nextRuntimeId } : {}),
+      },
+    });
+  }
+
   async discover(): Promise<DiscoverTmuxSessionsResponse> {
     try {
       await this.runTmux(["-V"]);

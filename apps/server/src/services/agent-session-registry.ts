@@ -15,7 +15,6 @@ import {
 type SnapshotListener = (snapshot: ListAgentSessionsResponse) => void;
 
 const MAX_OUTPUT_ENTRIES = 200;
-const DEFAULT_AWAITING_INPUT_IDLE_MS = 10_000;
 const DEFAULT_SNAPSHOT_THROTTLE_MS = 250;
 const MAX_INFERENCE_WINDOW_CHARS = 4096;
 
@@ -76,9 +75,7 @@ export class AgentSessionRegistry {
   private readonly sessions = new Map<string, AgentSessionRecord>();
   private readonly outputEntries = new Map<string, AgentOutputEntry[]>();
   private readonly screenWindows = new Map<string, string>();
-  private readonly lastScreenChangedAt = new Map<string, number>();
   private readonly sessionOrder = new Map<string, number>();
-  private readonly awaitingInputTimers = new Map<string, NodeJS.Timeout>();
   private readonly listeners = new Set<SnapshotListener>();
   private pendingSnapshotTimer: NodeJS.Timeout | null = null;
   private activeAgentSessionId: string | null = null;
@@ -86,7 +83,6 @@ export class AgentSessionRegistry {
   private nextSessionOrder = 0;
 
   constructor(
-    private readonly awaitingInputIdleMs = DEFAULT_AWAITING_INPUT_IDLE_MS,
     private readonly snapshotThrottleMs = DEFAULT_SNAPSHOT_THROTTLE_MS,
   ) {}
 
@@ -160,13 +156,8 @@ export class AgentSessionRegistry {
     this.sessions.set(agentSession.id, agentSession);
     this.outputEntries.set(agentSession.id, []);
     this.screenWindows.set(agentSession.id, "");
-    this.lastScreenChangedAt.set(agentSession.id, Date.now());
     this.sessionOrder.set(agentSession.id, this.nextSessionOrder);
     this.nextSessionOrder += 1;
-
-    if (this.shouldUseTimedAwaitingInput(agentSession)) {
-      this.refreshAwaitingInputTimer(agentSession.id);
-    }
 
     if (!this.activeAgentSessionId) {
       this.activeAgentSessionId = agentSession.id;
@@ -236,10 +227,6 @@ export class AgentSessionRegistry {
     const nextSession: AgentSessionRecord = {
       ...agentSession,
       lastHeartbeatAt: now,
-      interactionState:
-        agentSession.interactionState === "awaiting_input"
-          ? "running"
-          : agentSession.interactionState,
       outputPreview: input.input.trim()
         ? `Last input: ${input.input.trim()}`
         : agentSession.outputPreview,
@@ -275,25 +262,22 @@ export class AgentSessionRegistry {
 
     if (screenChanged) {
       this.screenWindows.set(agentSessionId, nextScreenWindow);
-      this.lastScreenChangedAt.set(agentSessionId, Date.now());
-      if (this.shouldUseTimedAwaitingInput(agentSession)) {
-        this.refreshAwaitingInputTimer(agentSessionId);
-      }
     }
+
+    const shouldKeepRunningState =
+      screenChanged && this.shouldKeepRunningState(agentSession);
 
     const nextSession: AgentSessionRecord = {
       ...agentSession,
       lastHeartbeatAt: now,
       lastOutputAt: screenChanged ? now : agentSession.lastOutputAt,
       outputPreview: screenChanged ? outputPreview : agentSession.outputPreview,
-      interactionState:
-        screenChanged && this.shouldUseTimedAwaitingInput(agentSession)
-          ? "running"
-          : agentSession.interactionState,
-      stateConfidence:
-        screenChanged && this.shouldUseTimedAwaitingInput(agentSession)
-          ? "medium"
-          : agentSession.stateConfidence,
+      interactionState: shouldKeepRunningState
+        ? "running"
+        : agentSession.interactionState,
+      stateConfidence: shouldKeepRunningState
+        ? "medium"
+        : agentSession.stateConfidence,
       lastRefreshedAt: now,
     };
 
@@ -333,25 +317,13 @@ export class AgentSessionRegistry {
 
     if (normalizedScreen !== previousScreen) {
       this.screenWindows.set(agentSessionId, normalizedScreen);
-      this.lastScreenChangedAt.set(agentSessionId, nowMs);
     }
 
-    const lastChangedAt = this.lastScreenChangedAt.get(agentSessionId) ?? nowMs;
-    const shouldInferFromStableScreen = agentSession.controlMode !== "observe";
-    const hasBeenStableLongEnough =
-      nowMs - lastChangedAt >= this.awaitingInputIdleMs;
+    const shouldKeepRunningState = agentSession.controlMode !== "observe";
 
     return this.updateSession(agentSessionId, {
-      interactionState: shouldInferFromStableScreen
-        ? hasBeenStableLongEnough
-          ? "awaiting_input"
-          : "running"
-        : "detached",
-      stateConfidence: shouldInferFromStableScreen
-        ? hasBeenStableLongEnough
-          ? "medium"
-          : "medium"
-        : "high",
+      interactionState: shouldKeepRunningState ? "running" : "detached",
+      stateConfidence: shouldKeepRunningState ? "medium" : "high",
       lastHeartbeatAt: new Date(nowMs).toISOString(),
       lastRefreshedAt: new Date(nowMs).toISOString(),
     });
@@ -405,7 +377,6 @@ export class AgentSessionRegistry {
       text: exitSummary,
     });
     this.emitSnapshot();
-    this.clearAwaitingInputTimer(agentSessionId);
 
     return nextSession;
   }
@@ -414,9 +385,7 @@ export class AgentSessionRegistry {
     this.sessions.delete(agentSessionId);
     this.outputEntries.delete(agentSessionId);
     this.screenWindows.delete(agentSessionId);
-    this.lastScreenChangedAt.delete(agentSessionId);
     this.sessionOrder.delete(agentSessionId);
-    this.clearAwaitingInputTimer(agentSessionId);
     if (this.activeAgentSessionId === agentSessionId) {
       this.activeAgentSessionId = null;
     }
@@ -491,11 +460,6 @@ export class AgentSessionRegistry {
 
   noteUserInput(agentSessionId: string, input: string): AgentSessionRecord {
     const agentSession = this.get(agentSessionId);
-    this.lastScreenChangedAt.set(agentSessionId, Date.now());
-
-    if (this.shouldUseTimedAwaitingInput(agentSession)) {
-      this.refreshAwaitingInputTimer(agentSessionId);
-    }
 
     if (agentSession.interactionState === "exited") {
       return agentSession;
@@ -508,58 +472,10 @@ export class AgentSessionRegistry {
     });
   }
 
-  private shouldUseTimedAwaitingInput(
-    agentSession: AgentSessionRecord,
-  ): boolean {
+  private shouldKeepRunningState(agentSession: AgentSessionRecord): boolean {
     return (
       agentSession.connectionState === "online" &&
       agentSession.sourceType !== "remote-tmux-discovered"
     );
-  }
-
-  private refreshAwaitingInputTimer(
-    agentSessionId: string,
-    delayMs = this.awaitingInputIdleMs,
-  ): void {
-    this.clearAwaitingInputTimer(agentSessionId);
-
-    // NOTE: `setTimeout(...).unref()` happens after we store the handle
-    // below. This cleanup timer must not keep the Node event loop alive on
-    // its own; only the real HTTP server should prevent process exit.
-    const timeout = setTimeout(() => {
-      const agentSession = this.sessions.get(agentSessionId);
-      if (!agentSession || !this.shouldUseTimedAwaitingInput(agentSession)) {
-        return;
-      }
-
-      const lastChangedAt = this.lastScreenChangedAt.get(agentSessionId) ?? 0;
-      const remainingMs =
-        this.awaitingInputIdleMs - (Date.now() - lastChangedAt);
-      if (remainingMs > 0) {
-        this.refreshAwaitingInputTimer(agentSessionId, remainingMs);
-        return;
-      }
-
-      if (agentSession.interactionState === "awaiting_input") {
-        return;
-      }
-
-      this.updateSession(agentSessionId, {
-        interactionState: "awaiting_input",
-        stateConfidence: "medium",
-        lastHeartbeatAt: new Date().toISOString(),
-      });
-    }, delayMs);
-    timeout.unref();
-
-    this.awaitingInputTimers.set(agentSessionId, timeout);
-  }
-
-  private clearAwaitingInputTimer(agentSessionId: string): void {
-    const timeout = this.awaitingInputTimers.get(agentSessionId);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.awaitingInputTimers.delete(agentSessionId);
-    }
   }
 }

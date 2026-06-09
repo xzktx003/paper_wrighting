@@ -491,8 +491,8 @@ export function TopBar({
                   onClick={onToggleVsCodeIframeCacheMode}
                   title={
                     vscodeIframeCacheMode === "memory-saving"
-                      ? "当前为 VS Code 省内存模式：只保留当前 iframe"
-                      : "当前为 VS Code 保持状态模式：最多保留最近 8 个 iframe"
+                      ? "当前为 VS Code 省内存模式：只保留当前 iframe，并使用轻量终端预览"
+                      : "当前为 VS Code 保持状态模式：最多保留最近 8 个 iframe，并完整渲染运行终端窗格"
                   }
                   type="button"
                 >
