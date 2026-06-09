@@ -23,6 +23,7 @@
 
 ## tmux 与终端渲染
 
+- tmux mouse mode 下直接拖拽会被 tmux/TUI 接管，浏览器侧 xterm 不会产生可复制 selection，导致 kanban 无法把 pane 内选择自动写入剪贴板。修复为 `TerminalView` 消费 OSC 52 clipboard 请求并调用浏览器剪贴板 API，让 tmux copy-mode 负责 pane 内选择边界，普通鼠标/二进制事件转发保持不变。
 - 手机浏览器打开 Codex 长上下文终端时，用户在终端区域下拉查看历史会触发浏览器下拉刷新，或者滑动的是页面而不是 xterm 历史。根因是移动端仍复用桌面页面滚动结构，浏览器根滚动链路没有被锁住；首版终端 touch 监听只在冒泡阶段接管，遇到 xterm 内部 viewport/浏览器手势竞争时拦截不够早，且用户停留在桌面聚焦页时没有启用手机触控模式。修复为新增 `/mobile` 手机终端页，挂载时锁定 `html/body/#root` 滚动，并让 `TerminalView` 在手机触控模式下用捕获阶段的非 passive `touchstart/touchmove` 拦截单指滑动、滚动 xterm 历史，双指缩放字号；触屏设备的桌面聚焦页也启用同一逻辑。
 - 手机访问 `/mobile` 进不去或 404。根因是部分当前运行入口只暴露根页面或只启动了后端，`/mobile` 这种 history route 依赖前端开发服务/静态服务提供 SPA fallback。修复为移动端按钮改用 `/?view=mobile` 根路径 query 入口，并保留 `/mobile`、`/m`、`#/mobile` 兼容解析。
 - 手机端 Tab、Esc、Ctrl+C、方向键等快捷键在部分会话里会变成“控制键 + Enter”或不能作为真实按键送入 Codex。根因是手机端快捷键走已有 stdin 路由，而旧的非 PTY runtime 会给任意输入追加换行，tmux 控制路径也把输入按行拆分并总是补 Enter。修复为对 stdin payload 做控制字符识别：普通文本仍可补换行提交，Tab/Esc/Ctrl/方向键和多行粘贴按原始输入转发；tmux 接入路径把通用控制字符转换成 `send-keys` 按键名但不增加 tmux 专用快捷键按钮。
@@ -34,6 +35,8 @@
 - 远端新建 tmux 会话时，`copilot` / `codex` / `claude` 这类非 shell agent 会在启动命令退出后把整个 tmux session 一起带没，看起来像“只能建 shell，不能建远端 tmux”。根因是前端 `buildTmuxLaunchCommand` 与服务端实现漂移，非 shell 分支少了 keep-pane-open 包装。修复为复用带 `exec "$SHELL_BIN" -i` 的 tmux pane 命令构造，保证 agent 退出后 pane 仍留在交互 shell 中。
 - 远端 `10.30.0.24` 上从看板启动 Copilot 会话时，看起来像“tmux 创建失败”，实际是该主机把 `copilot` 解析到了一个缺少 `index.js` 的 `~/.nvm/.../bin/copilot` node shim。修复为远端 Copilot 启动命令先尝试健康的 `copilot` 可执行文件；若命中损坏 shim，则回退到 `node ../lib/node_modules/@github/copilot/npm-loader.js` 直接启动 CLI。
 - 远端 `10.30.0.24` 上直接创建 shell tmux 时，默认名 `10.30.0.24_shell_tmux` 会被旧版 tmux 3.0a 拒绝并报 `bad session name`。根因是默认会话名生成器在 tmux 模式下仍保留 `.`。修复为 tmux 模式下对 host label 使用更严格的名字规范化，把 `.` 一并收敛成 `_`，生成 `10_30_0_24_shell_tmux` 这类 tmux-safe 名称。
+- 本地 tmux 会话刚进入 focus view 后，浏览器已经通过 terminal WebSocket 发出了输入帧，但 tmux pane 里收不到 `stdin:<marker>`。根因是 WebSocket stdin 只写入 `tmux attach` 所在 PTY，attach 竞态或 pane 目标缺失时早期输入会丢失。修复为本地 tmux 会话优先通过已有 `LocalTmuxAdapter.writeInput` 的 `tmux send-keys` 队列写入目标 session/pane，并在失败时回退 PTY 写入。
+- 多屏 focus view 里把 sidebar session 拖到当前输入 pane，或在当前输入 pane 的下拉框切换 session 后，pane 会短暂变化又被恢复成原 focused session。根因是 `normalizeTerminalMonitorSlots` 会把 App 级 `focusedSession` 强制放回 active slot，而 active slot select/drag 在 `syncActiveTerminalWithFocus=false` 时没有同步 focused session。修复为 active slot select、拖入 active slot、从 active slot 拖出时同步 active slot/focused session，并让 sidebar 卡片单击即可切换 focus。
 
 ## 文件浏览器
 
@@ -57,9 +60,14 @@
 - 看板通过本地 `/vscode` 代理打开 VS Code Web 时，HTTPS 页面里的图片预览仍可能加载失败。根因是代理层之前只把后端看到的 `request.protocol/host` 原样转发给上游 `code-server`；当前端开发页经由 HTTPS 访问、后端实际走本地 HTTP 代理时，上游收到的却是错误的 `http + 本地端口`，从而生成了错误的预览资源来源。修复为让 `/vscode` 代理和 `/api/agent-sessions/:id/vscode-web` 一样，优先从浏览器的 `Origin/Referer` 或现有转发头推导公开 `host/protocol`，再转发给上游。
 - 本地 HTTPS 开发证书已经回退到 OpenSSL 自签时，VS Code Web 的 webview / 图片预览仍会报 `Could not register service worker ... An SSL certificate error occurred`。根因是浏览器不会为不受信任的自签证书注册 service worker，而旧脚本在“复用现有证书”路径上既不会持续告警，也不会在后续装上 `mkcert` 后自动升级证书。修复为：1）修正现有证书 SAN 匹配，避免 IP SAN 误判导致行为漂移；2）为脚本生成的证书写入 metadata，复用 OpenSSL 自签证书时持续输出 VS Code 预览受限告警；3）一旦检测到 `mkcert` 已可用，自动淘汰旧自签证书并重签为受信任证书。
 
+- 点击 `VS Code保持状态` 后，运行中的非聚焦终端窗格仍只显示轻量预览。根因是 `vscodeIframeCacheMode` 只保留 VS Code iframe，未同步切换 `useLightweightTerminalPreview`，两个内存/保真度开关在用户工作流里分裂。修复为把 VS Code cache profile 与终端预览保真度联动：保持状态时完整渲染运行终端窗格，省内存时恢复轻量预览。
+
 ## 开发环境与测试基础设施
 
 - Playwright 只复用前端 Vite 服务时，可能在 `/api` 代理已经坏掉的情况下误以为测试环境可用。修复为前后端分别做健康检查，避免复用损坏环境。
+- 多轮 Playwright e2e 后，Vite 或后端 `tsx watch` webServer 可能因 `EMFILE` / `ENOSPC: System limit for number of file watchers reached` 启动失败。根因是测试环境反复启动 watcher，命中本机 fd/watch 上限。修复为 Playwright 启动的 web dev server 默认设置 `CHOKIDAR_USEPOLLING=1`，后端 e2e 服务改用非 watch 的 `tsx src/index.ts`，且只有显式 `PLAYWRIGHT_REUSE_EXISTING_SERVER=1` 时才复用旧服务。
+- HTTPS dev server 已在 `3333` 端口运行时，Playwright e2e 仍等待 `http://127.0.0.1:3333` 直到 webServer 超时，或者浏览器因本地开发证书报 `ERR_CERT_AUTHORITY_INVALID`。根因是 e2e 配置没有按前端 HTTPS 模式切换探测协议，且 `terminal-preview` 用例缺少本地证书忽略设置。修复为支持 `PLAYWRIGHT_FRONTEND_PROTOCOL`，HTTPS 协议下开启 `ignoreHTTPSErrors`，并给终端预览 e2e 补齐 HTTPS 测试约定。
+- `pnpm dev` / `restart-dev.sh` 能启动页面但 API 代理可能连错端口。根因是后端和脚本默认使用 `3200/3100`，但 `apps/web/vite.config.ts` 仍写死前端 `3000`、后端代理 `4000`，且没有复用已有的 `resolveWebDevConfig`。修复为让 Vite 配置统一走 `resolveWebDevConfig`，按 `WEB_BACKEND_PORT -> SERVER_PORT -> PORT -> 3200` 解析后端代理，并同步 `.env.example` 默认值。
 - Ubuntu 主机缺少 Playwright Chromium 运行库时，浏览器测试无法启动。现有 workaround 是下载所需 `.deb`、提取到本地目录，并通过 `LD_LIBRARY_PATH` 注入依赖。
 - `pnpm -r test` 全部断言通过后仍不退出。根因是多个服务级 idle timer 没有 `.unref()`，导致 Node event loop 一直存活。修复为所有仅用于空闲清理的 timer 创建后立即 `.unref()`，并补 `hasRef() === false` 回归。
 - `awaiting_input` 相关单测在高负载下可能偶发超时。修复策略是调小测试专用的 `awaitingInputIdleMs` 覆盖值，而不是放大全局默认值。
@@ -80,3 +88,4 @@
 - 仍有很多运行中终端滚轮控制不了上下文：一层根因是旧用户滚动锁只有 10 秒，长输出终端停留阅读超过 10 秒后又会被 live output 拉回底部；另一层根因是 wheel 事件可能落在终端上方的遮罩、空白层或其他 document-level 目标上，没进入 `.terminal-view` 容器。修复为把用户滚动锁改成“只要未回到底部就持续锁定”，并增加 document capture 兜底，鼠标坐标落在真实 xterm 区域内时一律滚动对应终端 scrollback。
 - commit `fc57a80` 引入的"保留显式用户焦点"修复过度：`rememberExternalPointerIntent` 只对"受保护目标"（input、iframe、dialog 等）记录外部点击意图，导致点击普通 div、按钮等非保护元素时终端立刻抢回焦点。`hasIntentionalExternalFocus` 里对非保护、非 body 元素直接返回 `false`，进一步放大了这个问题。修复为：1）`rememberExternalPointerIntent` 对 `.terminal-view` 以外的任意 `pointerdown` 都记录意图；2）`hasIntentionalExternalFocus` 简化为纯时间戳比较，不再区分 active element 类型。
 - VS Code Web 与终端来回切换两轮后，点击 VS Code iframe 内部无法重新输入。上一轮修复只覆盖父文档能收到 `pointerdown` 的外部点击；真实 iframe 内点击不会稳定冒到父页面，导致 `lastTerminalIntentAt` 仍然更新于外部意图之后，`handleWindowFocus` / 被动焦点修复又把 xterm-helper textarea 抢回。修复为在父窗口 `blur`、被动终端聚焦前，基于当前 `document.activeElement` 补记 hovered iframe 的外部焦点意图，并补 VS Code -> 终端 -> VS Code round-trip e2e 回归用例。
+- focus view 点击按钮后，Copilot-like TUI 会收到 `focus-out` 并丢掉紧随其后的输入。根因是按钮等非文本控件被纯时间戳逻辑误判为有意外部焦点，且 keydown 补救路径可能先发送 stdin、后发送 `focus-in`；修复为 `hasIntentionalExternalFocus` 只保护真实输入面/iframe/dialog 和短暂 body handoff，并在 `TerminalView` 发送 stdin 前同步补齐已聚焦 helper 的 focus report。

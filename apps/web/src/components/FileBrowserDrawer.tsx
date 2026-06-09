@@ -1152,6 +1152,7 @@ export function FileBrowserDrawer({
       )}
 
       <input
+        data-testid="file-browser-upload-file-input"
         hidden
         multiple
         ref={fileInputRef}
@@ -1165,6 +1166,7 @@ export function FileBrowserDrawer({
         }}
       />
       <input
+        data-testid="file-browser-upload-folder-input"
         hidden
         ref={folderInputRef}
         type="file"

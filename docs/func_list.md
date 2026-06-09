@@ -59,6 +59,7 @@
 - 后端会对高频终端输出触发的看板全量快照做合并广播；结构性操作仍即时刷新，避免轻量预览场景下 `/ws/agent-sessions` 因逐帧输出形成网络和 JSON 解析风暴。
 - 支持 replay 完成前缓冲 live frame，避免历史输出与新输出乱序。
 - 支持 stdin、resize、binary 消息，binary 用于 tmux 鼠标等二进制事件。
+- 支持终端输出发起的 OSC 52 剪贴板写入；tmux copy-mode 可通过 pane 内选择把内容写入浏览器剪贴板，前端只接受 clipboard target 且限制 payload 大小。
 - 支持终端焦点补救和输入所有权；真实 stdin 默认只落到当前聚焦主终端，多终端监控模式下也只落到当前输入窗格；鼠标滚轮固定滚动终端 scrollback 上下文，不作为 Codex CLI 输入历史翻页事件转发，输入历史仍通过键盘上下箭头完成。
 
 ## 7. 文件浏览器

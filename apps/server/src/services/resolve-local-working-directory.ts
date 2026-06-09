@@ -1,5 +1,18 @@
 import os from "node:os";
 import path from "node:path";
+import { statSync } from "node:fs";
+
+function resolveExistingDirectory(candidate: string): string {
+  try {
+    if (statSync(candidate).isDirectory()) {
+      return candidate;
+    }
+  } catch {
+    // Fall through to the process cwd when the requested directory is stale.
+  }
+
+  return process.cwd();
+}
 
 export function resolveLocalWorkingDirectory(
   workingDirectory?: string,
@@ -13,12 +26,16 @@ export function resolveLocalWorkingDirectory(
   }
 
   if (workingDirectory.startsWith("~/")) {
-    return path.join(os.homedir(), workingDirectory.slice(2));
+    return resolveExistingDirectory(
+      path.join(os.homedir(), workingDirectory.slice(2)),
+    );
   }
 
   if (path.isAbsolute(workingDirectory)) {
-    return workingDirectory;
+    return resolveExistingDirectory(workingDirectory);
   }
 
-  return path.resolve(process.cwd(), workingDirectory);
+  return resolveExistingDirectory(
+    path.resolve(process.cwd(), workingDirectory),
+  );
 }

@@ -25,17 +25,12 @@ function makeSession(
 }
 
 describe("AgentGrid", () => {
-  it("shows running and awaiting-input counts as compact grid toolbar chips", () => {
+  it("shows running counts as compact grid toolbar chips", () => {
     const sessions = [
       makeSession({
         id: "running-session",
         displayName: "Running Session",
         interactionState: "running",
-      }),
-      makeSession({
-        id: "awaiting-session",
-        displayName: "Awaiting Session",
-        interactionState: "awaiting_input",
       }),
       makeSession({
         id: "idle-session",
@@ -67,11 +62,9 @@ describe("AgentGrid", () => {
     assert.match(markup, /class="hidden-sessions-btn"[^>]*>已隐藏 \(2\)/);
     assert.match(
       markup,
-      /class="stat-item stat-awaiting grid-status-chip"[^>]*>🟡 1 等待输入/,
-    );
-    assert.match(
-      markup,
       /class="stat-item stat-running grid-status-chip"[^>]*>🟢 1 运行中/,
     );
+    assert.doesNotMatch(markup, /stat-awaiting/);
+    assert.doesNotMatch(markup, /等待输入/);
   });
 });

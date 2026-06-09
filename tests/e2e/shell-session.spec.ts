@@ -135,6 +135,9 @@ test('browser: grid preview forwards terminal protocol replies needed by interac
     expect(launchResponse.ok()).toBeTruthy();
     sessionId = (await launchResponse.json()).id;
 
+    await page.addInitScript(() => {
+      localStorage.setItem('terminal-preview-mode', 'full');
+    });
     await page.goto('/');
 
     const shellCard = page.locator('.grid-card', {

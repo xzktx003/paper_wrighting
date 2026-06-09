@@ -16,6 +16,7 @@ import {
   recordTerminalFrame,
   registerTerminalWebSocket,
 } from "../lib/resource-diagnostics";
+import { decodeOsc52ClipboardPayload } from "../lib/osc52-clipboard";
 import {
   hasIntentionalExternalFocus,
   shouldPromoteExternalFocusToUserIntent,
@@ -99,9 +100,7 @@ export function TerminalView({
     }
 
     term.options.cursorBlink = inputEnabled;
-    term.options.disableStdin = !(
-      inputEnabled && terminalInputReadyRef.current
-    );
+    term.options.disableStdin = !terminalInputReadyRef.current;
   }, [inputEnabled]);
 
   useEffect(() => {
@@ -235,6 +234,85 @@ export function TerminalView({
     applyPreviewLayout();
     term.open(stage);
     container.__xterm = term;
+
+    const copyTextToClipboard = (text: string) => {
+      if (disposed || !text) {
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {
+          fallbackExecCopy(text);
+        });
+        return;
+      }
+
+      fallbackExecCopy(text);
+    };
+
+    let lastCopiedSelection = "";
+    const copyTerminalSelectionToClipboard = () => {
+      if (disposed || !term.hasSelection()) {
+        return;
+      }
+      const text = term.getSelection();
+      if (!text || text === lastCopiedSelection) {
+        return;
+      }
+      lastCopiedSelection = text;
+      copyTextToClipboard(text);
+    };
+
+    function fallbackExecCopy(text: string) {
+      try {
+        const helper = document.createElement("textarea");
+        helper.value = text;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.top = "0";
+        helper.style.left = "0";
+        helper.style.opacity = "0";
+        helper.style.pointerEvents = "none";
+        document.body.appendChild(helper);
+        const previousActive = document.activeElement as HTMLElement | null;
+        helper.focus();
+        helper.select();
+        document.execCommand("copy");
+        document.body.removeChild(helper);
+        previousActive?.focus?.();
+      } catch {
+        /* execCommand path unavailable; nothing more to do */
+      }
+    }
+
+    const osc52ClipboardDisposable = term.parser.registerOscHandler(
+      52,
+      (data) => {
+        const text = decodeOsc52ClipboardPayload(data);
+        if (text) {
+          copyTextToClipboard(text);
+        }
+
+        return true;
+      },
+    );
+
+    const handleStageMouseUp = () => {
+      copyTerminalSelectionToClipboard();
+    };
+    stage.addEventListener("mouseup", handleStageMouseUp);
+
+    const handleStageCopyKey = (event: KeyboardEvent) => {
+      const isCopyChord =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        (event.key === "c" || event.key === "C");
+      if (!isCopyChord || !term.hasSelection()) {
+        return;
+      }
+      copyTerminalSelectionToClipboard();
+    };
+    stage.addEventListener("keydown", handleStageCopyKey);
     const getHelperTextarea = () =>
       container.querySelector(
         ".xterm-helper-textarea",
@@ -584,6 +662,12 @@ export function TerminalView({
       );
     };
 
+    const reportFocusedTerminalBeforeInput = () => {
+      if (document.activeElement === getHelperTextarea()) {
+        syncTerminalFocusReport();
+      }
+    };
+
     // Safety net: if the WebSocket never sends replay-complete (e.g. connection
     // refused, server error, or long replay transfer), unblock stdin after 8
     // seconds so the user is never permanently locked out.
@@ -843,7 +927,10 @@ export function TerminalView({
 
       replayComplete = true;
       terminalInputReadyRef.current = true;
-      term.options.disableStdin = !inputEnabledRef.current;
+      // Keep xterm stdin enabled even for monitor-only previews so terminal
+      // protocol replies such as CPR/DA can be generated and forwarded. Normal
+      // user input from monitor panes is still filtered in term.onData.
+      term.options.disableStdin = false;
       if (inputEnabledRef.current) {
         scheduleFocusInteractiveTerminal();
         scheduleTerminalFocusReport();
@@ -893,6 +980,7 @@ export function TerminalView({
       }
 
       if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
+        reportFocusedTerminalBeforeInput();
         ws.send(sanitized);
       }
     });
@@ -911,6 +999,7 @@ export function TerminalView({
       }
 
       if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
+        reportFocusedTerminalBeforeInput();
         ws.send(
           JSON.stringify({
             type: "binary",
@@ -1002,10 +1091,22 @@ export function TerminalView({
         const isTransient =
           related instanceof HTMLButtonElement ||
           related?.closest("button") != null;
+        const isPointerDrivenTransient =
+          isTransient &&
+          Date.now() - lastExternalPointerIntentAt <= EXTERNAL_FOCUS_GRACE_MS;
 
-        if (isTransient && !disposed && !isIntentionalExternalFocus()) {
+        if (
+          isPointerDrivenTransient &&
+          !disposed &&
+          !isIntentionalExternalFocus()
+        ) {
           focusInteractiveTerminal(true);
           syncTerminalFocusReport();
+          return;
+        }
+
+        if (isTransient) {
+          scheduleTerminalFocusReport();
           return;
         }
 
@@ -1158,6 +1259,9 @@ export function TerminalView({
       disposed = true;
       window.removeEventListener("resize", handleWindowResize);
       resizeObserver.disconnect();
+      osc52ClipboardDisposable.dispose();
+      stage.removeEventListener("mouseup", handleStageMouseUp);
+      stage.removeEventListener("keydown", handleStageCopyKey);
       if (handlePointerDownCapture) {
         container.removeEventListener(
           "pointerdown",

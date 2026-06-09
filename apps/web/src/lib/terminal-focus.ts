@@ -41,9 +41,21 @@ export function shouldActivateTerminalPaneFromPointer(
 export function hasIntentionalExternalFocus(
   options: IntentionalExternalFocusOptions,
 ): boolean {
+  if (
+    options.lastExternalUserIntentAt === 0 ||
+    options.lastExternalUserIntentAt < options.lastTerminalIntentAt
+  ) {
+    return false;
+  }
+
+  if (options.activeElementProtected) {
+    return true;
+  }
+
   return (
-    options.lastExternalUserIntentAt > 0 &&
-    options.lastExternalUserIntentAt >= options.lastTerminalIntentAt
+    options.activeElementIsDocumentBody &&
+    options.now - options.lastExternalUserIntentAt <
+      options.externalFocusGraceMs
   );
 }
 

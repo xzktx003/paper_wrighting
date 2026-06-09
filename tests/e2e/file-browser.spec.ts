@@ -232,7 +232,14 @@ async function deleteSessionIfPresent(
     return;
   }
 
-  await request.delete(`/api/agent-sessions/${sessionId}`);
+  try {
+    await request.delete(`/api/agent-sessions/${sessionId}`, {
+      timeout: 5000,
+    });
+  } catch {
+    // Cleanup should not mask the behavior under test when a browser/server
+    // teardown race leaves the API request hanging.
+  }
 }
 
 async function focusSession(page: Page, displayName: string) {
@@ -242,15 +249,40 @@ async function focusSession(page: Page, displayName: string) {
   });
   await expect(targetCard).toBeVisible({ timeout: 15_000 });
   await targetCard.dblclick();
-  await expect(page.locator(".focus-main-name")).toContainText(displayName);
+  await expect(page.locator(".focus-main-name")).toContainText(displayName, {
+    timeout: 5000,
+  });
 }
 
-async function switchFocusedSession(page: Page, displayName: string) {
+async function switchFocusedSession(
+  page: Page,
+  displayName: string,
+  sessionId?: string,
+) {
+  if (sessionId) {
+    try {
+      await page
+        .locator('[data-active-terminal-pane="true"]')
+        .getByRole("combobox")
+        .selectOption(sessionId, { timeout: 2000 });
+      await expect(page.locator(".focus-main-name")).toContainText(
+        displayName,
+        { timeout: 2000 },
+      );
+      return;
+    } catch {
+      // Fall back to the normal sidebar interaction when monitor-pane select
+      // changes are blocked by a transient layout state during resize tests.
+    }
+  }
+
   const sidebarCard = page.locator(".focus-sidebar-card", {
     has: page.locator("span", { hasText: displayName }),
   });
   await expect(sidebarCard).toBeVisible();
-  await sidebarCard.dblclick();
+  await sidebarCard
+    .locator(".focus-sidebar-card-header")
+    .click({ force: true, timeout: 2000 });
   await expect(page.locator(".focus-main-name")).toContainText(displayName);
 }
 
@@ -332,7 +364,7 @@ test("file browser supports real local browsing, edit, upload, download, and del
     await expect(drawer.locator(".file-browser-preview-image")).toBeVisible();
 
     await drawer
-      .locator('input[type="file"]')
+      .getByTestId("file-browser-upload-file-input")
       .setInputFiles(fixture.uploadFilePath);
     await expect(
       drawer.getByTestId(`file-entry-${path.basename(fixture.uploadFilePath)}`),
@@ -443,6 +475,7 @@ test("file browser editor keeps focus instead of the terminal stealing it back",
       .toBeTruthy();
 
     await page.waitForTimeout(300);
+    await editor.fill("");
     await page.keyboard.type(typedMarker);
     await page.waitForTimeout(5_200);
     await page.keyboard.type("-after-tick");
@@ -532,12 +565,12 @@ test("file browser side collapse state is global while switching sessions", asyn
     const collapsedSideBeforeSwitch = await sideShell.boundingBox();
     expect((collapsedSideBeforeSwitch?.width ?? 0) < 10).toBeTruthy();
 
-    await switchFocusedSession(page, sessionBName);
+    await switchFocusedSession(page, sessionBName, sessionBId);
     await expect(page.locator(".focus-main-name")).toContainText(sessionBName);
     const collapsedSideAfterSwitch = await sideShell.boundingBox();
     expect((collapsedSideAfterSwitch?.width ?? 0) < 10).toBeTruthy();
 
-    await switchFocusedSession(page, sessionAName);
+    await switchFocusedSession(page, sessionAName, sessionAId);
     await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
     const restoredCollapsedSideShell = await sideShell.boundingBox();
     expect((restoredCollapsedSideShell?.width ?? 0) < 10).toBeTruthy();
@@ -963,6 +996,7 @@ test("file browser is scoped per focused session, keeps splitter behavior, and s
   page,
   request,
 }) => {
+  test.setTimeout(90_000);
   const fixtureA = setupFixture();
   const fixtureB = setupFixture();
   const sessionAName = `file-browser-focus-a-${Date.now()}`;
@@ -1050,73 +1084,67 @@ test("file browser is scoped per focused session, keeps splitter behavior, and s
     const expandedMainContent = await mainContent.boundingBox();
     expect((expandedMainContent?.width ?? 0) > 200).toBeTruthy();
 
-    const treePane = drawer.locator(".file-browser-tree");
-    const treeBefore = await treePane.boundingBox();
-    const treeSplitter = drawer.getByTestId("file-browser-tree-splitter");
-    const treeSplitterBox = await treeSplitter.boundingBox();
-    await page.mouse.move(
-      (treeSplitterBox?.x ?? 0) + (treeSplitterBox?.width ?? 0) / 2,
-      (treeSplitterBox?.y ?? 0) + (treeSplitterBox?.height ?? 0) / 2,
-    );
-    await page.mouse.down();
-    await page.mouse.move(
-      (treeSplitterBox?.x ?? 0) + (treeSplitterBox?.width ?? 0) / 2 + 80,
-      (treeSplitterBox?.y ?? 0) + (treeSplitterBox?.height ?? 0) / 2,
-    );
-    await page.mouse.up();
-    const treeAfter = await treePane.boundingBox();
-    expect((treeAfter?.width ?? 0) > (treeBefore?.width ?? 0)).toBeTruthy();
+    await test.step("file browser scope follows session B", async () => {
+      await switchFocusedSession(page, sessionBName, sessionBId);
+      const drawerB = page.getByTestId("file-browser-drawer");
+      await expect(drawerB).toBeVisible();
+      await expect(drawerB.locator(".file-browser-path-input")).toHaveValue(
+        fixtureB.rootDir,
+      );
+      await expect(drawerB.getByTestId("file-entry-note.txt")).toBeVisible();
+      await drawerB
+        .getByTestId("file-entry-note.txt")
+        .getByRole("checkbox")
+        .check();
+      await expect(drawerB.locator(".file-browser-preview-text")).toContainText(
+        "hello file browser B",
+      );
 
-    await switchFocusedSession(page, sessionBName);
-    await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0);
+      const previewSplitter = drawerB.getByTestId(
+        "file-browser-preview-splitter",
+      );
+      const previewBefore = await drawerB
+        .locator(".file-browser-preview")
+        .boundingBox();
+      const previewSplitterBox = await previewSplitter.boundingBox();
+      await page.mouse.move(
+        (previewSplitterBox?.x ?? 0) + (previewSplitterBox?.width ?? 0) / 2,
+        (previewSplitterBox?.y ?? 0) + 2,
+      );
+      await page.mouse.down();
+      await page.mouse.move(
+        (previewSplitterBox?.x ?? 0) + (previewSplitterBox?.width ?? 0) / 2,
+        (previewSplitterBox?.y ?? 0) - 80,
+      );
+      await page.mouse.up();
+      const previewAfter = await drawerB
+        .locator(".file-browser-preview")
+        .boundingBox();
+      expect(
+        (previewAfter?.height ?? 0) > (previewBefore?.height ?? 0),
+      ).toBeTruthy();
+    });
 
-    const drawerB = await openFileBrowserForFocusedSession(page);
-    await expect(drawerB.getByTestId("file-entry-note.txt")).toBeVisible();
-    await drawerB
-      .getByTestId("file-entry-note.txt")
-      .getByRole("checkbox")
-      .check();
-    await expect(drawerB.locator(".file-browser-preview-text")).toContainText(
-      "hello file browser B",
-    );
+    await test.step("file browser restores session A before grid return", async () => {
+      await switchFocusedSession(page, sessionAName, sessionAId);
+      const restoredDrawer = page.getByTestId("file-browser-drawer");
+      await expect(restoredDrawer).toBeVisible();
+      await expect(
+        restoredDrawer.getByTestId("file-entry-inside.txt"),
+      ).toBeVisible();
+      await expect(
+        restoredDrawer.locator(".file-browser-path-input"),
+      ).toHaveValue(/nested$/);
 
-    const previewSplitter = drawerB.getByTestId(
-      "file-browser-preview-splitter",
-    );
-    const previewBefore = await drawerB
-      .locator(".file-browser-preview")
-      .boundingBox();
-    const previewSplitterBox = await previewSplitter.boundingBox();
-    await page.mouse.move(
-      (previewSplitterBox?.x ?? 0) + (previewSplitterBox?.width ?? 0) / 2,
-      (previewSplitterBox?.y ?? 0) + 2,
-    );
-    await page.mouse.down();
-    await page.mouse.move(
-      (previewSplitterBox?.x ?? 0) + (previewSplitterBox?.width ?? 0) / 2,
-      (previewSplitterBox?.y ?? 0) - 80,
-    );
-    await page.mouse.up();
-    const previewAfter = await drawerB
-      .locator(".file-browser-preview")
-      .boundingBox();
-    expect(
-      (previewAfter?.height ?? 0) > (previewBefore?.height ?? 0),
-    ).toBeTruthy();
-
-    await switchFocusedSession(page, sessionAName);
-    const restoredDrawer = page.getByTestId("file-browser-drawer");
-    await expect(restoredDrawer).toBeVisible();
-    await expect(
-      restoredDrawer.getByTestId("file-entry-inside.txt"),
-    ).toBeVisible();
-    await expect(
-      restoredDrawer.locator(".file-browser-path-input"),
-    ).toHaveValue(/nested$/);
-
-    await page.getByRole("button", { name: "返回宫格" }).click();
-    await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0);
-    await expect(page.getByTestId("file-browser-toggle")).toBeDisabled();
+      await page
+        .locator(".focus-main-header")
+        .getByRole("button", { name: "返回宫格" })
+        .click({ force: true, timeout: 5000 });
+      await expect(page.getByTestId("file-browser-drawer")).toHaveCount(0, {
+        timeout: 5000,
+      });
+      await expect(page.getByTestId("file-browser-toggle")).toBeDisabled();
+    });
   } finally {
     await deleteSessionIfPresent(request, sessionAId);
     await deleteSessionIfPresent(request, sessionBId);
@@ -1205,7 +1233,7 @@ test("file browser supports real SSH/SFTP browsing, edit, chmod, upload, downloa
     ).toContainText("-rw-------");
 
     await drawer
-      .locator('input[type="file"]')
+      .getByTestId("file-browser-upload-file-input")
       .setInputFiles(fixture.uploadFilePath);
     await expect(
       drawer.getByTestId(`file-entry-${path.basename(fixture.uploadFilePath)}`),

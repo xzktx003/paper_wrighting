@@ -244,6 +244,61 @@ export class LocalTmuxAdapter {
       options.captureLines ?? DEFAULT_TERMINAL_TMUX_CAPTURE_LINES;
   }
 
+  async renameSession(
+    agentSession: AgentSessionRecord,
+    nextName: string,
+  ): Promise<AgentSessionRecord> {
+    const currentTmuxSession = agentSession.transportRef?.tmuxSession;
+    if (!currentTmuxSession) {
+      return this.registry.updateSession(agentSession.id, {
+        displayName: nextName,
+      });
+    }
+
+    const paneId = agentSession.transportRef?.tmuxPane;
+    const sshTarget = agentSession.sshTarget;
+
+    if (sshTarget) {
+      const remoteCommands = [
+        `tmux rename-session -t ${quoteForPosixShell(currentTmuxSession)} ${quoteForPosixShell(nextName)}`,
+      ];
+      if (paneId) {
+        remoteCommands.push(
+          `tmux select-pane -t ${quoteForPosixShell(paneId)} -T ${quoteForPosixShell(nextName)}`,
+        );
+      }
+      await this.runRemoteCommand(sshTarget, remoteCommands.join(" && "));
+    } else {
+      await this.runTmux([
+        "rename-session",
+        "-t",
+        currentTmuxSession,
+        nextName,
+      ]);
+      if (paneId) {
+        await this.runTmux(["select-pane", "-t", paneId, "-T", nextName]);
+      }
+    }
+
+    const sshHost = sshTarget?.host ?? agentSession.transportRef?.sshHost;
+    const nextRuntimeId = agentSession.transportRef?.runtimeId?.startsWith(
+      "tmux:",
+    )
+      ? sshHost
+        ? `tmux:${sshHost}:${nextName}`
+        : `tmux:${nextName}`
+      : agentSession.transportRef?.runtimeId;
+
+    return this.registry.updateSession(agentSession.id, {
+      displayName: nextName,
+      workspaceId: nextName,
+      transportRef: {
+        tmuxSession: nextName,
+        ...(nextRuntimeId ? { runtimeId: nextRuntimeId } : {}),
+      },
+    });
+  }
+
   async discover(): Promise<DiscoverTmuxSessionsResponse> {
     try {
       await this.runTmux(["-V"]);
@@ -348,11 +403,13 @@ export class LocalTmuxAdapter {
       throw new Error("tmux session is observe-only until takeover is enabled");
     }
 
-    const paneId = agentSession.transportRef?.tmuxPane;
+    const paneId =
+      agentSession.transportRef?.tmuxPane ??
+      agentSession.transportRef?.tmuxSession;
 
     if (!paneId) {
       throw new Error(
-        `No tmux pane found for agent session: ${agentSession.id}`,
+        `No tmux target found for agent session: ${agentSession.id}`,
       );
     }
 

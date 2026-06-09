@@ -51,7 +51,6 @@ interface AgentFocusViewProps {
 const stateLabels: Record<string, string> = {
   running: "运行中",
   idle: "空闲",
-  awaiting_input: "等待输入",
   detached: "已分离",
   exited: "已退出",
 };
@@ -334,6 +333,12 @@ export function AgentFocusView({
     ) as HTMLTextAreaElement | null;
   }
 
+  function focusActiveTerminalTextarea(): void {
+    getActiveTerminalTextarea()?.focus();
+    window.requestAnimationFrame(() => getActiveTerminalTextarea()?.focus());
+    window.setTimeout(() => getActiveTerminalTextarea()?.focus(), 0);
+  }
+
   useEffect(() => {
     const active = document.activeElement as HTMLElement | null;
     if (
@@ -344,7 +349,7 @@ export function AgentFocusView({
       return;
     }
 
-    getActiveTerminalTextarea()?.focus();
+    focusActiveTerminalTextarea();
   }, [focusedSession.id, safeActiveSlotId, terminalLayoutMode, terminalSlots]);
 
   function activateSlot(slot: TerminalMonitorSlot) {
@@ -398,7 +403,10 @@ export function AgentFocusView({
       return next;
     });
     setActiveSlotId(slotId);
-    if (syncActiveTerminalWithFocus && sessionId !== focusedSession.id) {
+    if (
+      (syncActiveTerminalWithFocus || slotId === safeActiveSlotId) &&
+      sessionId !== focusedSession.id
+    ) {
       onSwitchFocus(sessionId);
     }
   }
@@ -425,7 +433,12 @@ export function AgentFocusView({
       return next;
     });
     setActiveSlotId(slotId);
-    if (syncActiveTerminalWithFocus && sessionId !== focusedSession.id) {
+    if (
+      (syncActiveTerminalWithFocus ||
+        slotId === safeActiveSlotId ||
+        sourceSlotId === safeActiveSlotId) &&
+      sessionId !== focusedSession.id
+    ) {
       onSwitchFocus(sessionId);
     }
   }
@@ -459,10 +472,6 @@ export function AgentFocusView({
     slotId: string,
     event: React.DragEvent<HTMLDivElement>,
   ) {
-    if (!event.dataTransfer.types.includes(TERMINAL_MONITOR_DRAG_MIME)) {
-      return;
-    }
-
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setDragOverSlotId(slotId);
@@ -711,7 +720,7 @@ export function AgentFocusView({
       return;
     }
 
-    getActiveTerminalTextarea()?.focus();
+    focusActiveTerminalTextarea();
   }
 
   useEffect(() => {

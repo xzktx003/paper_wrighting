@@ -89,7 +89,7 @@ export function NewSessionDialog({
   }, [host, open]);
 
   useEffect(() => {
-    if (!open || !host) {
+    if (!open) {
       return;
     }
 
@@ -107,7 +107,7 @@ export function NewSessionDialog({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [host, onClose, open, submitting]);
+  }, [onClose, open, submitting]);
 
   useEffect(() => {
     if (!open || !host) {

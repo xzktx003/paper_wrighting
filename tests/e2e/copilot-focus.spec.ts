@@ -102,7 +102,7 @@ async function startMockCopilotInSession(
 
   await expect
     .poll(() => readSessionOutput(request, sessionId), { timeout: 20000 })
-    .toMatch(/\$\s*$/);
+    .toMatch(/(?:[$%#]\s*|\u001b\[\?2004h|➜)/);
 
   const response = await request.post(
     backendPath(`/api/agent-sessions/${sessionId}/stdin`),
@@ -184,7 +184,7 @@ test("kanban terminal keeps Copilot-like TUI input working after the user briefl
     await page.keyboard.press("Enter");
     await waitForOutput(request, sessionId, "copilot-mock-line:before");
 
-    const toggle = page.getByTestId("focus-sidebar-collapse-toggle");
+    const toggle = page.locator(".focus-header-collapse-btn");
     await expect(toggle).toBeVisible();
     await toggle.click();
 

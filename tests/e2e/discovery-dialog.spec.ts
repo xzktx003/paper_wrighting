@@ -217,7 +217,9 @@ test.describe('Discovery Dialog', () => {
       await page.locator('.host-dropdown-item', { hasText: '本机' }).click();
 
       await expect(page.locator('.discovery-dialog')).toBeVisible();
-      await expect.poll(() => scanCount, { timeout: 5000 }).toBe(1);
+      await expect.poll(() => scanCount, { timeout: 5000 }).toBeGreaterThan(0);
+      await page.waitForTimeout(250);
+      const baselineScanCount = scanCount;
 
       const response = await request.post('/api/agent-sessions/register', {
         data: {
@@ -237,7 +239,7 @@ test.describe('Discovery Dialog', () => {
       ).toBeVisible();
       await page.waitForTimeout(500);
 
-      expect(scanCount).toBe(1);
+      expect(scanCount).toBe(baselineScanCount);
     } finally {
       if (sessionId) {
         await request

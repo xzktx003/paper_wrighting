@@ -60,6 +60,12 @@ export function toggleVsCodeIframeCacheMode(
   return current === "memory-saving" ? "preserve-state" : "memory-saving";
 }
 
+export function resolveLightweightTerminalPreviewForVsCodeCacheMode(
+  mode: VsCodeIframeCacheMode,
+): boolean {
+  return mode === "memory-saving";
+}
+
 export function resolveRenderedVsCodeSessionIds({
   activeSessionId,
   cachedSessionIds,
