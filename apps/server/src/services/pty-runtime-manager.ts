@@ -1,4 +1,5 @@
 import * as pty from "node-pty";
+import { execFileSync } from "node:child_process";
 import { devNull } from "node:os";
 import { basename, delimiter, dirname, normalize } from "node:path";
 
@@ -9,10 +10,17 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { AgentSessionRegistry } from "./agent-session-registry.js";
-import { DEFAULT_TERMINAL_SCROLLBACK_BYTES } from "../config/server-runtime-config.js";
+import {
+  DEFAULT_TERMINAL_SCROLLBACK_BYTES,
+  DEFAULT_TERMINAL_TMUX_CAPTURE_LINES,
+} from "../config/server-runtime-config.js";
 import { resolveCopilotBinary } from "./copilot-binary.js";
 import { resolveLocalWorkingDirectory } from "./resolve-local-working-directory.js";
-import { resolvePreferredShell } from "./runtime-compat.js";
+import {
+  quoteForPosixShell,
+  resolvePreferredShell,
+  resolveTmuxBinary,
+} from "./runtime-compat.js";
 import { buildSshArgs, formatSshDestination } from "./ssh-command.js";
 import { sanitizeReplayForTerminal } from "./terminal-control-filter.js";
 
@@ -20,6 +28,7 @@ type PtyDataListener = (data: string) => void;
 
 export interface PtyRuntimeManagerOptions {
   maxScrollbackBytes?: number;
+  tmuxCaptureLines?: number;
 }
 
 export interface PtyScrollbackDiagnostics {
@@ -48,6 +57,7 @@ export interface PtyScrollbackState {
 interface PtyHandle extends PtyScrollbackState {
   ptyProcess: pty.IPty;
   dataListeners: Set<PtyDataListener>;
+  stripAlternateScreen: boolean;
 }
 
 export function appendPtyScrollback(
@@ -68,6 +78,23 @@ export function appendPtyScrollback(
     state.droppedScrollbackBytes += removedBytes;
     state.droppedScrollbackChunks += 1;
   }
+}
+
+export function buildRemoteTmuxCaptureCommand(
+  tmuxSessionName: string,
+  tmuxPaneId: string | undefined,
+  tmuxCaptureLines: number,
+): string {
+  const target = tmuxPaneId ?? tmuxSessionName;
+
+  return [
+    `tmux set-option -t ${quoteForPosixShell(tmuxSessionName)} history-limit ${tmuxCaptureLines} 2>/dev/null || true`,
+    `tmux capture-pane -p -t ${quoteForPosixShell(target)} -S -${tmuxCaptureLines}`,
+  ].join("; ");
+}
+
+export function stripAlternateScreenSwitches(data: string): string {
+  return data.replace(/\u001b\[\?(?:1047|1048|1049)[hl]/g, "");
 }
 export { sanitizeReplayForTerminal } from "./terminal-control-filter.js";
 
@@ -178,6 +205,7 @@ function buildLocalSpawnPlan(
 export class PtyRuntimeManager {
   private readonly handles = new Map<string, PtyHandle>();
   private readonly maxScrollbackBytes: number;
+  private readonly tmuxCaptureLines: number;
 
   constructor(
     private readonly registry: AgentSessionRegistry,
@@ -185,6 +213,8 @@ export class PtyRuntimeManager {
   ) {
     this.maxScrollbackBytes =
       options.maxScrollbackBytes ?? DEFAULT_TERMINAL_SCROLLBACK_BYTES;
+    this.tmuxCaptureLines =
+      options.tmuxCaptureLines ?? DEFAULT_TERMINAL_TMUX_CAPTURE_LINES;
   }
 
   launch(input: LaunchLocalAgentInput): AgentSessionRecord {
@@ -193,6 +223,8 @@ export class PtyRuntimeManager {
       input.workingDirectory,
     );
     const spawnPlan = buildLocalSpawnPlan(shell, input);
+    this.configureLocalTmuxHistory(input.tmuxSessionName);
+    const tmuxScrollback = this.captureLocalTmuxScrollback(input);
 
     const ptyProcess = pty.spawn(spawnPlan.file, spawnPlan.args, {
       name: "xterm-256color",
@@ -222,22 +254,30 @@ export class PtyRuntimeManager {
       },
     });
 
-    const handle = this.createHandle(ptyProcess);
+    const handle = this.createHandle(ptyProcess, {
+      stripAlternateScreen: Boolean(input.tmuxSessionName),
+    });
 
     this.handles.set(agentSession.id, handle);
+    this.seedScrollback(agentSession.id, handle, tmuxScrollback);
 
     ptyProcess.onData((data: string) => {
       if (!this.registry.has(agentSession.id)) {
         return;
       }
 
-      this.appendScrollback(handle, data);
-
-      for (const listener of handle.dataListeners) {
-        listener(data);
+      const output = this.normalizePtyOutput(handle, data);
+      if (!output) {
+        return;
       }
 
-      this.registry.appendOutput(agentSession.id, data, "stdout");
+      this.appendScrollback(handle, output);
+
+      for (const listener of handle.dataListeners) {
+        listener(output);
+      }
+
+      this.registry.appendOutput(agentSession.id, output, "stdout");
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -259,6 +299,7 @@ export class PtyRuntimeManager {
   }
 
   launchRemote(input: LaunchSshPtyInput): AgentSessionRecord {
+    const tmuxScrollback = this.captureRemoteTmuxScrollback(input);
     const args = buildSshArgs(input.sshTarget, {
       requestTty: true,
       remoteCommand: input.remoteCommand,
@@ -299,22 +340,30 @@ export class PtyRuntimeManager {
       remoteCommand: input.remoteCommand,
     });
 
-    const handle = this.createHandle(ptyProcess);
+    const handle = this.createHandle(ptyProcess, {
+      stripAlternateScreen: Boolean(input.tmuxSessionName),
+    });
 
     this.handles.set(agentSession.id, handle);
+    this.seedScrollback(agentSession.id, handle, tmuxScrollback);
 
     ptyProcess.onData((data: string) => {
       if (!this.registry.has(agentSession.id)) {
         return;
       }
 
-      this.appendScrollback(handle, data);
-
-      for (const listener of handle.dataListeners) {
-        listener(data);
+      const output = this.normalizePtyOutput(handle, data);
+      if (!output) {
+        return;
       }
 
-      this.registry.appendOutput(agentSession.id, data, "stdout");
+      this.appendScrollback(handle, output);
+
+      for (const listener of handle.dataListeners) {
+        listener(output);
+      }
+
+      this.registry.appendOutput(agentSession.id, output, "stdout");
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -412,6 +461,7 @@ export class PtyRuntimeManager {
     input: LaunchSshPtyInput,
   ): AgentSessionRecord {
     this.kill(agentSessionId);
+    const tmuxScrollback = this.captureRemoteTmuxScrollback(input);
 
     const args = buildSshArgs(input.sshTarget, {
       requestTty: true,
@@ -427,8 +477,11 @@ export class PtyRuntimeManager {
       env: buildPtyEnv(),
     });
 
-    const handle = this.createHandle(ptyProcess);
+    const handle = this.createHandle(ptyProcess, {
+      stripAlternateScreen: Boolean(input.tmuxSessionName),
+    });
     this.handles.set(agentSessionId, handle);
+    this.seedScrollback(agentSessionId, handle, tmuxScrollback);
 
     this.registry.updateSession(agentSessionId, {
       connectionState: "online",
@@ -451,11 +504,16 @@ export class PtyRuntimeManager {
         return;
       }
 
-      this.appendScrollback(handle, data);
-      for (const listener of handle.dataListeners) {
-        listener(data);
+      const output = this.normalizePtyOutput(handle, data);
+      if (!output) {
+        return;
       }
-      this.registry.appendOutput(agentSessionId, data, "stdout");
+
+      this.appendScrollback(handle, output);
+      for (const listener of handle.dataListeners) {
+        listener(output);
+      }
+      this.registry.appendOutput(agentSessionId, output, "stdout");
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -482,6 +540,8 @@ export class PtyRuntimeManager {
       input.workingDirectory,
     );
     const spawnPlan = buildLocalSpawnPlan(shell, input);
+    this.configureLocalTmuxHistory(input.tmuxSessionName);
+    const tmuxScrollback = this.captureLocalTmuxScrollback(input);
     const ptyProcess = pty.spawn(spawnPlan.file, spawnPlan.args, {
       name: "xterm-256color",
       cols: 120,
@@ -490,8 +550,11 @@ export class PtyRuntimeManager {
       env: spawnPlan.env,
     });
 
-    const handle = this.createHandle(ptyProcess);
+    const handle = this.createHandle(ptyProcess, {
+      stripAlternateScreen: Boolean(input.tmuxSessionName),
+    });
     this.handles.set(agentSessionId, handle);
+    this.seedScrollback(agentSessionId, handle, tmuxScrollback);
 
     this.registry.updateSession(agentSessionId, {
       connectionState: "online",
@@ -512,11 +575,16 @@ export class PtyRuntimeManager {
         return;
       }
 
-      this.appendScrollback(handle, data);
-      for (const listener of handle.dataListeners) {
-        listener(data);
+      const output = this.normalizePtyOutput(handle, data);
+      if (!output) {
+        return;
       }
-      this.registry.appendOutput(agentSessionId, data, "stdout");
+
+      this.appendScrollback(handle, output);
+      for (const listener of handle.dataListeners) {
+        listener(output);
+      }
+      this.registry.appendOutput(agentSessionId, output, "stdout");
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -569,7 +637,10 @@ export class PtyRuntimeManager {
     };
   }
 
-  private createHandle(ptyProcess: pty.IPty): PtyHandle {
+  private createHandle(
+    ptyProcess: pty.IPty,
+    options: { stripAlternateScreen?: boolean } = {},
+  ): PtyHandle {
     return {
       ptyProcess,
       dataListeners: new Set(),
@@ -577,10 +648,113 @@ export class PtyRuntimeManager {
       droppedScrollbackChunks: 0,
       scrollback: [],
       scrollbackBytes: 0,
+      stripAlternateScreen: Boolean(options.stripAlternateScreen),
     };
   }
 
   private appendScrollback(handle: PtyHandle, data: string): void {
     appendPtyScrollback(handle, data, this.maxScrollbackBytes);
+  }
+
+  private normalizePtyOutput(handle: PtyHandle, data: string): string {
+    return handle.stripAlternateScreen
+      ? stripAlternateScreenSwitches(data)
+      : data;
+  }
+
+  private configureLocalTmuxHistory(tmuxSessionName?: string): void {
+    if (!tmuxSessionName) {
+      return;
+    }
+
+    try {
+      execFileSync(
+        resolveTmuxBinary(),
+        [
+          "set-option",
+          "-t",
+          tmuxSessionName,
+          "history-limit",
+          String(this.tmuxCaptureLines),
+        ],
+        {
+          stdio: "ignore",
+          env: buildPtyEnv(),
+        },
+      );
+    } catch {}
+  }
+
+  private captureLocalTmuxScrollback(input: LaunchLocalAgentInput): string {
+    if (!input.tmuxSessionName) {
+      return "";
+    }
+
+    const target = input.tmuxPaneId ?? input.tmuxSessionName;
+
+    try {
+      return execFileSync(
+        resolveTmuxBinary(),
+        ["capture-pane", "-p", "-t", target, "-S", `-${this.tmuxCaptureLines}`],
+        {
+          encoding: "utf8",
+          env: buildPtyEnv(),
+          maxBuffer: Math.max(
+            this.maxScrollbackBytes,
+            this.tmuxCaptureLines * 1024,
+          ),
+        },
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  private captureRemoteTmuxScrollback(input: LaunchSshPtyInput): string {
+    if (!input.tmuxSessionName) {
+      return "";
+    }
+
+    try {
+      return execFileSync(
+        "ssh",
+        buildSshArgs(input.sshTarget, {
+          batchMode: true,
+          connectTimeoutSeconds: 5,
+          remoteCommand: buildRemoteTmuxCaptureCommand(
+            input.tmuxSessionName,
+            input.tmuxPaneId,
+            this.tmuxCaptureLines,
+          ),
+        }),
+        {
+          encoding: "utf8",
+          env: buildPtyEnv(),
+          maxBuffer: Math.max(
+            this.maxScrollbackBytes,
+            this.tmuxCaptureLines * 1024,
+          ),
+        },
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  private seedScrollback(
+    agentSessionId: string,
+    handle: PtyHandle,
+    scrollback: string,
+  ): void {
+    if (!scrollback.trim()) {
+      return;
+    }
+
+    const normalizedScrollback = scrollback.endsWith("\n")
+      ? scrollback
+      : `${scrollback}\n`;
+
+    this.appendScrollback(handle, normalizedScrollback);
+    this.registry.appendOutput(agentSessionId, normalizedScrollback, "stdout");
   }
 }

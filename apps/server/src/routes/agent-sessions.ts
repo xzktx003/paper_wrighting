@@ -21,6 +21,7 @@ import { AgentSessionRegistry } from "../services/agent-session-registry.js";
 import { LocalProcessRuntimeManager } from "../services/local-process-runtime-manager.js";
 import { LocalTmuxAdapter } from "../services/local-tmux-adapter.js";
 import { PtyRuntimeManager } from "../services/pty-runtime-manager.js";
+import { DEFAULT_TERMINAL_TMUX_CAPTURE_LINES } from "../config/server-runtime-config.js";
 import {
   buildInteractiveShellCommand,
   buildTmuxCommand,
@@ -98,23 +99,29 @@ function buildTmuxLaunchCommand(
   displayName: string,
   tmuxSessionName: string,
   sessionId?: string,
+  tmuxHistoryLimit = DEFAULT_TERMINAL_TMUX_CAPTURE_LINES,
 ): string {
+  const tmuxPrefix = `tmux set-option -g history-limit ${tmuxHistoryLimit} \\; new-session`;
+
   if (agentKind === "shell") {
-    return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
+    return `${tmuxPrefix} -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
   }
 
-  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
+  return `${tmuxPrefix} -s ${shellQuote(tmuxSessionName)} ${buildTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
 }
 
 function buildTmuxAttachCommand(
   tmuxSessionName: string,
   tmuxPaneId?: string,
+  tmuxHistoryLimit = DEFAULT_TERMINAL_TMUX_CAPTURE_LINES,
 ): string {
+  const tmuxPrefix = `tmux set-option -t ${shellQuote(tmuxSessionName)} history-limit ${tmuxHistoryLimit}`;
+
   if (tmuxPaneId) {
-    return `tmux select-pane -t ${shellQuote(tmuxPaneId)} && tmux attach -t ${shellQuote(tmuxSessionName)}`;
+    return `${tmuxPrefix} \\; select-pane -t ${shellQuote(tmuxPaneId)} \\; attach -t ${shellQuote(tmuxSessionName)}`;
   }
 
-  return `tmux attach -t ${shellQuote(tmuxSessionName)}`;
+  return `${tmuxPrefix} \\; attach -t ${shellQuote(tmuxSessionName)}`;
 }
 
 interface AgentSessionRoutesOptions {
@@ -296,7 +303,11 @@ export async function registerAgentSessionRoutes(
               agentKind,
               sshTarget,
               remoteCommand: buildInteractiveShellCommand(
-                buildTmuxAttachCommand(tmuxSession, tmuxPane),
+                buildTmuxAttachCommand(
+                  tmuxSession,
+                  tmuxPane,
+                  tmuxAdapter.getCaptureLines(),
+                ),
               ),
               workingDirectory,
               tmuxSessionName: tmuxSession,
@@ -307,7 +318,11 @@ export async function registerAgentSessionRoutes(
               hostId,
               displayName,
               agentKind,
-              command: buildTmuxAttachCommand(tmuxSession, tmuxPane),
+              command: buildTmuxAttachCommand(
+                tmuxSession,
+                tmuxPane,
+                tmuxAdapter.getCaptureLines(),
+              ),
               workingDirectory,
               tmuxSessionName: tmuxSession,
               tmuxPaneId: tmuxPane,
@@ -483,6 +498,7 @@ export async function registerAgentSessionRoutes(
           remoteCommand: buildTmuxAttachCommand(
             session.transportRef.tmuxSession,
             session.transportRef.tmuxPane,
+            tmuxAdapter.getCaptureLines(),
           ),
           workingDirectory: session.workingDirectory,
           tmuxSessionName: session.transportRef.tmuxSession,
@@ -506,6 +522,7 @@ export async function registerAgentSessionRoutes(
         ? buildTmuxAttachCommand(
             session.transportRef.tmuxSession,
             session.transportRef.tmuxPane,
+            tmuxAdapter.getCaptureLines(),
           )
         : session.agentSessionId
           ? buildDirectLaunchCommand(

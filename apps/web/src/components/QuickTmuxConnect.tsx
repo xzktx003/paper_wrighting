@@ -6,6 +6,7 @@ import type {
 } from "@agent-orchestrator/shared";
 
 import { getSshHosts, launchPtyAgent, launchSshPtyAgent } from "../lib/api";
+import { DEFAULT_TMUX_HISTORY_LIMIT_LINES } from "../lib/session-matching";
 
 interface QuickTmuxConnectProps {
   open: boolean;
@@ -40,7 +41,7 @@ function buildQuickTmuxCommand(
   tmuxSessionName: string,
   workingDirectory: string,
 ): string {
-  return `exec tmux new-session -A -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
+  return `exec tmux set-option -g history-limit ${DEFAULT_TMUX_HISTORY_LIMIT_LINES} \\; new-session -A -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
 }
 
 function buildDefaultQuickTmuxName(hostName: string): string {

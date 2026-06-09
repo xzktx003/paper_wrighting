@@ -412,6 +412,133 @@ test("browser: 普通对话终端可以用鼠标滚轮浏览历史", async ({
   }
 });
 
+test("browser: tmux attach 终端预灌 pane 历史后可用鼠标滚轮浏览旧上文", async ({
+  page,
+  request,
+}) => {
+  const sessionName = `e2e-tmux-history-${Date.now()}`;
+  const displayName = `E2E Tmux History ${Date.now()}`;
+  const marker = `E2E_TMUX_HISTORY_${Date.now()}`;
+  let sessionId: string | undefined;
+
+  killTmuxSession(sessionName);
+
+  try {
+    runTmux([
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      process.cwd(),
+      `sh -lc 'for i in $(seq 1 80); do printf "${marker}_%03d\\n" "$i"; done; sleep 30'`,
+    ]);
+
+    await expect
+      .poll(() => tmuxPaneContainsText(sessionName, `${marker}_080`), {
+        timeout: 10000,
+      })
+      .toBeTruthy();
+
+    const launchResponse = await request.post(
+      backendPath("/api/agent-launch/pty"),
+      {
+        data: {
+          workspaceId: "default",
+          displayName,
+          agentKind: "shell",
+          command: `tmux attach -t ${shellQuote(sessionName)}`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    sessionId = (await launchResponse.json()).id;
+
+    await page.setViewportSize({ width: 1600, height: 1200 });
+    await page.goto("/");
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+    await card.dblclick();
+
+    const terminal = page.locator(".focus-main .terminal-view");
+    await expect(terminal).toBeVisible({ timeout: 15000 });
+
+    const bufferState = async () =>
+      page.evaluate(() => {
+        const terminalElement = document.querySelector(
+          ".focus-main .terminal-view",
+        ) as
+          | (HTMLDivElement & {
+              __xterm?: {
+                buffer?: {
+                  active?: {
+                    baseY?: number;
+                    length?: number;
+                    viewportY?: number;
+                    getLine?: (index: number) =>
+                      | {
+                          translateToString?: (trimRight?: boolean) => string;
+                        }
+                      | undefined;
+                  };
+                };
+              };
+            })
+          | null;
+        const active = terminalElement?.__xterm?.buffer?.active;
+        const lines: string[] = [];
+
+        for (let index = 0; index < (active?.length ?? 0); index += 1) {
+          lines.push(active?.getLine?.(index)?.translateToString?.(true) ?? "");
+        }
+
+        return {
+          baseY: active?.baseY ?? 0,
+          text: lines.join("\n"),
+          viewportY: active?.viewportY ?? 0,
+        };
+      });
+
+    await expect
+      .poll(async () => {
+        const state = await bufferState();
+        return state.text.includes(`${marker}_001`);
+      })
+      .toBeTruthy();
+
+    await expect
+      .poll(async () => {
+        const state = await bufferState();
+        return state.text.includes(`${marker}_080`);
+      })
+      .toBeTruthy();
+
+    const before = await bufferState();
+    expect(before.baseY).toBeGreaterThan(0);
+
+    await terminal.hover();
+    await page.mouse.wheel(0, -1200);
+
+    await expect
+      .poll(async () => {
+        const state = await bufferState();
+        return state.viewportY;
+      })
+      .toBeLessThan(before.viewportY);
+  } finally {
+    if (sessionId) {
+      await request.delete(backendPath(`/api/agent-sessions/${sessionId}`));
+    }
+    killTmuxSession(sessionName);
+  }
+});
+
 test("browser: 运行中终端滚轮浏览历史时不会被实时输出拉回底部", async ({
   page,
   request,

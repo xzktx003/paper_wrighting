@@ -50,7 +50,7 @@
 ## 6. 终端交互与 WebSocket
 
 - 聚焦主终端使用 xterm.js 渲染，后端通过 WebSocket 发送 scrollback replay 与实时输出。
-- 终端历史保留上限可配置：后端 live PTY replay 默认保留 4 MiB，tmux observe/refresh 默认捕获最近 5000 行，registry fallback 默认保留 1000 条输出记录，前端 xterm 默认保留 20000 行；资源诊断会提示 PTY replay 是否已发生裁剪。
+- 终端历史保留上限可配置：后端 live PTY replay 默认保留 4 MiB，tmux observe/refresh 默认捕获最近 20000 行，registry fallback 默认保留 5000 条输出记录，前端 xterm 默认保留 20000 行；tmux attach 会在连接前把 pane 历史预灌到 PTY replay，资源诊断会提示 PTY replay 是否已发生裁剪。
 - 提供手机端终端控制页，默认入口为 `/?view=mobile`，兼容 `/mobile`、`/m` 和 `#/mobile`；复用现有会话和终端通道，以单会话全屏终端、底部快捷键条和多行输入框为主，解决手机缺少 `Ctrl+C`、`Esc`、方向键、稳定软键盘输入和终端历史滑动的问题；快捷键条提供“说明”按钮，可弹出各快捷键用途说明。
 - 手机端快捷键条发送通用终端控制字符，不提供 tmux 专用快捷键专区；`Ctrl+C`、`Esc`、Tab、方向键、清屏、行首/行尾等控制键按原始 stdin 转发，不会被额外追加 Enter。
 - 手机端终端页锁定浏览器根页面滚动，终端区域用捕获阶段的非 passive touch 监听接管上下滑动，触屏设备在桌面聚焦页也启用同一终端手势控制，避免 Codex 长上下文下拉时触发浏览器下拉刷新；单指滑动滚动 xterm scrollback，双指 pinch 调整终端字号，并提供“底部”按钮返回最新输出。

@@ -63,6 +63,7 @@ export function buildServer(options: BuildServerOptions = {}): {
   const sshRuntimeManager = new SshRuntimeManager(registry);
   const ptyRuntimeManager = new PtyRuntimeManager(registry, {
     maxScrollbackBytes: terminalHistoryConfig.terminalScrollbackBytes,
+    tmuxCaptureLines: terminalHistoryConfig.terminalTmuxCaptureLines,
   });
   const localFsService = options.localFsService ?? new LocalFsService();
   const sftpService = options.sftpService ?? new SftpService();

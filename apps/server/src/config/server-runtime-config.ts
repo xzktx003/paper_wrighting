@@ -14,8 +14,8 @@ export type TerminalHistoryRuntimeConfig = Pick<
 >;
 
 export const DEFAULT_TERMINAL_SCROLLBACK_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_TERMINAL_TMUX_CAPTURE_LINES = 5000;
-export const DEFAULT_TERMINAL_REGISTRY_OUTPUT_ENTRIES = 1000;
+export const DEFAULT_TERMINAL_TMUX_CAPTURE_LINES = 20_000;
+export const DEFAULT_TERMINAL_REGISTRY_OUTPUT_ENTRIES = 5_000;
 
 function parsePort(value: string | undefined): number {
   const normalized = value?.trim();

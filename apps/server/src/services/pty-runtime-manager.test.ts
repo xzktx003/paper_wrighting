@@ -7,8 +7,10 @@ import test from "node:test";
 import { AgentSessionRegistry } from "./agent-session-registry.js";
 import {
   appendPtyScrollback,
+  buildRemoteTmuxCaptureCommand,
   PtyRuntimeManager,
   sanitizeReplayForTerminal,
+  stripAlternateScreenSwitches,
 } from "./pty-runtime-manager.js";
 import { resolveCopilotBinary } from "./copilot-binary.js";
 import { resolveTmuxBinary } from "./runtime-compat.js";
@@ -23,6 +25,34 @@ function killTmuxSession(sessionName: string): void {
   } catch {
     // ignore cleanup failures
   }
+}
+
+async function waitForTmuxCaptureMatch(
+  sessionName: string,
+  pattern: RegExp,
+  timeoutMs = 5000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const output = execFileSync(
+      TMUX_BINARY,
+      ["capture-pane", "-p", "-t", sessionName, "-S", "-200"],
+      {
+        encoding: "utf8",
+      },
+    );
+
+    if (pattern.test(output)) {
+      return output;
+    }
+
+    await sleep(50);
+  }
+
+  throw new Error(
+    `tmux session did not output ${pattern} within ${timeoutMs}ms`,
+  );
 }
 
 async function waitForExit(
@@ -147,6 +177,23 @@ test("appendPtyScrollback tracks truncation when replay buffer is exceeded", () 
   assert.equal(state.scrollbackBytes, 16);
   assert.equal(state.droppedScrollbackBytes, 8);
   assert.equal(state.droppedScrollbackChunks, 1);
+});
+
+test("buildRemoteTmuxCaptureCommand sets history limit before capturing pane history", () => {
+  const command = buildRemoteTmuxCaptureCommand("dev's", "%5", 20000);
+
+  assert.match(command, /tmux set-option -t 'dev'\\''s' history-limit 20000/);
+  assert.match(command, /tmux capture-pane -p -t '%5' -S -20000/);
+});
+
+test("stripAlternateScreenSwitches keeps tmux attach output in the normal scrollback buffer", () => {
+  const output =
+    "before\u001b[?1049hfullscreen\u001b[?1048hcursor\u001b[?1047lafter";
+
+  assert.equal(
+    stripAlternateScreenSwitches(output),
+    "beforefullscreencursorafter",
+  );
 });
 
 test("launch prefers the resolved copilot binary on PATH for shell sessions", async () => {
@@ -276,6 +323,62 @@ test("launch keeps tmux attach sessions alive when the card is labeled as copilo
     process.env.npm_config_recursive = originalRecursive;
     process.env.npm_config_verify_deps_before_run = originalVerifyDeps;
     process.env.npm_config__jsr_registry = originalJsrRegistry;
+  }
+});
+
+test("launch seeds tmux attach replay with pane history outside the visible screen", async () => {
+  const registry = new AgentSessionRegistry();
+  const runtimeManager = new PtyRuntimeManager(registry, {
+    tmuxCaptureLines: 120,
+  });
+  const sessionName = `pty-tmux-history-${Date.now()}`;
+  const marker = `TMUX_HISTORY_${Date.now()}`;
+
+  killTmuxSession(sessionName);
+  execFileSync(
+    TMUX_BINARY,
+    [
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      process.cwd(),
+      `sh -lc 'for i in $(seq 1 80); do printf "${marker}_%03d\\n" "$i"; done; sleep 30'`,
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
+
+  await waitForTmuxCaptureMatch(sessionName, new RegExp(`${marker}_080`));
+
+  const session = runtimeManager.launch({
+    workspaceId: "default",
+    displayName: sessionName,
+    agentKind: "shell",
+    command: `tmux attach -t '${sessionName}'`,
+    workingDirectory: process.cwd(),
+    tmuxSessionName: sessionName,
+  });
+
+  try {
+    const replay = runtimeManager.getScrollback(session.id);
+    const historyLimit = execFileSync(
+      TMUX_BINARY,
+      ["show-options", "-v", "-t", sessionName, "history-limit"],
+      {
+        encoding: "utf8",
+      },
+    ).trim();
+
+    assert.match(replay, new RegExp(`${marker}_001`));
+    assert.match(replay, new RegExp(`${marker}_080`));
+    assert.equal(historyLimit, "120");
+  } finally {
+    runtimeManager.kill(session.id);
+    registry.remove(session.id);
+    killTmuxSession(sessionName);
   }
 });
 

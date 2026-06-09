@@ -116,7 +116,8 @@ describe("buildDirectLaunchCommand", () => {
 describe("buildTmuxLaunchCommand", () => {
   it("builds tmux new-session for shell", () => {
     const cmd = buildTmuxLaunchCommand("shell", "~/code", "test", "my-session");
-    assert.ok(cmd.startsWith("tmux new-session -s"));
+    assert.ok(cmd.startsWith("tmux set-option -g history-limit 20000"));
+    assert.ok(cmd.includes("\\; new-session -s"));
     assert.ok(cmd.includes("'my-session'"));
   });
 
@@ -128,7 +129,8 @@ describe("buildTmuxLaunchCommand", () => {
       "my-session",
     );
 
-    assert.ok(cmd.startsWith("tmux new-session -s"));
+    assert.ok(cmd.startsWith("tmux set-option -g history-limit 20000"));
+    assert.ok(cmd.includes("\\; new-session -s"));
     assert.ok(cmd.includes("'my-session'"));
     assert.ok(cmd.includes('exec "$SHELL_BIN" -i'));
     assert.ok(cmd.includes("copilot"));
@@ -148,13 +150,17 @@ describe("buildRemoteDirectLaunchCommand", () => {
 describe("buildTmuxAttachCommand", () => {
   it("attaches to session", () => {
     const cmd = buildTmuxAttachCommand("dev");
-    assert.equal(cmd, "tmux attach -t 'dev'");
+    assert.equal(
+      cmd,
+      "tmux set-option -t 'dev' history-limit 20000 \\; attach -t 'dev'",
+    );
   });
 
   it("selects pane then attaches", () => {
     const cmd = buildTmuxAttachCommand("dev", "%5");
-    assert.ok(cmd.includes("tmux select-pane -t '%5'"));
-    assert.ok(cmd.includes("tmux attach -t 'dev'"));
+    assert.ok(cmd.startsWith("tmux set-option -t 'dev' history-limit 20000"));
+    assert.ok(cmd.includes("\\; select-pane -t '%5'"));
+    assert.ok(cmd.includes("\\; attach -t 'dev'"));
   });
 });
 

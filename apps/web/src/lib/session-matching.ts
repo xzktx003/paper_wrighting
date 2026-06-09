@@ -11,6 +11,8 @@ import {
 
 export type LaunchMode = "direct" | "tmux";
 
+export const DEFAULT_TMUX_HISTORY_LIMIT_LINES = 20_000;
+
 const kindPriority: Record<string, number> = {
   copilot: 0,
   codex: 1,
@@ -108,15 +110,17 @@ export function buildTmuxLaunchCommand(
   tmuxSessionName: string,
   sessionId?: string,
 ): string {
+  const tmuxPrefix = `tmux set-option -g history-limit ${DEFAULT_TMUX_HISTORY_LIMIT_LINES} \\; new-session`;
+
   if (agentKind === "shell") {
-    return `tmux new-session -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
+    return `${tmuxPrefix} -s ${shellQuote(tmuxSessionName)} -c ${formatWorkingDirectory(workingDirectory)}`;
   }
 
   if (agentKind === "copilot") {
-    return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(`cd ${formatWorkingDirectory(workingDirectory)} && ${buildRemoteAgentInvocation(agentKind, displayName, sessionId)}`, true)}`;
+    return `${tmuxPrefix} -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(`cd ${formatWorkingDirectory(workingDirectory)} && ${buildRemoteAgentInvocation(agentKind, displayName, sessionId)}`, true)}`;
   }
 
-  return `tmux new-session -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
+  return `${tmuxPrefix} -s ${shellQuote(tmuxSessionName)} ${buildRemoteTmuxCommand(buildDirectLaunchCommand(agentKind, workingDirectory, displayName, sessionId), true)}`;
 }
 
 export function buildRemoteDirectLaunchCommand(
@@ -136,11 +140,13 @@ export function buildTmuxAttachCommand(
   tmuxSessionName: string,
   tmuxPaneId?: string,
 ): string {
+  const tmuxPrefix = `tmux set-option -t ${shellQuote(tmuxSessionName)} history-limit ${DEFAULT_TMUX_HISTORY_LIMIT_LINES}`;
+
   if (tmuxPaneId) {
-    return `tmux select-pane -t ${shellQuote(tmuxPaneId)} && tmux attach -t ${shellQuote(tmuxSessionName)}`;
+    return `${tmuxPrefix} \\; select-pane -t ${shellQuote(tmuxPaneId)} \\; attach -t ${shellQuote(tmuxSessionName)}`;
   }
 
-  return `tmux attach -t ${shellQuote(tmuxSessionName)}`;
+  return `${tmuxPrefix} \\; attach -t ${shellQuote(tmuxSessionName)}`;
 }
 
 export function wrapRemoteInteractiveCommand(command: string): string {
