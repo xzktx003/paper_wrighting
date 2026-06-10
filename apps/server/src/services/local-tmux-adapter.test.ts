@@ -108,3 +108,20 @@ test("buildTmuxSendKeySteps maps application-cursor arrow keys without literal i
     { kind: "keys", keys: ["Left"] },
   ]);
 });
+
+test("buildTmuxSendKeySteps strips bracketed paste delimiters for tmux send-keys", () => {
+  assert.deepEqual(buildTmuxSendKeySteps("\x1b[200~hello codex\x1b[201~"), [
+    { kind: "literal", value: "hello codex" },
+  ]);
+
+  assert.deepEqual(
+    buildTmuxSendKeySteps("before \x1b[200~line 1\nline 2\x1b[201~ after"),
+    [
+      { kind: "literal", value: "before line 1" },
+      { kind: "keys", keys: ["Enter"] },
+      { kind: "literal", value: "line 2 after" },
+    ],
+  );
+
+  assert.deepEqual(buildTmuxSendKeySteps("\x1b[200~\x1b[201~"), []);
+});

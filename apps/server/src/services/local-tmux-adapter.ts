@@ -58,6 +58,8 @@ const CSI_KEY_MAP = new Map<string, string>([
   ["\x1bOD", "Left"],
 ]);
 
+const BRACKETED_PASTE_DELIMITER_PATTERN = /\x1b\[(?:200|201)~/g;
+
 function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
   const lastStep = steps.at(-1);
 
@@ -72,6 +74,7 @@ function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
 export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
   const steps: TmuxSendKeyStep[] = [];
   let literalBuffer = "";
+  const normalizedInput = input.replace(BRACKETED_PASTE_DELIMITER_PATTERN, "");
 
   function flushLiteral(): void {
     if (!literalBuffer) {
@@ -82,8 +85,8 @@ export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
     literalBuffer = "";
   }
 
-  for (let index = 0; index < input.length; ) {
-    const arrowSequence = input.slice(index, index + 3);
+  for (let index = 0; index < normalizedInput.length; ) {
+    const arrowSequence = normalizedInput.slice(index, index + 3);
     const arrowKey = CSI_KEY_MAP.get(arrowSequence);
 
     if (arrowKey) {
@@ -93,7 +96,7 @@ export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
       continue;
     }
 
-    const currentChar = input[index];
+    const currentChar = normalizedInput[index];
     const controlKey = CONTROL_KEY_MAP.get(currentChar);
 
     if (controlKey) {

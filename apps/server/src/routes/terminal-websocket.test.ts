@@ -329,6 +329,80 @@ test("terminal websocket drops focus reports for local tmux sessions so they do 
   }
 });
 
+test("terminal websocket strips bracketed paste delimiters for local tmux sessions", async () => {
+  const { app } = buildServer();
+  const sessionName = `tmux-bracketed-paste-${Date.now()}`;
+  const readyMarker = `TMUX_PASTE_READY_${Date.now()}`;
+  const inputMarker = `TMUX_PASTE_INPUT_${Date.now()}`;
+  let agentSessionId: string | undefined;
+  let terminal: WaitForTerminalTextResult | undefined;
+
+  killTmuxSession(sessionName);
+
+  runTmux([
+    "new-session",
+    "-d",
+    "-s",
+    sessionName,
+    "-c",
+    process.cwd(),
+    `sh -lc 'printf "${readyMarker}\\n"; exec sh'`,
+  ]);
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const terminalBaseUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const addResponse = await fetch(`${baseUrl}/api/agent-discovery/tmux/add`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        tmuxSession: sessionName,
+        displayName: sessionName,
+        workingDirectory: process.cwd(),
+        agentKind: "shell",
+        interactionState: "running",
+      }),
+    });
+
+    assert.equal(addResponse.status, 201);
+
+    const payload = (await addResponse.json()) as { id: string };
+    agentSessionId = payload.id;
+
+    terminal = await openTerminal(
+      `${terminalBaseUrl}/ws/agent-sessions/${agentSessionId}/terminal`,
+    );
+    await terminal.waitFor(readyMarker);
+
+    terminal.send(`\u001b[200~printf "${inputMarker}\\n"\u001b[201~\r`);
+    await terminal.waitFor(inputMarker);
+
+    const output = terminal.getBuffer();
+    assert.match(output, new RegExp(inputMarker));
+    assert.doesNotMatch(output, /\[200~/);
+    assert.doesNotMatch(output, /\[201~/);
+  } finally {
+    terminal?.close();
+
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+    killTmuxSession(sessionName);
+  }
+});
+
 test("terminal websocket strips secondary device-attribute replies so shell prompts do not echo terminal version noise", async () => {
   const { app } = buildServer();
   let agentSessionId: string | undefined;
