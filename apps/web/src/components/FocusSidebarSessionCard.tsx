@@ -31,6 +31,11 @@ const stateLabels: Record<string, string> = {
   exited: "已退出",
 };
 
+const pendingSidebarClickTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
+
 export function FocusSidebarSessionCard({
   session,
   onSwitchFocus,
@@ -42,6 +47,30 @@ export function FocusSidebarSessionCard({
   terminalFontSize,
   onTerminalFontSizeChange,
 }: FocusSidebarSessionCardProps) {
+  const cancelPendingSingleClick = () => {
+    const clickTimer = pendingSidebarClickTimers.get(session.id);
+    if (!clickTimer) {
+      return;
+    }
+
+    clearTimeout(clickTimer);
+    pendingSidebarClickTimers.delete(session.id);
+  };
+
+  const switchFocusOnce = () => {
+    cancelPendingSingleClick();
+    onSwitchFocus(session.id);
+  };
+
+  const handleClick = () => {
+    cancelPendingSingleClick();
+    const clickTimer = setTimeout(() => {
+      pendingSidebarClickTimers.delete(session.id);
+      onSwitchFocus(session.id);
+    }, 220);
+    pendingSidebarClickTimers.set(session.id, clickTimer);
+  };
+
   return (
     <div
       className={`focus-sidebar-card card-${session.interactionState}`}
@@ -51,8 +80,8 @@ export function FocusSidebarSessionCard({
       onContextMenu={(event) => onContextMenu?.(session, event)}
       onDragEnd={onDragEnd}
       onDragStart={(event) => onDragStart?.(session.id, event)}
-      onClick={() => onSwitchFocus(session.id)}
-      onDoubleClick={() => onSwitchFocus(session.id)}
+      onClick={handleClick}
+      onDoubleClick={switchFocusOnce}
     >
       <div className="focus-sidebar-card-header">
         <span>{session.displayName}</span>

@@ -46,6 +46,10 @@ export function isTerminalMousePayload(payload: string): boolean {
   return TERMINAL_MOUSE_PAYLOAD_PATTERN.test(payload);
 }
 
+export function isTerminalFocusPayload(payload: string): boolean {
+  return TERMINAL_FOCUS_PAYLOAD_PATTERN.test(payload);
+}
+
 export function isTerminalPtyControlPayload(payload: string): boolean {
   return (
     TERMINAL_MOUSE_PAYLOAD_PATTERN.test(payload) ||

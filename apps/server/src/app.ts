@@ -23,6 +23,7 @@ import { PtyRuntimeManager } from "./services/pty-runtime-manager.js";
 import { SftpService } from "./services/sftp-service.js";
 import { SshRuntimeManager } from "./services/ssh-runtime-manager.js";
 import {
+  isTerminalFocusPayload,
   isTerminalPtyControlPayload,
   sanitizeReplayForTerminal,
   stripTerminalResponsePayload,
@@ -196,14 +197,18 @@ export function buildServer(options: BuildServerOptions = {}): {
 
             const session = registry.has(id) ? registry.get(id) : null;
             if (session?.transportRef?.tmuxSession && !session.sshTarget) {
+              if (isTerminalFocusPayload(sanitizedPayload)) {
+                return;
+              }
+
               if (isTerminalPtyControlPayload(sanitizedPayload)) {
                 if (ptyRuntimeManager.has(id)) {
                   try {
                     ptyRuntimeManager.write(id, sanitizedPayload);
                   } catch {
-                    // Mouse and focus reports must enter tmux through the
-                    // attached client PTY. Falling back to send-keys would
-                    // inject raw escape bytes into the pane.
+                    // Mouse reports must enter tmux through the attached
+                    // client PTY. Falling back to send-keys would inject raw
+                    // escape bytes into the pane.
                   }
                 }
                 return;

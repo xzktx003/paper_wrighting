@@ -81,3 +81,4 @@
 - `restart-dev.sh` 返回成功后服务端口断开：普通 `nohup` 未稳定脱离调用 session，且前端默认端口与文档/期望不一致。修复为 `setsid ... < /dev/null` 后台启动前后端，前端默认 `8484`，并把 `WEB_BACKEND_HOST/WEB_BACKEND_PORT` 显式传给 Vite。
 - 多屏切换已打开 Codex 的 tmux/PTY 终端后出现 `[I`/`[O` 与方向键字面量 `OA`/`OB`/`OC`/`OD`：active PTY replay 不应重放终端输入模式开关；本地 tmux 路径要让 focus/mouse report 走 attached PTY，并把 application-cursor 箭头 `ESC OA/B/C/D` 映射成 tmux 方向键，不能用 send-keys 字面量注入 pane。
 - `restart-dev.sh` 默认值漂移会让服务重启到 HTTPS/3100：脚本、`.env.example`、Vite dev proxy 必须统一 HTTP/8484 + backend 4000；`scripts/*.test.mjs` 要纳入根 `pnpm test`，否则脚本默认值回归不会被全量测试发现。
+- 多屏 sidebar 双击替换 Codex tmux pane 时出现 `[I` 且替换反弹：本地 tmux 路径不要把 `ESC [ I/O` focus report 写进 attached PTY 或 send-keys，应直接丢弃；sidebar 卡片不能同时立即处理 click 和 dblclick，需让双击取消延迟单击，避免第一次点击替换后第二次点击命中新换出的旧会话。

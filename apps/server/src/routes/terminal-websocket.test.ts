@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 import { buildServer } from "../app.js";
+import { resolveTmuxBinary } from "../services/runtime-compat.js";
+
+const TMUX_BINARY = resolveTmuxBinary();
+
+function runTmux(args: string[]): string {
+  return execFileSync(TMUX_BINARY, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function killTmuxSession(sessionName: string): void {
+  try {
+    execFileSync(TMUX_BINARY, ["kill-session", "-t", sessionName], {
+      stdio: "ignore",
+    });
+  } catch {
+    // Ignore cleanup failures.
+  }
+}
 
 interface WaitForTerminalTextResult {
   close: () => void;
@@ -233,6 +254,78 @@ test("terminal websocket sanitizes active PTY replay mode toggles before remount
     }
 
     await app.close();
+  }
+});
+
+test("terminal websocket drops focus reports for local tmux sessions so they do not become prompt text", async () => {
+  const { app } = buildServer();
+  const sessionName = `tmux-focus-report-${Date.now()}`;
+  const readyMarker = `TMUX_FOCUS_READY_${Date.now()}`;
+  const inputMarker = `TMUX_FOCUS_INPUT_${Date.now()}`;
+  let agentSessionId: string | undefined;
+  let terminal: WaitForTerminalTextResult | undefined;
+
+  killTmuxSession(sessionName);
+
+  runTmux([
+    "new-session",
+    "-d",
+    "-s",
+    sessionName,
+    "-c",
+    process.cwd(),
+    `sh -lc 'printf "${readyMarker}\\n"; exec sh'`,
+  ]);
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const terminalBaseUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const addResponse = await fetch(`${baseUrl}/api/agent-discovery/tmux/add`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        tmuxSession: sessionName,
+        displayName: sessionName,
+        workingDirectory: process.cwd(),
+        agentKind: "shell",
+        interactionState: "running",
+      }),
+    });
+
+    assert.equal(addResponse.status, 201);
+
+    const payload = (await addResponse.json()) as { id: string };
+    agentSessionId = payload.id;
+
+    terminal = await openTerminal(
+      `${terminalBaseUrl}/ws/agent-sessions/${agentSessionId}/terminal`,
+    );
+    await terminal.waitFor(readyMarker);
+
+    terminal.send("\u001b[I");
+    terminal.send(`printf '${inputMarker}\\n'\r`);
+    await terminal.waitFor(inputMarker);
+
+    assert.doesNotMatch(terminal.getBuffer(), /\[I/);
+  } finally {
+    terminal?.close();
+
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+    killTmuxSession(sessionName);
   }
 });
 

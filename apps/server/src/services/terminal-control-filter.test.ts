@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isTerminalFocusPayload,
   isTerminalPtyControlPayload,
   isTerminalMousePayload,
   sanitizeReplayForTerminal,
@@ -55,6 +56,15 @@ test("identify xterm mouse reports that must enter tmux through the attached PTY
   assert.equal(isTerminalMousePayload("\u001b[A"), false);
   assert.equal(isTerminalMousePayload("\u001b[12;42R"), false);
   assert.equal(isTerminalMousePayload("whoami"), false);
+});
+
+test("identify xterm focus reports that local tmux input must drop", () => {
+  assert.equal(isTerminalFocusPayload("\u001b[I"), true);
+  assert.equal(isTerminalFocusPayload("\u001b[O"), true);
+  assert.equal(isTerminalFocusPayload("\u001b[I\u001b[O"), true);
+  assert.equal(isTerminalFocusPayload("\u001b[A"), false);
+  assert.equal(isTerminalFocusPayload("\u001bOA"), false);
+  assert.equal(isTerminalFocusPayload("whoami"), false);
 });
 
 test("identify terminal control payloads that must bypass tmux send-keys", () => {
