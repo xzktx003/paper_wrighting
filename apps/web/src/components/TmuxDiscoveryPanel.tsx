@@ -37,13 +37,16 @@ export function TmuxDiscoveryPanel({
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const hostKey = useMemo(() => buildTmuxDiscoveryHostKey(host), [host]);
+  const hostRef = useRef(host);
+  hostRef.current = host;
   const scanInput = useMemo<DiscoverTmuxInput>(() => {
-    if (host.type !== "ssh") {
+    const currentHost = hostRef.current;
+    if (currentHost.type !== "ssh") {
       return {};
     }
 
-    return { sshTarget: host.preset };
-  }, [host]);
+    return { sshTarget: currentHost.preset };
+  }, [hostKey]);
   const currentHostKeyRef = useRef(hostKey);
   currentHostKeyRef.current = hostKey;
 

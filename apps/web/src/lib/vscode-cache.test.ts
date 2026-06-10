@@ -7,6 +7,7 @@ import {
   loadVsCodeIframeCacheMode,
   parseVsCodeIframeCacheMode,
   releaseVsCodeCacheSessionIds,
+  resolveLightweightTerminalPreviewForVsCodeCacheMode,
   resolveRenderedVsCodeSessionIds,
   saveVsCodeIframeCacheMode,
   toggleVsCodeIframeCacheMode,
@@ -93,6 +94,17 @@ describe("VS Code iframe cache mode", () => {
     assert.equal(
       toggleVsCodeIframeCacheMode("preserve-state"),
       "memory-saving",
+    );
+  });
+
+  it("pairs VS Code cache profiles with the matching terminal preview fidelity", () => {
+    assert.equal(
+      resolveLightweightTerminalPreviewForVsCodeCacheMode("memory-saving"),
+      true,
+    );
+    assert.equal(
+      resolveLightweightTerminalPreviewForVsCodeCacheMode("preserve-state"),
+      false,
     );
   });
 });

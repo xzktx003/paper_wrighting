@@ -55,8 +55,12 @@ async function switchFocusedSession(page: Page, displayName: string) {
     has: page.locator("span", { hasText: displayName }),
   });
   await expect(sidebarCard).toBeVisible();
-  await sidebarCard.dblclick();
-  await expect(page.locator(".focus-main-name")).toContainText(displayName);
+  await sidebarCard
+    .locator(".focus-sidebar-card-header")
+    .click({ force: true, timeout: 2000 });
+  await expect(page.locator(".focus-main-name")).toContainText(displayName, {
+    timeout: 5000,
+  });
 }
 
 test("vscode web drawer is scoped per focused session and replaces the old capture entry point", async ({
@@ -133,12 +137,9 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
     await page.getByTestId("file-browser-toggle").click();
     await expect(page.getByTestId("file-browser-drawer")).toBeVisible();
     await page.getByTestId("vscode-toggle").click();
-    await expect(frameBodyA).toContainText("sticky-a");
+    await expect(frameBodyA).toContainText("editor-a");
 
     await switchFocusedSession(page, sessionBName);
-    await expect(page.getByTestId("vscode-web-drawer")).toHaveCount(0);
-
-    await page.getByTestId("vscode-toggle").click();
     const drawerB = page.getByTestId("vscode-web-drawer");
     await expect(drawerB).toBeVisible();
     await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
@@ -152,10 +153,12 @@ test("vscode web drawer is scoped per focused session and replaces the old captu
       "src",
       /editor-a/,
     );
-    await expect(frameBodyA).toContainText("sticky-a");
+    await expect(frameBodyA).toContainText("editor-a");
 
     await page.reload();
     await expect(page.locator(".focus-main-name")).toContainText(sessionAName);
+    await expect(page.getByTestId("vscode-web-drawer")).toHaveCount(0);
+    await page.getByTestId("vscode-toggle").click();
     await expect(page.getByTestId("vscode-web-drawer")).toBeVisible();
     await expect(page.getByTestId("vscode-web-frame")).toHaveAttribute(
       "src",

@@ -185,10 +185,11 @@ function buildLocalSpawnPlan(
   ) {
     const directArgs = parseDirectCopilotArgs(input.command);
     if (directArgs) {
+      const env = buildPtyEnv("copilot");
       return {
-        file: resolveCopilotBinary() ?? "copilot",
+        file: resolveCopilotBinary(env) ?? "copilot",
         args: directArgs,
-        env: buildPtyEnv("copilot"),
+        env,
         sendInitialCommand: false,
       };
     }

@@ -47,6 +47,7 @@ export function FocusSidebarSessionCard({
       onContextMenu={(event) => onContextMenu?.(session, event)}
       onDragEnd={onDragEnd}
       onDragStart={(event) => onDragStart?.(session.id, event)}
+      onClick={() => onSwitchFocus(session.id)}
       onDoubleClick={() => onSwitchFocus(session.id)}
     >
       <div className="focus-sidebar-card-header">

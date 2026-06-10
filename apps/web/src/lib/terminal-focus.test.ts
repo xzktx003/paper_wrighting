@@ -280,9 +280,7 @@ describe("shouldPromoteExternalFocusToUserIntent", () => {
 });
 
 describe("hasIntentionalExternalFocus — non-protected target regression", () => {
-  it("prevents terminal reclaim after clicking a non-protected element (e.g. div)", () => {
-    // Simulates: user clicks a non-protected div outside terminal.
-    // With the simplified timestamp-only check, external intent wins.
+  it("does not treat a focused button as intentional text-entry focus", () => {
     assert.equal(
       hasIntentionalExternalFocus({
         activeElementIsDocumentBody: false,
@@ -292,7 +290,35 @@ describe("hasIntentionalExternalFocus — non-protected target regression", () =
         lastTerminalIntentAt: 200,
         now: 350,
       }),
+      false,
+    );
+  });
+
+  it("keeps a brief body handoff protected while an external owner settles", () => {
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: true,
+        activeElementProtected: false,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 300,
+        lastTerminalIntentAt: 200,
+        now: 350,
+      }),
       true,
+    );
+  });
+
+  it("lets the terminal reclaim focus after the body handoff grace expires", () => {
+    assert.equal(
+      hasIntentionalExternalFocus({
+        activeElementIsDocumentBody: true,
+        activeElementProtected: false,
+        externalFocusGraceMs: 750,
+        lastExternalUserIntentAt: 300,
+        lastTerminalIntentAt: 200,
+        now: 1200,
+      }),
+      false,
     );
   });
 

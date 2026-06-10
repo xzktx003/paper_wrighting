@@ -5,6 +5,8 @@ import type {
   ListAgentSessionsResponse,
 } from "@agent-orchestrator/shared";
 
+test.use({ ignoreHTTPSErrors: true });
+
 function makeSession(
   overrides: Partial<AgentSessionRecord>,
 ): AgentSessionRecord {
@@ -132,6 +134,66 @@ async function terminalWebSocketUrls(page: Page): Promise<string[]> {
   });
 }
 
+async function dragElementToPane(
+  page: Page,
+  sourceSelector: string,
+  targetSelector: string,
+): Promise<void> {
+  await page.evaluate(
+    ({ sourceSelector, targetSelector }) => {
+      const source = document.querySelector(sourceSelector);
+      const target = document.querySelector(targetSelector);
+      if (!source || !target) {
+        throw new Error("Drag source or target not found");
+      }
+
+      const dataTransfer = new DataTransfer();
+      const dispatchDragEvent = (element: Element, type: string) => {
+        const event = new Event(type, {
+          bubbles: true,
+          cancelable: true,
+        });
+        Object.defineProperty(event, "dataTransfer", {
+          configurable: true,
+          value: dataTransfer,
+        });
+        element.dispatchEvent(event);
+      };
+
+      dispatchDragEvent(source, "dragstart");
+      if (!dataTransfer.getData("text/plain")) {
+        const sourceSession =
+          source
+            .closest("[data-session-id]")
+            ?.getAttribute("data-session-id") ??
+          source
+            .closest("[data-terminal-pane-session]")
+            ?.getAttribute("data-terminal-pane-session");
+        if (!sourceSession) {
+          throw new Error("Drag source session not found");
+        }
+        const sourceSlot =
+          source
+            .closest("[data-terminal-pane-slot]")
+            ?.getAttribute("data-terminal-pane-slot") ?? undefined;
+        const payload = JSON.stringify({
+          sessionId: sourceSession,
+          sourceSlotId: sourceSlot,
+        });
+        dataTransfer.setData(
+          "application/x-coding-kanban-terminal-session",
+          payload,
+        );
+        dataTransfer.setData("text/plain", payload);
+      }
+      dispatchDragEvent(target, "dragover");
+      dispatchDragEvent(target, "drop");
+      dispatchDragEvent(source, "dragend");
+    },
+    { sourceSelector, targetSelector },
+  );
+}
+
 test("grid cards use lightweight terminal previews without opening terminal WebSockets", async ({
   page,
 }) => {
@@ -185,12 +247,13 @@ test("preview mode toggle restores full terminal previews on demand", async ({
 
   await page.getByTestId("resource-tuning-menu-toggle").click();
   const toggle = page.getByTestId("terminal-preview-mode-toggle");
-  await expect(toggle).toHaveText("轻量预览：开");
+  const toggleLabel = toggle.locator("span").first();
+  await expect(toggleLabel).toHaveText("轻量预览：开");
   expect(await terminalWebSocketUrls(page)).toEqual([]);
 
   await toggle.click();
 
-  await expect(toggle).toHaveText("完整预览");
+  await expect(toggleLabel).toHaveText("完整预览");
   await expect(page.locator(".grid-card-terminal .terminal-view")).toHaveCount(
     2,
   );
@@ -203,6 +266,64 @@ test("preview mode toggle restores full terminal previews on demand", async ({
   expect(await terminalWebSocketUrls(page)).toContainEqual(
     expect.stringContaining("/beta-session/terminal"),
   );
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("terminal-preview-mode")),
+    )
+    .toBe("full");
+});
+
+test("VS Code preserve-state profile restores full terminal previews for running panes", async ({
+  page,
+}) => {
+  await mockSessions(page, [
+    makeSession({
+      id: "alpha-session",
+      displayName: "Alpha Session",
+      outputPreview: "alpha ready",
+    }),
+    makeSession({
+      id: "beta-session",
+      displayName: "Beta Session",
+      outputPreview: "beta ready",
+    }),
+  ]);
+
+  await page.goto("/");
+
+  await page.getByTestId("resource-tuning-menu-toggle").click();
+  const vscodeProfileToggle = page.getByTestId("vscode-cache-mode-toggle");
+  const vscodeProfileLabel = vscodeProfileToggle.locator("span").first();
+  await expect(vscodeProfileLabel).toHaveText("VS Code 省内存");
+  const terminalPreviewToggle = page.getByTestId("terminal-preview-mode-toggle");
+  const terminalPreviewLabel = terminalPreviewToggle.locator("span").first();
+  await expect(terminalPreviewLabel).toHaveText("轻量预览：开");
+  await expect(
+    page.locator(".grid-card-terminal .terminal-preview"),
+  ).toHaveCount(2);
+  expect(await terminalWebSocketUrls(page)).toEqual([]);
+
+  await vscodeProfileToggle.click();
+
+  await expect(vscodeProfileLabel).toHaveText("VS Code 保持状态");
+  await expect(terminalPreviewLabel).toHaveText("完整预览");
+  await expect(page.locator(".grid-card-terminal .terminal-view")).toHaveCount(
+    2,
+  );
+  await expect(
+    page.locator(".grid-card-terminal .terminal-preview"),
+  ).toHaveCount(0);
+  await expect
+    .poll(() => terminalWebSocketUrls(page))
+    .toContainEqual(expect.stringContaining("/alpha-session/terminal"));
+  expect(await terminalWebSocketUrls(page)).toContainEqual(
+    expect.stringContaining("/beta-session/terminal"),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("vscode-iframe-cache-mode")),
+    )
+    .toBe("preserve-state");
   await expect
     .poll(() =>
       page.evaluate(() => localStorage.getItem("terminal-preview-mode")),
@@ -302,9 +423,11 @@ test("focus monitor panes accept dragged sidebar sessions and swap dragged panes
     "beta-session",
   );
 
-  await page
-    .locator(".focus-sidebar-card", { hasText: "Gamma Session" })
-    .dragTo(firstPane);
+  await dragElementToPane(
+    page,
+    '[data-session-id="gamma-session"] .focus-sidebar-card-header',
+    '[data-terminal-pane-slot="terminal-monitor-slot-1"]',
+  );
 
   await expect(firstPane).toHaveAttribute(
     "data-terminal-pane-session",
@@ -318,7 +441,11 @@ test("focus monitor panes accept dragged sidebar sessions and swap dragged panes
     page.locator(".focus-sidebar-card", { hasText: "Alpha Session" }),
   ).toBeVisible();
 
-  await firstPane.locator(".focus-terminal-pane-header").dragTo(secondPane);
+  await dragElementToPane(
+    page,
+    '[data-terminal-pane-slot="terminal-monitor-slot-1"] .focus-terminal-pane-header',
+    '[data-terminal-pane-slot="terminal-monitor-slot-2"]',
+  );
 
   await expect(firstPane).toHaveAttribute(
     "data-terminal-pane-session",

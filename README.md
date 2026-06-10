@@ -132,11 +132,11 @@ cp .env.example .env
 | 变量                              | 作用                              | 默认值                                   |
 | --------------------------------- | --------------------------------- | ---------------------------------------- |
 | `HOST`                            | 后端 Fastify 监听地址             | `0.0.0.0`                                |
-| `PORT`                            | 后端 REST + WebSocket 端口        | `4000`                                   |
+| `PORT`                            | 后端 REST + WebSocket 端口        | `3200`                                   |
 | `WEB_HOST`                        | Vite 前端监听地址                 | `0.0.0.0`                                |
-| `WEB_PORT`                        | Vite 前端端口                     | `8484`                                   |
+| `WEB_PORT`                        | Vite 前端端口                     | `3100`                                   |
 | `WEB_BACKEND_HOST`                | 前端代理到后端的主机              | `localhost`                              |
-| `WEB_BACKEND_PORT`                | 前端代理到后端的端口              | `4000`                                   |
+| `WEB_BACKEND_PORT`                | 前端代理到后端的端口              | `3200`                                   |
 | `FILE_BROWSER_DEFAULT_LOCAL_PATH` | 文件浏览器默认本地目录            | 自动探测仓库根目录                       |
 | `VSCODE_WEB_EXTENSIONS_DIR`       | VS Code Web 扩展目录              | `~/.vscode-server/extensions` 或内置目录 |
 | `VSCODE_WEB_PUBLIC_HOST`          | 浏览器访问 `/vscode` 的公共主机名 | 当前请求 Host                            |
@@ -148,8 +148,8 @@ cp .env.example .env
 
 - `.env` 会被 git 忽略，适合写本机端口、路径和主机配置。
 - `scripts/restart-dev.sh` 会读取 `.env`。
-- 如果没有 `.env`，`restart-dev.sh` 自身默认前端 `8484`、后端 `4000`。
-- 如果直接复制 `.env.example`，其中 `WEB_PORT=8484`、`PORT=4000` 会保持脚本默认端口。
+- 如果没有 `.env`，`restart-dev.sh` 自身默认前端 `3100`、后端 `3200`。
+- 如果直接复制 `.env.example`，其中 `WEB_PORT=3100`、`PORT=3200` 会保持脚本默认端口。
 
 ### 推荐启动方式
 
@@ -162,13 +162,13 @@ cp .env.example .env
 - 释放目标端口上的旧前后端进程。
 - 启动 Fastify 后端。
 - 启动 Vite 前端并绑定 `0.0.0.0`，方便局域网访问。
-- 使用 HTTP 协议，无需证书配置。
+- 默认使用 HTTPS 协议，并自动准备开发证书。
 - 输出 Local / Network 前端地址、后端健康检查地址和日志路径。
 
 从手机或同网段机器访问，使用脚本输出的 `Network` 地址，例如：
 
 ```text
-http://10.30.0.22:8484
+https://10.30.0.22:3100
 ```
 
 ### 备用启动方式

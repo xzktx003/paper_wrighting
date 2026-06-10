@@ -53,7 +53,6 @@ export function buildServer(options: BuildServerOptions = {}): {
     resolveTerminalHistoryRuntimeConfig(process.env);
   const registry = new AgentSessionRegistry(
     undefined,
-    undefined,
     terminalHistoryConfig.terminalRegistryOutputEntries,
   );
   const processRuntimeManager = new LocalProcessRuntimeManager(registry);
@@ -143,6 +142,7 @@ export function buildServer(options: BuildServerOptions = {}): {
         let replaying = true;
         const bufferedLiveFrames: string[] = [];
         let unsubscribe = () => {};
+        let tmuxInputQueue = Promise.resolve();
 
         if (ptyRuntimeManager.has(id)) {
           unsubscribe = ptyRuntimeManager.subscribe(
@@ -188,6 +188,26 @@ export function buildServer(options: BuildServerOptions = {}): {
           const writeToRuntime = (payload: string) => {
             const sanitizedPayload = stripTerminalResponsePayload(payload);
             if (!sanitizedPayload) {
+              return;
+            }
+
+            const session = registry.has(id) ? registry.get(id) : null;
+            if (session?.transportRef?.tmuxSession && !session.sshTarget) {
+              tmuxInputQueue = tmuxInputQueue.then(async () => {
+                try {
+                  await tmuxAdapter.writeInput(session, {
+                    input: sanitizedPayload,
+                  });
+                } catch {
+                  try {
+                    ptyRuntimeManager.write(id, sanitizedPayload);
+                  } catch {
+                    // The browser can still flush a final input frame after
+                    // the PTY has exited or the session has been deleted.
+                  }
+                }
+              });
+              void tmuxInputQueue.catch(() => {});
               return;
             }
 

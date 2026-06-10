@@ -583,6 +583,7 @@ export function useFileBrowser(
         [new File([content], name, { type: "text/plain" })],
         filePath,
       );
+      setSelectedPaths([filePath]);
     },
     [upload],
   );

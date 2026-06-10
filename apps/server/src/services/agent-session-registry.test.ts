@@ -21,7 +21,7 @@ function wait(ms: number) {
 async function waitForInteractionState(
   registry: AgentSessionRegistry,
   sessionId: string,
-  expectedState: "running" | "awaiting_input",
+  expectedState: "running",
   timeoutMs = 3_000,
 ) {
   const deadline = Date.now() + timeoutMs;
@@ -94,8 +94,8 @@ function installFakeTimers(startMs = 1_000) {
   };
 }
 
-test("marks direct sessions awaiting_input after screen stays unchanged", async () => {
-  const registry = new AgentSessionRegistry(20);
+test("keeps direct sessions running after screen stays unchanged", async () => {
+  const registry = new AgentSessionRegistry();
   const session = createSession(registry);
 
   const updated = registry.appendOutput(session.id, "first frame\n", "stdout");
@@ -103,12 +103,13 @@ test("marks direct sessions awaiting_input after screen stays unchanged", async 
   assert.equal(updated.interactionState, "running");
   assert.equal(updated.stateConfidence, "medium");
 
-  await waitForInteractionState(registry, session.id, "awaiting_input");
+  await wait(40);
+  await waitForInteractionState(registry, session.id, "running");
   assert.equal(registry.get(session.id).stateConfidence, "medium");
 });
 
 test("uses configured output entry retention limit for fallback replay", () => {
-  const registry = new AgentSessionRegistry(10_000, 250, 3);
+  const registry = new AgentSessionRegistry(250, 3);
   const session = createSession(registry);
 
   registry.appendOutput(session.id, "one\n", "stdout");
@@ -123,8 +124,8 @@ test("uses configured output entry retention limit for fallback replay", () => {
   );
 });
 
-test("user input resets inactivity timer and later returns to awaiting_input", async () => {
-  const registry = new AgentSessionRegistry(25);
+test("user input keeps direct sessions running after inactivity", async () => {
+  const registry = new AgentSessionRegistry();
   const session = createSession(registry);
 
   registry.appendOutput(session.id, "first frame\n", "stdout");
@@ -136,21 +137,23 @@ test("user input resets inactivity timer and later returns to awaiting_input", a
   await wait(10);
   assert.equal(registry.get(session.id).interactionState, "running");
 
-  await waitForInteractionState(registry, session.id, "awaiting_input");
+  await wait(30);
+  await waitForInteractionState(registry, session.id, "running");
 });
 
-test("repeated identical terminal redraws do not keep sessions running", async () => {
-  const registry = new AgentSessionRegistry(60);
+test("repeated identical terminal redraws still keep sessions running", async () => {
+  const registry = new AgentSessionRegistry();
   const session = createSession(registry);
 
   registry.appendOutput(session.id, "prompt> ", "stdout");
   await wait(25);
 
   registry.appendOutput(session.id, "\u001b[2K\rprompt> ", "stdout");
-  await waitForInteractionState(registry, session.id, "awaiting_input");
+  await wait(50);
+  await waitForInteractionState(registry, session.id, "running");
 });
 
-test("awaiting-input timer retries when the first idle check fires early", () => {
+test("direct sessions do not schedule awaiting-input timers", () => {
   const originalNow = Date.now;
   const originalSetTimeout = globalThis.setTimeout;
   const originalClearTimeout = globalThis.clearTimeout;
@@ -186,37 +189,14 @@ test("awaiting-input timer retries when the first idle check fires early", () =>
     scheduled.delete(handle as FakeTimeout);
   }) as typeof clearTimeout;
 
-  const fireTimeout = (handle: FakeTimeout) => {
-    const timeout = scheduled.get(handle);
-    assert.ok(timeout, `expected timeout ${handle.id} to be scheduled`);
-    assert.equal(handle.unrefCalled, true);
-    scheduled.delete(handle);
-    timeout.callback();
-  };
-
   try {
-    const registry = new AgentSessionRegistry(60);
+    const registry = new AgentSessionRegistry();
     const session = createSession(registry);
 
     registry.appendOutput(session.id, "prompt> ", "stdout");
 
-    assert.equal(scheduled.size, 1);
-    const [firstHandle] = [...scheduled.keys()];
-    now = 1_059;
-    fireTimeout(firstHandle);
-
+    assert.equal(scheduled.size, 0);
     assert.equal(registry.get(session.id).interactionState, "running");
-    assert.equal(
-      scheduled.size,
-      1,
-      "expected an early idle check to re-arm the timer",
-    );
-
-    const [retryHandle] = [...scheduled.keys()];
-    now = 1_061;
-    fireTimeout(retryHandle);
-
-    assert.equal(registry.get(session.id).interactionState, "awaiting_input");
   } finally {
     Date.now = originalNow;
     globalThis.setTimeout = originalSetTimeout;
@@ -300,8 +280,8 @@ test("tmux observe-only sessions stay detached even when screen is unchanged", a
   assert.equal(updated.stateConfidence, "high");
 });
 
-test("awaiting_input timer is unref-ed so it cannot block Node process exit", () => {
-  const registry = new AgentSessionRegistry(60_000);
+test("direct sessions do not keep awaiting_input timers after output", () => {
+  const registry = new AgentSessionRegistry();
   const session = registry.register({
     workspaceId: "test",
     hostId: "local",
@@ -313,18 +293,9 @@ test("awaiting_input timer is unref-ed so it cannot block Node process exit", ()
 
   registry.syncCapturedScreen(session.id, "frame-a");
 
-  const timers = (
-    registry as unknown as {
-      awaitingInputTimers: Map<string, NodeJS.Timeout>;
-    }
-  ).awaitingInputTimers;
-
-  const timer = timers.get(session.id);
-  assert.ok(timer, "expected an awaiting_input timer to be scheduled");
   assert.equal(
-    timer?.hasRef(),
+    "awaitingInputTimers" in (registry as unknown as Record<string, unknown>),
     false,
-    "awaiting_input timer must be unref-ed to avoid blocking `node --test` shutdown",
   );
 });
 
@@ -332,7 +303,7 @@ test("bursty terminal output coalesces session snapshots behind an unref-ed time
   const timers = installFakeTimers();
 
   try {
-    const registry = new AgentSessionRegistry(60_000, 250);
+    const registry = new AgentSessionRegistry(250);
     const snapshots: string[] = [];
     registry.subscribe((snapshot) => {
       snapshots.push(snapshot.items[0]?.outputPreview ?? "<empty>");
@@ -377,7 +348,7 @@ test("immediate session updates cancel pending coalesced snapshots and publish t
   const timers = installFakeTimers();
 
   try {
-    const registry = new AgentSessionRegistry(60_000, 250);
+    const registry = new AgentSessionRegistry(250);
     const snapshots: string[] = [];
     registry.subscribe((snapshot) => {
       const item = snapshot.items[0];

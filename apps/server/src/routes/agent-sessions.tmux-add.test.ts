@@ -20,6 +20,10 @@ function firstPaneId(sessionName: string): string {
     .find(Boolean) as string;
 }
 
+function paneFormat(paneId: string, format: string): string {
+  return runTmux(["display-message", "-p", "-t", paneId, format]);
+}
+
 function killTmuxSession(sessionName: string): void {
   try {
     execFileSync(TMUX_BINARY, ["kill-session", "-t", sessionName], {
@@ -201,5 +205,90 @@ test("POST /api/agent-discovery/tmux/add can attach to a discovered tmux pane wi
 
     await app.close();
     killTmuxSession(sessionName);
+  }
+});
+
+test("PATCH /api/agent-sessions/:id renames the tmux session and pane title together", async () => {
+  const { app } = buildServer();
+  const sessionName = `tmux-rename-${Date.now()}`;
+  const renamedSession = `tmux-renamed-${Date.now()}`;
+  let agentSessionId: string | undefined;
+
+  killTmuxSession(sessionName);
+  killTmuxSession(renamedSession);
+
+  runTmux([
+    "new-session",
+    "-d",
+    "-s",
+    sessionName,
+    "-c",
+    process.cwd(),
+    `sh -lc 'sleep 30'`,
+  ]);
+
+  const tmuxPane = firstPaneId(sessionName);
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const addResponse = await fetch(`${baseUrl}/api/agent-discovery/tmux/add`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        tmuxSession: sessionName,
+        tmuxPane,
+        displayName: sessionName,
+        workingDirectory: process.cwd(),
+        agentKind: "shell",
+      }),
+    });
+
+    assert.equal(addResponse.status, 201);
+    const addedSession = (await addResponse.json()) as { id: string };
+    agentSessionId = addedSession.id;
+
+    const renameResponse = await fetch(
+      `${baseUrl}/api/agent-sessions/${agentSessionId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          displayName: renamedSession,
+        }),
+      },
+    );
+
+    assert.equal(renameResponse.status, 200);
+    const renamed = (await renameResponse.json()) as {
+      displayName: string;
+      workspaceId: string;
+      transportRef?: { tmuxSession?: string };
+    };
+
+    assert.equal(renamed.displayName, renamedSession);
+    assert.equal(renamed.workspaceId, renamedSession);
+    assert.equal(renamed.transportRef?.tmuxSession, renamedSession);
+    assert.equal(paneFormat(tmuxPane, "#{session_name}"), renamedSession);
+    assert.equal(paneFormat(tmuxPane, "#{pane_title}"), renamedSession);
+  } finally {
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+    killTmuxSession(sessionName);
+    killTmuxSession(renamedSession);
   }
 });

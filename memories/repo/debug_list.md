@@ -13,6 +13,7 @@
 - 远端文件浏览在真实 SSH 主机上统一报 `All configured authentication methods failed`：终端链路依赖系统 `ssh`，能吃到默认私钥；SFTP 链路直接用 `ssh2`，之前只在 `identityFile` 显式存在时才带私钥，导致未写 `IdentityFile` 的主机全部认证失败。修复为 SFTP 认证支持显式 key、标准默认私钥回退，并兼容 `SSH_AUTH_SOCK`。
 - 远端 SSH 会话在线时，文件浏览器首屏偶发空白并报 `write ECONNRESET` / `No response from server`：`SftpService` 在连接还没 `ready` 时就把连接放进池里，UI 初始化打出的并发 `/api/fs/list` 会抢到半初始化连接。修复为复用连接前必须等待 `ready`，并在连接失败时及时把坏连接移出池。
 - 远端 SSH 会话已经退出时，kanban 终端只剩 `[连接已断开]`：PTY runtime 退出就删除 handle，terminal websocket 后续重连拿不到 scrollback，只能 4004 关闭，导致真实错误（例如 `fatal: Gerrit Code Review: exec: not found`）被泛化提示覆盖。修复为 runtime 已退出但 session 仍存在时，从 registry 的历史输出回放 terminal 内容。
+- tmux mouse mode 下 pane 内拖拽选择停留在 tmux/TUI 内，浏览器侧 xterm 没有 selection 可复制：修复为 `TerminalView` 支持 OSC 52 clipboard 写入，让 tmux copy-mode 负责选择边界并把内容写入浏览器剪贴板。
 - live stdin 过滤握手应答导致 Copilot CLI 等 TUI 卡死：修复为仅清洗 replay，不过滤 live stdin 的 DA/DSR/CPR 等应答。
 - Codex CLI 运行后鼠标滚轮偶发变成输入历史上下翻页：xterm.js 会在 TUI 鼠标追踪或无 scrollback 路径中把 wheel 转成鼠标协议/方向键输入；修复为前端接管 wheel，只滚动 xterm scrollback 并阻止 wheel 进入 stdin。
 - 多屏或完整预览终端偶发无法滚动上下文：wheel 只挂在 xterm 内部 handler，事件落在外层容器、缩放空白区或非输入预览终端时可能漏掉；修复为 `TerminalView` 容器捕获阶段统一接管 wheel，所有终端视图都滚动自己的 scrollback 并阻止进入 stdin。
@@ -25,6 +26,8 @@
 - 远端新建 tmux 会话时，非 shell agent 会在启动命令退出后把整个 tmux session 一起结束，看起来像“只能建 shell，不能建远端 tmux”：前端 `buildTmuxLaunchCommand` 的非 shell 分支少了 keep-pane-open 包装，和服务端实现漂移；修复为复用带 `exec "$SHELL_BIN" -i` 的 tmux pane 命令构造。
 - 远端 `10.30.0.24` 上从看板启动 Copilot 会话时，看起来像“tmux 创建失败”，实际是主机把 `copilot` 解析到了缺少 `index.js` 的 `~/.nvm/.../bin/copilot` node shim：修复为远端 Copilot 启动命令优先尝试健康的 `copilot`，命中损坏 shim 时回退到 `node ../lib/node_modules/@github/copilot/npm-loader.js` 直接拉起 CLI。
 - 远端 `10.30.0.24` 上直接创建 shell tmux 时，默认名 `10.30.0.24_shell_tmux` 会被旧版 tmux 3.0a 直接拒绝并报 `bad session name`：根因是 tmux 模式默认名仍保留 `.`；修复为 tmux 模式下把 host label 里的 `.` 也归一化成 `_`，生成 `10_30_0_24_shell_tmux` 这类 tmux-safe 名称。
+- 本地 tmux 会话刚进入 focus view 后，浏览器 terminal WebSocket 已发送输入帧，但 tmux pane 收不到 `stdin:<marker>`：根因是 stdin 只写 `tmux attach` 的 PTY，attach 竞态或 pane 目标缺失会吞早期输入；修复为本地 tmux 会话优先通过 `LocalTmuxAdapter.writeInput` 的 `tmux send-keys` 队列写入目标 session/pane，失败时再回退 PTY 写入。
+- 多屏 focus view 中拖拽 sidebar session 到当前输入 pane，或在当前输入 pane 的 select 切换 session 后，pane 会被 normalize 拉回原 focused session：根因是 active slot 改动没有同步 App 级 focused session；修复为 active select、拖入 active slot、从 active slot 拖出时同步 active slot/focused session，并支持 sidebar card 单击切换 focus。
 - 文件浏览器创建弹窗在输入清空时意外关闭：把草稿字符串误当作弹窗开关；修复为显式维护弹窗状态。
 - 文件浏览器在 A 会话折叠后，切到 B 会话再切回 A 会自动展开：折叠状态存在全局 UI 状态里，且 `sidePanelOpen=false` 时被 effect 清零；修复为把左右分栏折叠状态放进每个 `agentSession` 的侧栏状态，切换会话不再重置。
 - 多屏聚焦视图切换输入终端时文件系统/VS Code 跟随规则错误：active slot 和 App 级 `focusedSession` 总是强绑定；修复为只有侧栏工具已打开时才同步 focused session 并把当前工具类型带到目标 session，未打开工具时只切多屏输入窗格。
@@ -35,6 +38,9 @@
 - 服务端构建在文件下载路由处报 `archiver` 没有导出 `ZipArchive`，改默认导入后 Node ESM 又报 no default export：根因是 `archiver` v8 运行时导出 `ZipArchive`，但当前类型声明仍按旧 `export = archiver` 函数形态暴露；修复为 namespace runtime import，并在类型层显式声明 `ZipArchive` 构造器。
 - StrictMode 下 WebSocket cleanup 造成假断开提示：CONNECTING 阶段过早 close；修复为等到 `onopen` 后再关闭。
 - Playwright 只复用前端导致坏后端环境被误复用：修复为前后端分别做健康检查。
+- 多轮 Playwright e2e 后 Vite 或后端 `tsx watch` webServer 因 `EMFILE` / `ENOSPC: System limit for number of file watchers reached` 启动失败：测试反复启动 watcher 命中本机 fd/watch 上限；修复为 Playwright web server 默认设置 `CHOKIDAR_USEPOLLING=1`，后端 e2e 服务改用非 watch 的 `tsx src/index.ts`，并把服务复用改成仅在 `PLAYWRIGHT_REUSE_EXISTING_SERVER=1` 时启用。
+- HTTPS dev server 已运行时 Playwright 仍探测 HTTP 或因本地证书失败：修复为支持 `PLAYWRIGHT_FRONTEND_PROTOCOL`，HTTPS 下启用 `ignoreHTTPSErrors`，并给 `terminal-preview` e2e 补齐 HTTPS 证书忽略设置。
+- `pnpm dev` / `restart-dev.sh` 页面能起但 API 代理可能错连：后端和脚本默认 `3200/3100`，但 Vite 配置仍写死前端 `3000`、后端代理 `4000`，且没复用 `resolveWebDevConfig`；修复为统一走 `resolveWebDevConfig`，按 `WEB_BACKEND_PORT -> SERVER_PORT -> PORT -> 3200` 解析代理，并同步 `.env.example`。
 - Playwright Chromium 缺系统库时浏览器测试无法启动：沉淀了本地 `.deb` + `LD_LIBRARY_PATH` 的 rootless workaround。
 - idle cleanup timer 未 `.unref()` 导致 `pnpm -r test` 不退出：修复为统一 `.unref()` 并补 `hasRef() === false` 回归。
 - `awaiting_input` 单测在高负载下偶发超时：修复策略是收紧测试 override，而不是改全局默认值。
@@ -48,11 +54,12 @@
 - `10.30.0.24` 上 SSH 远端会话已经能返回 VS Code URL，但 iframe 仍只显示 404。根因是三层叠加：VS Code tunnel 继承了 ssh config 里的 `RemoteForward 18888`、远端错误复用了 `.vscode-server/.../code-server` 这类 agent binary、旧错误进程还长期占用 `13338` 端口。修复为让 tunnel 走 configless ssh、远端只用 standalone `code-server`，并在健康检查失败时先清理目标端口上的陈旧监听进程，再启动新实例。
 - SSH 远端会话在前端里依然打不开 VS Code，只剩文件浏览器可用。根因是 `App.tsx` 里的 `vscodeAvailable` 仍保留“仅本地会话可用”的布尔门禁；后端远端 `/vscode-web` 已经正常 200，但前端压根不让 SSH session 打开 VS Code。修复为让聚焦态 SSH 会话同样允许打开 VS Code Web，并同步修正文案。
 - `10.30.0.23` / `10.30.0.21_host` 这类远端主机仍然打不开 VS Code。根因分两层：一是部分机器没装 standalone `code-server`；二是 remote VS Code 的 configless tunnel 虽然避开了 ssh config 里的 `RemoteForward` 污染，却没有先解析 ssh config 的 alias / port / identity，导致 alias 主机和“IP 但靠 ssh config 改端口”的主机都把 tunnel 连错。修复为在目标机补装 standalone `code-server`，并让 tunnel 在 `ssh -F /dev/null` 前先通过 `ssh -G` 解析真实 `hostname/port/identityfile` 再连接。
-- 看板通过本地 `/vscode` 代理打开 VS Code Web 时，HTTPS 页面里的图片预览曾可能加载失败：根因是前端 HTTPS、后端 HTTP 和 code-server 公开来源推断不一致。现改为开发入口统一 HTTP，代理只保留浏览器来源 host，公开 protocol 固定为 HTTP。
-- 本地 HTTPS 回退到 OpenSSL 自签证书时，VS Code Web 的 webview / 图片预览曾报 service worker SSL 证书错误：证书修复路径已废弃，现移除开发证书脚本和 `WEB_HTTPS` / `VITE_DEV_HTTPS` 配置。
-- 看板开发服务从 HTTPS 默认切换为 HTTP-only：保留 HTTPS 配置让启动、文档和调试记录分叉。修复为移除 Vite HTTPS 配置、restart-dev 证书流程和证书脚本，并把规则、README、项目概览、测试 fixture 与 debug 记录统一到 HTTP。
+- 看板通过本地 `/vscode` 代理打开 VS Code Web 时，HTTPS 页面里的图片预览仍可能加载失败。根因是代理层只把后端看到的 `request.protocol/host` 转发给上游 `code-server`；当前端页面是 HTTPS、后端却是本地 HTTP 代理时，上游会误以为公开入口仍是 `http + 本地端口`，进而生成错误的预览资源来源。修复为让 `/vscode` 代理也优先根据浏览器 `Origin/Referer` 或既有转发头推导公开 `host/protocol`，再透传给上游。
+- 本地 HTTPS 已回退到 OpenSSL 自签证书时，VS Code Web 的 webview / 图片预览会继续报 service worker 的 SSL 证书错误。根因是浏览器不会为不受信任的证书注册 service worker，而旧脚本在“复用已有证书”路径上没有持续告警，也不会在之后装好 `mkcert` 时自动升级掉旧自签证书。修复为修正 IP SAN 匹配、为脚本生成的证书记录 generator metadata，并在复用 OpenSSL 自签证书时持续警告；检测到 `mkcert` 后则自动重签为受信任证书。
+- 点击 `VS Code保持状态` 后运行中的非聚焦终端窗格仍只显示轻量预览：`vscodeIframeCacheMode` 只保留 VS Code iframe，未同步切换 `useLightweightTerminalPreview`；修复为把 VS Code cache profile 与终端预览保真度联动，保持状态时完整渲染运行终端窗格，省内存时恢复轻量预览。
 - commit `fc57a80` 引入的终端焦点保留修复过度：`rememberExternalPointerIntent` 仅对受保护目标记录意图，导致点击非保护元素时终端抢回焦点；`hasIntentionalExternalFocus` 对非保护、非 body 元素直接返回 false 加剧了问题。修复为 pointerdown 统一记录意图 + 纯时间戳比较，不再区分 active element 类型。
 - VS Code Web 与终端来回切换两轮后，点击 VS Code iframe 内部无法重新输入：上一版只依赖父文档 `pointerdown` 记录外部意图，但 iframe 内点击不稳定冒到父页面。修复为在父窗口 `blur` 和被动终端聚焦前，根据当前 `document.activeElement` 将 hovered iframe 补记为用户外部焦点意图，并补 VS Code -> 终端 -> VS Code round-trip e2e 回归。
+- focus view 点击按钮后，Copilot-like TUI 会收到 `focus-out` 并丢掉紧随其后的输入：按钮等非文本控件被时间戳逻辑误判为有意外部焦点，且 keydown 补救路径可能先发送 stdin、后发送 `focus-in`。修复为 `hasIntentionalExternalFocus` 只保护真实输入面/iframe/dialog 和短暂 body handoff，并在 `TerminalView` 发送 stdin 前同步补齐已聚焦 helper 的 focus report。
 - 轻量预览下浏览器内存和网络仍持续增长：资源诊断显示 `/ws/agent-sessions` 全量快照达到数百 msg/s、数 MB/s；根因是每个终端输出帧都触发一次全量 snapshot，前端持续 JSON 解析和 React 更新。修复为后端对输出触发的 snapshot 做 trailing 合并广播，结构性操作仍即时刷新，并避免 observe-only 会话输出时创建无效 awaiting_input timer。
 - Codex 长输出在切换/重开终端或 tmux observe 刷新后只能看到最近一小段：根因是 live PTY replay 仅 256 KiB、tmux capture 固定最近 200 行、registry fallback 仅 200 条。修复为把 PTY replay、tmux capture、registry fallback、xterm scrollback 做成可配置较大默认值，并在资源诊断展示 PTY 历史裁剪状态。
 - 手机浏览器查看 Codex 长上下文终端时，终端区域下拉会触发浏览器下拉刷新，或只滑动页面不滑动 xterm 历史：根因是桌面页面滚动结构没有锁住根滚动链路；首版 touch 监听在冒泡阶段，遇到 xterm viewport/浏览器手势竞争时拦截不够早，且桌面聚焦页没有启用手机触控模式。修复为新增 `/mobile` 手机终端页锁定 `html/body/#root` 滚动，并让 `TerminalView` 手机触控模式用捕获阶段的非 passive `touchstart/touchmove` 接管单指滑动、滚动 xterm 历史，双指缩放字号；触屏设备的桌面聚焦页也启用同一逻辑。

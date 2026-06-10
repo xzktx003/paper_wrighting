@@ -41,9 +41,6 @@ export function AgentGrid({
   const runningCount = sessions.filter(
     (session) => session.interactionState === "running",
   ).length;
-  const awaitingCount = sessions.filter(
-    (session) => session.interactionState === "awaiting_input",
-  ).length;
 
   return (
     <div className="agent-grid-container">
@@ -62,14 +59,6 @@ export function AgentGrid({
             >
               已隐藏 ({hiddenCount})
             </button>
-          )}
-          {awaitingCount > 0 && (
-            <span
-              className="stat-item stat-awaiting grid-status-chip"
-              data-testid="grid-stat-awaiting"
-            >
-              🟡 {awaitingCount} 等待输入
-            </span>
           )}
           {runningCount > 0 && (
             <span

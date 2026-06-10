@@ -181,6 +181,7 @@ export async function registerAgentSessionRoutes(
     "/api/agent-sessions/:id",
     async (request, reply) => {
       const { displayName, hidden } = request.body ?? {};
+      let agentSession = registry.get(request.params.id);
       const updates: Partial<AgentSessionRecord> = {};
 
       if (displayName !== undefined) {
@@ -189,7 +190,12 @@ export async function registerAgentSessionRoutes(
           reply.code(400);
           return { error: "displayName cannot be empty" };
         }
-        updates.displayName = trimmed;
+
+        if (agentSession.transportRef?.tmuxSession) {
+          agentSession = await tmuxAdapter.renameSession(agentSession, trimmed);
+        } else {
+          updates.displayName = trimmed;
+        }
       }
 
       if (hidden !== undefined) {
@@ -197,11 +203,10 @@ export async function registerAgentSessionRoutes(
       }
 
       if (Object.keys(updates).length === 0) {
-        reply.code(400);
-        return { error: "No valid fields to update" };
+        return agentSession;
       }
 
-      return registry.updateSession(request.params.id, updates);
+      return registry.updateSession(agentSession.id, updates);
     },
   );
 
