@@ -5,10 +5,10 @@ import { resolveWebDevConfig } from "./dev-server-config";
 
 test("uses repo port defaults when env is empty", () => {
   assert.deepEqual(resolveWebDevConfig({}), {
-    webPort: 3100,
-    serverPort: 3200,
-    apiTarget: "http://localhost:3200",
-    wsTarget: "ws://localhost:3200",
+    webPort: 8484,
+    serverPort: 4000,
+    apiTarget: "http://localhost:4000",
+    wsTarget: "ws://localhost:4000",
   });
 });
 
@@ -35,7 +35,7 @@ test("uses explicit backend proxy host and port values", () => {
       SERVER_PORT: "5200",
     }),
     {
-      webPort: 3100,
+      webPort: 8484,
       serverPort: 6200,
       apiTarget: "http://127.0.0.1:6200",
       wsTarget: "ws://127.0.0.1:6200",
@@ -49,7 +49,7 @@ test("uses PORT as the backend proxy fallback when SERVER_PORT is unset", () => 
       PORT: "5300",
     }),
     {
-      webPort: 3100,
+      webPort: 8484,
       serverPort: 5300,
       apiTarget: "http://localhost:5300",
       wsTarget: "ws://localhost:5300",

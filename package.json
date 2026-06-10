@@ -9,7 +9,7 @@
     "build": "pnpm --filter shared build && pnpm --filter server build && pnpm --filter web build",
     "check": "pnpm --filter shared build && pnpm --filter server build && pnpm --filter web build",
     "e2e": "playwright test",
-    "test": "pnpm --recursive test",
+    "test": "pnpm --recursive test && node --test scripts/*.test.mjs",
     "format": "pnpm --recursive format"
   },
   "devDependencies": {

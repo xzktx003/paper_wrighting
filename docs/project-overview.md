@@ -308,16 +308,14 @@ pnpm install
 
 - 清理默认端口监听。
 - 启动后端和前端。
-- 默认开启 HTTPS。
-- 生成或复用 `.dev-runtime/certs/` 下的开发证书。
+- 默认使用 HTTP。
 - 写日志到 `.dev-runtime/server.log` 和 `.dev-runtime/web.log`。
 
 常用变量：
 
 ```bash
-WEB_PORT=3100 SERVER_PORT=4100 ./scripts/restart-dev.sh
-WEB_HTTPS=0 ./scripts/restart-dev.sh
-WEB_HTTPS_SAN='DNS:localhost,IP:127.0.0.1,IP:10.30.0.22' ./scripts/restart-dev.sh
+WEB_PORT=8484 SERVER_PORT=4100 ./scripts/restart-dev.sh
+WEB_HTTPS=1 WEB_HTTPS_SAN='DNS:localhost,IP:127.0.0.1,IP:10.30.0.22' ./scripts/restart-dev.sh
 ```
 
 ### 手动启动
@@ -336,16 +334,16 @@ pnpm --dir apps/server dev
 
 注意：
 
-- 前端默认端口 3100，后端默认端口 3200。
-- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:3100/`。
-- 推荐通过 `scripts/restart-dev.sh` 使用 HTTPS，地址形如 `https://10.30.0.22:3100/`。
+- 前端默认端口 8484，后端默认端口 4000。
+- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:8484/`。
+- `scripts/restart-dev.sh` 默认也使用 HTTP，地址形如 `http://10.30.0.22:8484/`。
 - 如果只启动前端，页面会打开，但 API、WebSocket、tmux、文件浏览器、VS Code Web 都不可用。
-- Vite 前端代理 `/api` 到 `http://localhost:3200`，代理 `/ws` 到 `ws://localhost:3200`。
+- Vite 前端代理 `/api` 到 `http://localhost:4000`，代理 `/ws` 到 `ws://localhost:4000`。
 
 ### 健康检查
 
 ```bash
-curl http://127.0.0.1:3200/api/health
+curl http://127.0.0.1:4000/api/health
 ```
 
 预期：
@@ -548,10 +546,10 @@ pnpm --dir apps/server dev
 手动 `pnpm --dir apps/web dev` 默认是 HTTP。应访问：
 
 ```text
-http://10.30.0.22:3100/
+http://10.30.0.22:8484/
 ```
 
-要 HTTPS，请用 `scripts/restart-dev.sh` 或配置 `VITE_DEV_HTTPS`、证书路径。确保后端也已启动。
+如需临时测试 HTTPS，请显式设置 `WEB_HTTPS=1` 或配置 `VITE_DEV_HTTPS`、证书路径。确保后端也已启动。
 
 ### VS Code 每次都像重新配置
 

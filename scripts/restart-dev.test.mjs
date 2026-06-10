@@ -11,6 +11,10 @@ test("restart-dev defaults to the LAN-facing 8484 frontend port", () => {
   assert.match(script, /WEB_PORT="\$\{WEB_PORT:-8484\}"/);
 });
 
+test("restart-dev defaults to HTTP for the frontend dev server", () => {
+  assert.match(script, /WEB_HTTPS="\$\{WEB_HTTPS:-0\}"/);
+});
+
 test("restart-dev detaches dev servers from the invoking shell session", () => {
   assert.match(
     script,
