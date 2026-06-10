@@ -11,7 +11,9 @@ interface MobileWorkbenchPageProps {
   activeSessionId: string | null;
   isLoading: boolean;
   sessions: AgentSessionRecord[];
+  terminalFontSize?: number;
   onSwitchSession: (id: string) => void;
+  onTerminalFontSizeChange?: (fontSize: number) => void;
 }
 
 const stateLabels: Record<string, string> = {
@@ -26,7 +28,9 @@ export function MobileWorkbenchPage({
   activeSessionId,
   isLoading,
   sessions,
+  terminalFontSize,
   onSwitchSession,
+  onTerminalFontSizeChange,
 }: MobileWorkbenchPageProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sendingInput, setSendingInput] = useState(false);
@@ -115,9 +119,11 @@ export function MobileWorkbenchPage({
             >
               <LazyTerminalView
                 agentSessionId={activeSession.id}
+                fontSize={terminalFontSize}
                 inputEnabled={false}
                 interactive
                 mobileTouchMode
+                onFontSizeChange={onTerminalFontSizeChange}
               />
             </Suspense>
           ) : (

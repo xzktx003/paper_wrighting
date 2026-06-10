@@ -128,6 +128,13 @@ if (mode === "scroll" || mode === "scroll-live") {
   process.stdin.resume();
   process.stdout.write("\u001b[?1004h");
   emit("focus-ready");
+} else if (mode === "raw") {
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+
+  process.stdin.resume();
+  emit("raw-ready");
 } else if (mode === "cpr") {
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
@@ -196,6 +203,12 @@ process.stdin.on("data", (chunk) => {
 
     const hex = Buffer.from(chunk).toString("hex");
     emit(`focus-bytes:${hex}`);
+    return;
+  }
+
+  if (mode === "raw") {
+    const hex = Buffer.from(chunk).toString("hex");
+    emit(`raw-bytes:${hex}`);
     return;
   }
 

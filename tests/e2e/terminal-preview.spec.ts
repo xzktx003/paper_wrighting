@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import type {
   AgentSessionRecord,
@@ -132,6 +132,45 @@ async function terminalWebSocketUrls(page: Page): Promise<string[]> {
         .__terminalWebSocketUrls ?? []),
     ];
   });
+}
+
+async function dragRangeToValue(
+  page: Page,
+  slider: Locator,
+  value: number,
+): Promise<void> {
+  await dragRangeToValueBeforeRelease(page, slider, value);
+  await page.mouse.up();
+}
+
+async function dragRangeToValueBeforeRelease(
+  page: Page,
+  slider: Locator,
+  value: number,
+): Promise<void> {
+  const box = await slider.boundingBox();
+  if (!box) {
+    throw new Error("Range input is not visible");
+  }
+
+  const min = Number(await slider.getAttribute("min"));
+  const max = Number(await slider.getAttribute("max"));
+  const current = Number(await slider.inputValue());
+  const valueToX = (nextValue: number) =>
+    box.x + (box.width * (nextValue - min)) / (max - min);
+  const y = box.y + box.height / 2;
+
+  await page.mouse.move(valueToX(current), y);
+  await page.mouse.down();
+  await page.mouse.move(valueToX(value), y, { steps: 8 });
+}
+
+async function focusedTerminalFontSize(page: Page): Promise<number | null> {
+  return page.locator(".focus-main-terminal .terminal-view-live").evaluate(
+    (element) =>
+      ((element as HTMLElement & { __xterm?: { options?: { fontSize?: number } } })
+        .__xterm?.options?.fontSize ?? null),
+  );
 }
 
 async function dragElementToPane(
@@ -273,6 +312,54 @@ test("preview mode toggle restores full terminal previews on demand", async ({
     .toBe("full");
 });
 
+test("grid virtualizes full terminal previews when many tmux sessions are joined", async ({
+  page,
+}) => {
+  const sessions = Array.from({ length: 30 }, (_, index) =>
+    makeSession({
+      id: `bulk-session-${index + 1}`,
+      displayName: `Bulk Session ${index + 1}`,
+      outputPreview: `bulk ${index + 1} ready`,
+      sourceType: "remote-tmux-discovered",
+      transportRef: {
+        tmuxSession: `bulk-${index + 1}`,
+      },
+    }),
+  );
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await mockSessions(page, sessions);
+  await page.goto("/");
+
+  await page.getByTestId("resource-tuning-menu-toggle").click();
+  await page.getByTestId("terminal-preview-mode-toggle").click();
+
+  const grid = page.getByTestId("agent-grid");
+  await expect(grid).toHaveAttribute("data-virtualized", "true");
+  await expect
+    .poll(async () => page.locator(".grid-card-terminal .terminal-view").count())
+    .toBeGreaterThan(0);
+
+  const initiallyMountedCards = await page.locator(".grid-card").count();
+  const initiallyMountedTerminals = await page
+    .locator(".grid-card-terminal .terminal-view")
+    .count();
+  expect(initiallyMountedCards).toBeLessThan(sessions.length);
+  expect(initiallyMountedTerminals).toBeLessThan(sessions.length);
+  expect((await terminalWebSocketUrls(page)).length).toBeLessThan(
+    sessions.length,
+  );
+
+  await grid.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+
+  await expect(
+    page.locator(".grid-card", { hasText: "Bulk Session 30" }),
+  ).toBeVisible();
+});
+
 test("VS Code preserve-state profile restores full terminal previews for running panes", async ({
   page,
 }) => {
@@ -374,6 +461,96 @@ test("focus view opens a real terminal only for the focused session", async ({
   expect(await terminalWebSocketUrls(page)).not.toContainEqual(
     expect.stringContaining("/sidebar-session/terminal"),
   );
+});
+
+test("top font-size slider adjusts the focused terminal font size", async ({
+  page,
+}) => {
+  await mockSessions(page, [
+    makeSession({
+      id: "focused-session",
+      displayName: "Focused Session",
+      outputPreview: "focused ready",
+    }),
+  ]);
+
+  await page.goto("/");
+
+  const focusedCard = page.locator(".grid-card", {
+    has: page.locator(".grid-card-name", { hasText: "Focused Session" }),
+  });
+  await expect(focusedCard).toBeVisible();
+  await focusedCard.dblclick();
+
+  await expect(
+    page.locator(".focus-main-terminal .terminal-view-live"),
+  ).toBeVisible();
+  await expect.poll(() => focusedTerminalFontSize(page)).toBe(14);
+
+  const slider = page.getByTestId("terminal-font-size-slider");
+  await expect(slider).toBeVisible();
+  await expect(slider).toHaveValue("14");
+
+  await dragRangeToValue(page, slider, 21);
+  await expect
+    .poll(async () => Number(await slider.inputValue()))
+    .toBeGreaterThan(18);
+
+  const selectedFontSize = Number(await slider.inputValue());
+  await expect.poll(() => focusedTerminalFontSize(page)).toBe(selectedFontSize);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("terminal-font-size")))
+    .toBe(String(selectedFontSize));
+});
+
+test("top font-size slider defers terminal resize until the drag is released", async ({
+  page,
+}) => {
+  await mockSessions(page, [
+    makeSession({
+      id: "deferred-font-session",
+      displayName: "Deferred Font Session",
+      outputPreview: "deferred font ready",
+    }),
+  ]);
+
+  await page.goto("/");
+
+  const focusedCard = page.locator(".grid-card", {
+    has: page.locator(".grid-card-name", { hasText: "Deferred Font Session" }),
+  });
+  await expect(focusedCard).toBeVisible();
+  await focusedCard.dblclick();
+
+  await expect(
+    page.locator(".focus-main-terminal .terminal-view-live"),
+  ).toBeVisible();
+  await expect.poll(() => focusedTerminalFontSize(page)).toBe(14);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("terminal-font-size")))
+    .toBe("14");
+
+  const slider = page.getByTestId("terminal-font-size-slider");
+  await expect(slider).toBeVisible();
+  await expect(slider).toHaveValue("14");
+
+  await dragRangeToValueBeforeRelease(page, slider, 21);
+  await expect
+    .poll(async () => Number(await slider.inputValue()))
+    .toBeGreaterThan(18);
+  const selectedFontSize = Number(await slider.inputValue());
+
+  await expect.poll(() => focusedTerminalFontSize(page)).toBe(14);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("terminal-font-size")))
+    .toBe("14");
+
+  await page.mouse.up();
+
+  await expect.poll(() => focusedTerminalFontSize(page)).toBe(selectedFontSize);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("terminal-font-size")))
+    .toBe(String(selectedFontSize));
 });
 
 test("focus monitor panes accept dragged sidebar sessions and swap dragged panes", async ({

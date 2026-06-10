@@ -23,6 +23,10 @@ import {
   shouldRepairPassiveTerminalFocus,
 } from "../lib/terminal-focus";
 import { TERMINAL_SCROLLBACK_LINES } from "../lib/terminal-history-config";
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  clampTerminalFontSize,
+} from "../lib/terminal-font-size";
 import { shouldAttemptTerminalInputForward } from "../lib/terminal-input-forwarding";
 import { stripTerminalResponsePayload } from "../lib/terminal-input";
 import { computeTerminalWheelScrollLines } from "../lib/terminal-wheel";
@@ -32,6 +36,8 @@ interface TerminalViewProps {
   interactive?: boolean;
   inputEnabled?: boolean;
   mobileTouchMode?: boolean;
+  fontSize?: number;
+  onFontSizeChange?: (fontSize: number) => void;
   suspended?: boolean;
 }
 
@@ -79,18 +85,52 @@ export function TerminalView({
   interactive = true,
   inputEnabled: inputEnabledProp,
   mobileTouchMode = false,
+  fontSize,
+  onFontSizeChange,
   suspended = false,
 }: TerminalViewProps) {
   const inputEnabled = inputEnabledProp ?? interactive;
+  const terminalFontSize = clampTerminalFontSize(
+    fontSize ??
+      (mobileTouchMode
+        ? loadMobileTerminalFontSize()
+        : DEFAULT_TERMINAL_FONT_SIZE),
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const terminalFontSizeRef = useRef(terminalFontSize);
+  const onFontSizeChangeRef = useRef(onFontSizeChange);
   const pendingResizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const inputEnabledRef = useRef(inputEnabled);
   const terminalInputReadyRef = useRef(false);
   const userScrollLockedRef = useRef(false);
+
+  useEffect(() => {
+    terminalFontSizeRef.current = terminalFontSize;
+    const term = termRef.current;
+    const fitAddon = fitRef.current;
+    if (!term || term.options.fontSize === terminalFontSize) {
+      return;
+    }
+
+    term.options.fontSize = terminalFontSize;
+    fitAddon?.fit();
+    term.refresh(0, Math.max(term.rows - 1, 0));
+
+    const frameId = window.requestAnimationFrame(() => {
+      fitRef.current?.fit();
+      term.refresh(0, Math.max(term.rows - 1, 0));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [terminalFontSize]);
+
+  useEffect(() => {
+    onFontSizeChangeRef.current = onFontSizeChange;
+  }, [onFontSizeChange]);
 
   useEffect(() => {
     inputEnabledRef.current = inputEnabled;
@@ -212,7 +252,7 @@ export function TerminalView({
       stage.style.transform = `translate(-50%, -50%) scale(${Math.max(scale, 0.01)})`;
     };
 
-    const initialFontSize = mobileTouchMode ? loadMobileTerminalFontSize() : 14;
+    const initialFontSize = terminalFontSizeRef.current;
     const term = new Terminal({
       cursorBlink: inputEnabledRef.current,
       fontSize: initialFontSize,
@@ -871,6 +911,7 @@ export function TerminalView({
           if (nextFontSize !== term.options.fontSize) {
             term.options.fontSize = nextFontSize;
             saveMobileTerminalFontSize(nextFontSize);
+            onFontSizeChangeRef.current?.(nextFontSize);
             fitTerminal();
             flushResize();
           }

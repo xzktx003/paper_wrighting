@@ -1,4 +1,10 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import path from "node:path";
 
 declare const process: {
@@ -58,7 +64,7 @@ async function waitForOutput(
 }
 
 async function createShellSessionAndFocus(
-  page: import("@playwright/test").Page,
+  page: Page,
   request: APIRequestContext,
   displayName: string,
 ): Promise<string> {
@@ -92,6 +98,61 @@ async function createShellSessionAndFocus(
   await expect(page.locator(".focus-main-name")).toContainText(displayName);
 
   return sessionId;
+}
+
+async function createCodexMockCopilotSessionAndFocus(
+  page: Page,
+  request: APIRequestContext,
+  displayName: string,
+): Promise<string> {
+  const mockPath = path.join(process.cwd(), "scripts/mock-copilot-cli.mjs");
+  const launchResponse = await request.post(backendPath("/api/agent-launch/pty"), {
+    data: {
+      workspaceId: "default",
+      displayName,
+      agentKind: "codex",
+      workingDirectory: process.cwd(),
+      command: `node ${JSON.stringify(mockPath)}`,
+    },
+  });
+  expect(launchResponse.ok()).toBeTruthy();
+  const launchedSession = (await launchResponse.json()) as { id: string };
+
+  await page.goto("/");
+
+  const gridCard = page.locator(".grid-card", {
+    has: page.locator(".grid-card-name", { hasText: displayName }),
+  });
+  await expect(gridCard).toBeVisible({ timeout: 15000 });
+
+  await gridCard.dblclick();
+  await expect(page.locator(".focus-main-name")).toContainText(displayName);
+  await waitForOutput(request, launchedSession.id, "copilot-mock-ready");
+
+  return launchedSession.id;
+}
+
+async function dragRangeToValue(
+  page: Page,
+  slider: Locator,
+  value: number,
+): Promise<void> {
+  const box = await slider.boundingBox();
+  if (!box) {
+    throw new Error("Range input is not visible");
+  }
+
+  const min = Number(await slider.getAttribute("min"));
+  const max = Number(await slider.getAttribute("max"));
+  const current = Number(await slider.inputValue());
+  const valueToX = (nextValue: number) =>
+    box.x + (box.width * (nextValue - min)) / (max - min);
+  const y = box.y + box.height / 2;
+
+  await page.mouse.move(valueToX(current), y);
+  await page.mouse.down();
+  await page.mouse.move(valueToX(value), y, { steps: 8 });
+  await page.mouse.up();
 }
 
 async function startMockCopilotInSession(
@@ -131,6 +192,40 @@ test("kanban terminal lets the user type into a Copilot-like TUI immediately aft
     await page.keyboard.type("hello");
     await page.keyboard.press("Enter");
     await waitForOutput(request, sessionId, "copilot-mock-line:hello");
+  } finally {
+    if (sessionId) {
+      await request.delete(backendPath(`/api/agent-sessions/${sessionId}`));
+    }
+  }
+});
+
+test("kanban terminal keeps Codex-like TUI input working after dragging the font-size slider", async ({
+  page,
+  request,
+}) => {
+  const displayName = `E2E Codex Font Slider ${Date.now()}`;
+  let sessionId: string | undefined;
+
+  try {
+    sessionId = await createCodexMockCopilotSessionAndFocus(
+      page,
+      request,
+      displayName,
+    );
+
+    await page.keyboard.type("before");
+    await page.keyboard.press("Enter");
+    await waitForOutput(request, sessionId, "copilot-mock-line:before");
+
+    const slider = page.getByTestId("terminal-font-size-slider");
+    await expect(slider).toBeVisible();
+    await dragRangeToValue(page, slider, 21);
+
+    // No extra terminal click: releasing the range input must restore the
+    // active terminal so normal typing still reaches Codex-like TUIs.
+    await page.keyboard.type("after");
+    await page.keyboard.press("Enter");
+    await waitForOutput(request, sessionId, "copilot-mock-line:after");
   } finally {
     if (sessionId) {
       await request.delete(backendPath(`/api/agent-sessions/${sessionId}`));

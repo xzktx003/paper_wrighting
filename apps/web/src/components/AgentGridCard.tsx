@@ -17,6 +17,8 @@ interface AgentGridCardProps {
   onKillTmux?: (id: string) => void;
   terminalSuspended?: boolean;
   useLightweightTerminalPreview?: boolean;
+  terminalFontSize?: number;
+  onTerminalFontSizeChange?: (fontSize: number) => void;
 }
 
 const stateLabels: Record<string, string> = {
@@ -62,6 +64,8 @@ export function AgentGridCard({
   onKillTmux,
   terminalSuspended = false,
   useLightweightTerminalPreview = true,
+  terminalFontSize,
+  onTerminalFontSizeChange,
 }: AgentGridCardProps) {
   const stateClass = stateColors[session.interactionState] ?? "";
   const stateLabel =
@@ -176,6 +180,8 @@ export function AgentGridCard({
             <LazyTerminalView
               agentSessionId={session.id}
               interactive={false}
+              fontSize={terminalFontSize}
+              onFontSizeChange={onTerminalFontSizeChange}
               suspended={terminalSuspended}
             />
           </Suspense>

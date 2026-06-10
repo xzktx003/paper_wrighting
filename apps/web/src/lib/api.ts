@@ -51,13 +51,21 @@ function normalizeHttpBaseUrl(value: string): string {
 function normalizeWsBaseUrl(value: string): string {
   const withoutAgentSessions = value.replace(/\/ws\/agent-sessions\/?$/, "");
   const url = new URL(withoutAgentSessions, window.location.origin);
-  url.protocol = "ws:";
+  if (url.protocol === "https:") {
+    url.protocol = "wss:";
+  } else if (url.protocol === "http:") {
+    url.protocol = "ws:";
+  }
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");
 }
 
 const apiBaseUrl = normalizeHttpBaseUrl(rawApiBaseUrl);
+
+function defaultWebSocketProtocol(): "ws:" | "wss:" {
+  return window.location.protocol === "https:" ? "wss:" : "ws:";
+}
 
 function wsBase(): string {
   if (viteEnv.VITE_API_WS_URL) {
@@ -66,13 +74,13 @@ function wsBase(): string {
 
   if (apiBaseUrl) {
     const httpUrl = new URL(apiBaseUrl, window.location.origin);
-    httpUrl.protocol = "ws:";
+    httpUrl.protocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
     httpUrl.search = "";
     httpUrl.hash = "";
     return httpUrl.toString().replace(/\/$/, "");
   }
 
-  return `ws://${window.location.host}`;
+  return `${defaultWebSocketProtocol()}//${window.location.host}`;
 }
 
 function buildWebSocketUrl(): string {

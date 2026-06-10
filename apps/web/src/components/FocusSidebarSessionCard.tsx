@@ -19,6 +19,8 @@ interface FocusSidebarSessionCardProps {
     event: React.MouseEvent<HTMLDivElement>,
   ) => void;
   useLightweightTerminalPreview?: boolean;
+  terminalFontSize?: number;
+  onTerminalFontSizeChange?: (fontSize: number) => void;
 }
 
 const stateLabels: Record<string, string> = {
@@ -37,6 +39,8 @@ export function FocusSidebarSessionCard({
   onDragEnd,
   onContextMenu,
   useLightweightTerminalPreview = true,
+  terminalFontSize,
+  onTerminalFontSizeChange,
 }: FocusSidebarSessionCardProps) {
   return (
     <div
@@ -76,7 +80,12 @@ export function FocusSidebarSessionCard({
           <Suspense
             fallback={<TerminalPreview session={session} variant="sidebar" />}
           >
-            <LazyTerminalView agentSessionId={session.id} interactive={false} />
+            <LazyTerminalView
+              agentSessionId={session.id}
+              fontSize={terminalFontSize}
+              interactive={false}
+              onFontSizeChange={onTerminalFontSizeChange}
+            />
           </Suspense>
         )}
       </div>

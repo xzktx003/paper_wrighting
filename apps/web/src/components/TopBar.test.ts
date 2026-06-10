@@ -54,12 +54,14 @@ function renderTopBar(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
       vscodeIframeCacheMode: "memory-saving",
       vscodeCacheReleaseAvailable: false,
       useLightweightTerminalPreview: true,
+      terminalFontSize: 16,
       onToggleCollapsed: () => {},
       onToggleFileBrowser: () => {},
       onToggleVsCode: () => {},
       onToggleVsCodeIframeCacheMode: () => {},
       onReleaseVsCodeIframeCache: () => {},
       onToggleTerminalPreviewMode: () => {},
+      onTerminalFontSizeChange: () => {},
       onOpenNewSession: () => {},
       onScanTmux: () => {},
       onScanApps: () => {},
@@ -79,6 +81,9 @@ describe("TopBar", () => {
     assert.match(markup, /data-testid="scan-menu-toggle"/);
     assert.match(markup, /data-testid="tools-menu-toggle"/);
     assert.match(markup, /data-testid="resource-tuning-menu-toggle"/);
+    assert.match(markup, /data-testid="terminal-font-size-slider"/);
+    assert.match(markup, /aria-label="终端字号"/);
+    assert.match(markup, /value="16"/);
     assert.match(markup, /data-testid="file-browser-toggle"/);
     assert.match(markup, /data-testid="vscode-toggle"/);
     assert.doesNotMatch(markup, /VS Code 省内存/);

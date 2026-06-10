@@ -13,6 +13,9 @@ const TERMINAL_INPUT_PATTERNS = [
   /\u001b\]4;\d+;rgb:(?:[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}\/[0-9a-fA-F]{2}|[0-9a-fA-F]{4}\/[0-9a-fA-F]{4}\/[0-9a-fA-F]{4})(?:\u0007|\u001b\\)/g,
 ];
 
+const TERMINAL_MOUSE_PAYLOAD_PATTERN =
+  /^(?:(?:\u001b\[<\d+;\d+;\d+[mM])|(?:\u001b\[\d+;\d+;\d+M)|(?:\u001b\[M[\s\S]{3}))+$/;
+
 function stripPatterns(text: string, patterns: RegExp[]): string {
   return patterns.reduce(
     (sanitized, pattern) => sanitized.replace(pattern, ""),
@@ -34,4 +37,8 @@ export function sanitizeReplayForTerminal(data: string): string {
 // OSC color queries with rgb payloads that should not be echoed into stdin.
 export function stripTerminalResponsePayload(payload: string): string {
   return stripPatterns(payload, TERMINAL_INPUT_PATTERNS);
+}
+
+export function isTerminalMousePayload(payload: string): boolean {
+  return TERMINAL_MOUSE_PAYLOAD_PATTERN.test(payload);
 }

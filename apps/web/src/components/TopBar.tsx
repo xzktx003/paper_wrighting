@@ -17,7 +17,13 @@ import {
   getResourceDiagnosticsSnapshot,
   type ResourceDiagnosticsSnapshot,
 } from "../lib/resource-diagnostics";
+import {
+  clampTerminalFontSize,
+  MAX_TERMINAL_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
+} from "../lib/terminal-font-size";
 import { TERMINAL_SCROLLBACK_LINES } from "../lib/terminal-history-config";
+import { focusActiveTerminalTextarea } from "../lib/terminal-focus";
 import type { VsCodeIframeCacheMode } from "../lib/vscode-cache";
 
 import { HostDropdown, type SelectedHost } from "./HostDropdown";
@@ -160,12 +166,14 @@ interface TopBarProps {
   vscodeIframeCacheMode: VsCodeIframeCacheMode;
   vscodeCacheReleaseAvailable: boolean;
   useLightweightTerminalPreview: boolean;
+  terminalFontSize: number;
   onToggleCollapsed: () => void;
   onToggleFileBrowser: () => void;
   onToggleVsCode: () => void;
   onToggleVsCodeIframeCacheMode: () => void;
   onReleaseVsCodeIframeCache: () => void;
   onToggleTerminalPreviewMode: () => void;
+  onTerminalFontSizeChange: (fontSize: number) => void;
   onOpenNewSession: (host: SelectedHost) => void;
   onScanTmux: (host: SelectedHost) => void;
   onScanApps: (host: SelectedHost) => void;
@@ -182,12 +190,14 @@ export function TopBar({
   vscodeIframeCacheMode,
   vscodeCacheReleaseAvailable,
   useLightweightTerminalPreview,
+  terminalFontSize,
   onToggleCollapsed,
   onToggleFileBrowser,
   onToggleVsCode,
   onToggleVsCodeIframeCacheMode,
   onReleaseVsCodeIframeCache,
   onToggleTerminalPreviewMode,
+  onTerminalFontSizeChange,
   onOpenNewSession,
   onScanTmux,
   onScanApps,
@@ -203,6 +213,10 @@ export function TopBar({
     useState<VsCodeWebProxyDiagnosticsResponse | null>(null);
   const [terminalHistoryDiagnostics, setTerminalHistoryDiagnostics] =
     useState<TerminalHistoryDiagnosticsResponse | null>(null);
+  const [draftTerminalFontSize, setDraftTerminalFontSize] =
+    useState(terminalFontSize);
+  const [isDraggingTerminalFontSize, setIsDraggingTerminalFontSize] =
+    useState(false);
   const [isFullscreen, setIsFullscreen] = useState(
     Boolean(document.fullscreenElement),
   );
@@ -275,6 +289,32 @@ export function TopBar({
     setShowHints(false);
     setShowDiagnostics(false);
   };
+
+  useEffect(() => {
+    if (!isDraggingTerminalFontSize) {
+      setDraftTerminalFontSize(terminalFontSize);
+    }
+  }, [isDraggingTerminalFontSize, terminalFontSize]);
+
+  const commitTerminalFontSize = useCallback(
+    (value: number) => {
+      const nextFontSize = clampTerminalFontSize(value);
+      setIsDraggingTerminalFontSize(false);
+      setDraftTerminalFontSize(nextFontSize);
+      if (nextFontSize !== terminalFontSize) {
+        onTerminalFontSizeChange(nextFontSize);
+      }
+    },
+    [onTerminalFontSizeChange, terminalFontSize],
+  );
+
+  const commitTerminalFontSizeFromPointer = useCallback(
+    (value: number) => {
+      commitTerminalFontSize(value);
+      focusActiveTerminalTextarea();
+    },
+    [commitTerminalFontSize],
+  );
 
   const closeMenus = () => {
     setOpenMenu(null);
@@ -454,6 +494,44 @@ export function TopBar({
           </button>
         </div>
         <div className="top-bar-secondary-actions">
+          <label
+            className="top-bar-terminal-font-control"
+            title="调整所有内置终端的字体大小"
+          >
+            <span>终端字号</span>
+            <input
+              aria-label="终端字号"
+              data-testid="terminal-font-size-slider"
+              max={MAX_TERMINAL_FONT_SIZE}
+              min={MIN_TERMINAL_FONT_SIZE}
+              onBlur={(event) =>
+                commitTerminalFontSize(Number(event.currentTarget.value))
+              }
+              onChange={(event) =>
+                setDraftTerminalFontSize(
+                  clampTerminalFontSize(Number(event.currentTarget.value)),
+                )
+              }
+              onKeyUp={(event) =>
+                commitTerminalFontSize(Number(event.currentTarget.value))
+              }
+              onPointerCancel={(event) =>
+                commitTerminalFontSizeFromPointer(
+                  Number(event.currentTarget.value),
+                )
+              }
+              onPointerDown={() => setIsDraggingTerminalFontSize(true)}
+              onPointerUp={(event) =>
+                commitTerminalFontSizeFromPointer(
+                  Number(event.currentTarget.value),
+                )
+              }
+              step={1}
+              type="range"
+              value={draftTerminalFontSize}
+            />
+            <strong>{draftTerminalFontSize}px</strong>
+          </label>
           <div className="top-bar-menu">
             <button
               aria-controls="top-bar-tools-menu"

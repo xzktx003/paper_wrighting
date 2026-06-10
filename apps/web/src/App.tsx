@@ -59,6 +59,11 @@ import {
   loadTerminalPreviewLightweightMode,
   saveTerminalPreviewLightweightMode,
 } from "./lib/terminal-preview-mode";
+import {
+  clampTerminalFontSize,
+  loadTerminalFontSize,
+  saveTerminalFontSize,
+} from "./lib/terminal-font-size";
 import { shouldEnableMobileTerminalTouchMode } from "./lib/mobile-terminal-mode";
 import { isMobileWorkbenchLocation } from "./lib/mobile-workbench-route";
 import {
@@ -361,6 +366,8 @@ export default function App() {
   });
   const [useLightweightTerminalPreview, setUseLightweightTerminalPreview] =
     useState(loadTerminalPreviewLightweightMode);
+  const [terminalFontSize, setTerminalFontSize] =
+    useState(loadTerminalFontSize);
   const [vscodeIframeCacheMode, setVscodeIframeCacheMode] =
     useState<VsCodeIframeCacheMode>(loadVsCodeIframeCacheMode);
   const [mobileTerminalTouchMode, setMobileTerminalTouchMode] = useState(
@@ -433,6 +440,10 @@ export default function App() {
   useEffect(() => {
     saveTerminalPreviewLightweightMode(useLightweightTerminalPreview);
   }, [useLightweightTerminalPreview]);
+
+  useEffect(() => {
+    saveTerminalFontSize(terminalFontSize);
+  }, [terminalFontSize]);
 
   useEffect(() => {
     saveVsCodeIframeCacheMode(vscodeIframeCacheMode);
@@ -804,6 +815,10 @@ export default function App() {
     }
   }
 
+  const handleTerminalFontSizeChange = useCallback((fontSize: number) => {
+    setTerminalFontSize(clampTerminalFontSize(fontSize));
+  }, []);
+
   function handleReleaseVsCodeIframeCache() {
     setVscodeCacheSessionIds(retainedVsCodeSessionIds);
   }
@@ -978,7 +993,9 @@ export default function App() {
         activeSessionId={mobileActiveSessionId}
         isLoading={isLoading}
         sessions={sessions}
+        terminalFontSize={terminalFontSize}
         onSwitchSession={handleMobileSwitchSession}
+        onTerminalFontSizeChange={handleTerminalFontSizeChange}
       />
     );
   }
@@ -996,6 +1013,7 @@ export default function App() {
         vscodeIframeCacheMode={vscodeIframeCacheMode}
         vscodeCacheReleaseAvailable={vscodeCacheReleaseAvailable}
         useLightweightTerminalPreview={useLightweightTerminalPreview}
+        terminalFontSize={terminalFontSize}
         onToggleCollapsed={() =>
           updateLayout({ topbarCollapsed: !layoutState.topbarCollapsed })
         }
@@ -1046,6 +1064,7 @@ export default function App() {
         onToggleTerminalPreviewMode={() =>
           setUseLightweightTerminalPreview((current) => !current)
         }
+        onTerminalFontSizeChange={handleTerminalFontSizeChange}
         onOpenNewSession={setNewSessionHost}
         onScanTmux={handleScanTmux}
         onScanApps={handleScanApps}
@@ -1174,6 +1193,8 @@ export default function App() {
               onRename={handleRenameSession}
               useLightweightTerminalPreview={useLightweightTerminalPreview}
               mobileTerminalTouchMode={mobileTerminalTouchMode}
+              terminalFontSize={terminalFontSize}
+              onTerminalFontSizeChange={handleTerminalFontSizeChange}
             />
           ) : (
             <AgentGrid
@@ -1191,6 +1212,8 @@ export default function App() {
               hiddenCount={hiddenSessions.length}
               onShowHidden={() => setShowHiddenDrawer(true)}
               useLightweightTerminalPreview={useLightweightTerminalPreview}
+              terminalFontSize={terminalFontSize}
+              onTerminalFontSizeChange={handleTerminalFontSizeChange}
             />
           )}
         </div>

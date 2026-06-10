@@ -12,7 +12,11 @@ import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 import { FocusSidebarSessionCard } from "./FocusSidebarSessionCard";
 import { LazyTerminalView } from "./LazyTerminalView";
 import { TerminalPreview } from "./TerminalPreview";
-import { shouldActivateTerminalPaneFromPointer } from "../lib/terminal-focus";
+import {
+  focusActiveTerminalTextarea,
+  getActiveTerminalTextarea,
+  shouldActivateTerminalPaneFromPointer,
+} from "../lib/terminal-focus";
 import {
   TERMINAL_MONITOR_LAYOUT_OPTIONS,
   areTerminalMonitorSlotsEqual,
@@ -46,6 +50,8 @@ interface AgentFocusViewProps {
   onRename?: (id: string) => void;
   mobileTerminalTouchMode?: boolean;
   useLightweightTerminalPreview?: boolean;
+  terminalFontSize?: number;
+  onTerminalFontSizeChange?: (fontSize: number) => void;
 }
 
 const stateLabels: Record<string, string> = {
@@ -162,6 +168,8 @@ export function AgentFocusView({
   onRename,
   mobileTerminalTouchMode = false,
   useLightweightTerminalPreview = true,
+  terminalFontSize,
+  onTerminalFontSizeChange,
 }: AgentFocusViewProps) {
   const visibleSessions = useMemo(
     () => sessions.filter((session) => !session.hidden),
@@ -352,18 +360,6 @@ export function AgentFocusView({
     focusedSession.id,
     terminalLayoutMode,
   ]);
-
-  function getActiveTerminalTextarea(): HTMLTextAreaElement | null {
-    return document.querySelector(
-      '[data-active-terminal-pane="true"] .xterm-helper-textarea',
-    ) as HTMLTextAreaElement | null;
-  }
-
-  function focusActiveTerminalTextarea(): void {
-    getActiveTerminalTextarea()?.focus();
-    window.requestAnimationFrame(() => getActiveTerminalTextarea()?.focus());
-    window.setTimeout(() => getActiveTerminalTextarea()?.focus(), 0);
-  }
 
   useEffect(() => {
     const active = document.activeElement as HTMLElement | null;
@@ -1124,9 +1120,11 @@ export function AgentFocusView({
                         <LazyTerminalView
                           key={session.id}
                           agentSessionId={session.id}
+                          fontSize={terminalFontSize}
                           interactive={true}
                           inputEnabled={isActiveInputPane}
                           mobileTouchMode={mobileTerminalTouchMode}
+                          onFontSizeChange={onTerminalFontSizeChange}
                         />
                       </Suspense>
                     ) : (
@@ -1166,6 +1164,8 @@ export function AgentFocusView({
                   onRename={onRename}
                   onSwitchFocus={handleSidebarSwitchFocus}
                   useLightweightTerminalPreview={useLightweightTerminalPreview}
+                  terminalFontSize={terminalFontSize}
+                  onTerminalFontSizeChange={onTerminalFontSizeChange}
                 />
               ))}
             </div>

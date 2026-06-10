@@ -168,6 +168,36 @@ input {
   flex: 0 0 auto;
 }
 
+.top-bar-terminal-font-control {
+  display: inline-grid;
+  grid-template-columns: auto minmax(76px, 112px) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(244, 241, 234, 0.72);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.top-bar-terminal-font-control input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  accent-color: #f6b26b;
+  cursor: ew-resize;
+}
+
+.top-bar-terminal-font-control strong {
+  color: #ffd1a1;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .top-bar-hints-popover {
   position: absolute;
   top: calc(100% + 8px);
@@ -1084,6 +1114,38 @@ input {
   flex: 1;
   overflow: auto;
   padding-bottom: 2px;
+}
+
+.agent-grid--virtualized {
+  display: block;
+  position: relative;
+  contain: layout paint style;
+}
+
+.agent-grid-virtual-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.agent-grid-virtual-window {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: grid;
+  align-items: stretch;
+  will-change: transform;
+}
+
+.agent-grid--virtualized .grid-card {
+  height: var(--agent-grid-card-height, 240px);
+  min-height: var(--agent-grid-card-height, 240px);
+  contain: layout paint;
+  animation: none;
+}
+
+.agent-grid--virtualized .grid-card-terminal {
+  min-height: 0;
 }
 
 .grid-empty {

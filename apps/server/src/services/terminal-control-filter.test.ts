@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isTerminalMousePayload,
   sanitizeReplayForTerminal,
   stripTerminalResponsePayload,
 } from "./terminal-control-filter.js";
@@ -37,6 +38,15 @@ test("keep DSR replies intact so TUIs receive their status answers", () => {
   const sanitized = stripTerminalResponsePayload("\u001b[0n");
 
   assert.equal(sanitized, "\u001b[0n");
+});
+
+test("identify xterm mouse reports that must enter tmux through the attached PTY", () => {
+  assert.equal(isTerminalMousePayload("\u001b[<0;12;8M"), true);
+  assert.equal(isTerminalMousePayload("\u001b[<0;12;8m"), true);
+  assert.equal(isTerminalMousePayload("\u001b[M !!"), true);
+  assert.equal(isTerminalMousePayload("\u001b[A"), false);
+  assert.equal(isTerminalMousePayload("\u001b[12;42R"), false);
+  assert.equal(isTerminalMousePayload("whoami"), false);
 });
 
 test("strip OSC color-query replies so shell prompts do not echo rgb payload noise", () => {

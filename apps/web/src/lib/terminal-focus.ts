@@ -32,6 +32,18 @@ interface TerminalPanePointerActivationOptions {
   pointerType: string;
 }
 
+export function getActiveTerminalTextarea(): HTMLTextAreaElement | null {
+  return document.querySelector(
+    '[data-active-terminal-pane="true"] .xterm-helper-textarea',
+  ) as HTMLTextAreaElement | null;
+}
+
+export function focusActiveTerminalTextarea(): void {
+  getActiveTerminalTextarea()?.focus();
+  window.requestAnimationFrame(() => getActiveTerminalTextarea()?.focus());
+  window.setTimeout(() => getActiveTerminalTextarea()?.focus(), 0);
+}
+
 export function shouldActivateTerminalPaneFromPointer(
   options: TerminalPanePointerActivationOptions,
 ): boolean {

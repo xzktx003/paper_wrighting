@@ -1364,6 +1364,98 @@ test("browser: tmux 终端会转发鼠标二进制事件", async ({ page, reques
   }
 });
 
+test("browser: tmux mouse clicks are handled by tmux instead of leaking escape bytes into the pane", async ({
+  page,
+  request,
+}) => {
+  const sessionName = `e2e-tmux-mouse-routing-${Date.now()}`;
+  const displayName = `E2E Tmux Mouse Routing ${Date.now()}`;
+
+  let launchedSessionId: string | undefined;
+
+  killTmuxSession(sessionName);
+
+  try {
+    runTmux([
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      process.cwd(),
+      "node ./scripts/mock-terminal-agent.mjs raw",
+    ]);
+    runTmux(["set-option", "-t", sessionName, "mouse", "on"]);
+
+    const launchResponse = await request.post(
+      backendPath("/api/agent-launch/pty"),
+      {
+        data: {
+          workspaceId: "default",
+          displayName,
+          agentKind: "copilot",
+          command: `tmux attach -t '${sessionName}'`,
+          workingDirectory: process.cwd(),
+          tmuxSessionName: sessionName,
+        },
+      },
+    );
+
+    expect(launchResponse.ok()).toBeTruthy();
+    launchedSessionId = (await launchResponse.json()).id;
+    await waitForSessionInList(request, launchedSessionId!);
+
+    await page.goto("/");
+    await ensureGridMode(page);
+
+    const card = page.locator(".grid-card", {
+      has: page.locator(".grid-card-name", { hasText: displayName }),
+    });
+    await expect(card).toBeVisible({ timeout: 15000 });
+
+    await card.dblclick();
+
+    const terminal = page.locator(".focus-main .terminal-view");
+    const screen = page.locator(".focus-main .terminal-view .xterm-screen");
+    await expect(terminal).toBeVisible({ timeout: 15000 });
+    await expect(screen).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(() => tmuxPaneContainsText(sessionName, "raw-ready"))
+      .toBeTruthy();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const terminal = document.querySelector(
+            ".focus-main .terminal-view",
+          ) as
+            | (HTMLDivElement & {
+                __xterm?: {
+                  modes?: {
+                    mouseTrackingMode?: string;
+                  };
+                };
+              })
+            | null;
+
+          return terminal?.__xterm?.modes?.mouseTrackingMode ?? "none";
+        }),
+      )
+      .not.toBe("none");
+
+    await screen.click({ position: { x: 90, y: 50 } });
+    await page.waitForTimeout(300);
+
+    expect(tmuxPaneContainsText(sessionName, "raw-bytes:")).toBeFalsy();
+  } finally {
+    if (launchedSessionId) {
+      await request.delete(
+        backendPath(`/api/agent-sessions/${launchedSessionId}`),
+      );
+    }
+    killTmuxSession(sessionName);
+  }
+});
+
 test("browser: 切回浏览器窗口后会恢复 tmux 输入焦点", async ({
   page,
   request,
