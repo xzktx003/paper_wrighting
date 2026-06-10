@@ -1,9 +1,9 @@
-import { resolve } from 'node:path';
+import { resolve } from "node:path";
 
-import { config as loadDotenv } from 'dotenv';
+import { config as loadDotenv } from "dotenv";
 
-const defaultWebPort = '3100';
-const defaultServerPort = '3200';
+const defaultWebPort = "8484";
+const defaultServerPort = "4000";
 
 function validatePort(value, name) {
   const port = Number(value);
@@ -16,7 +16,7 @@ function validatePort(value, name) {
 
 export function loadRootEnv(cwd = process.cwd()) {
   loadDotenv({
-    path: resolve(cwd, '.env'),
+    path: resolve(cwd, ".env"),
     override: false,
   });
 }
@@ -26,10 +26,10 @@ export function resolvePortDefaults(env) {
   const serverPort = env.SERVER_PORT?.trim() || defaultServerPort;
 
   if (env.WEB_PORT?.trim()) {
-    validatePort(webPort, 'WEB_PORT');
+    validatePort(webPort, "WEB_PORT");
   }
   if (env.SERVER_PORT?.trim()) {
-    validatePort(serverPort, 'SERVER_PORT');
+    validatePort(serverPort, "SERVER_PORT");
   }
 
   return {

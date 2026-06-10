@@ -28,8 +28,8 @@ function parsePort(
 export function resolveWebDevConfig(
   env: Record<string, string | undefined>,
 ): WebDevConfig {
-  const webPort = parsePort(env.WEB_PORT, 3100, "WEB_PORT");
-  const serverPort = parsePort(env.SERVER_PORT, 3200, "SERVER_PORT");
+  const webPort = parsePort(env.WEB_PORT, 8484, "WEB_PORT");
+  const serverPort = parsePort(env.SERVER_PORT, 4000, "SERVER_PORT");
 
   return {
     webPort,

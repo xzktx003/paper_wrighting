@@ -20,7 +20,7 @@ export const DEFAULT_TERMINAL_REGISTRY_OUTPUT_ENTRIES = 5_000;
 function parsePort(value: string | undefined): number {
   const normalized = value?.trim();
   if (!normalized) {
-    return 3200;
+    return 4000;
   }
 
   const parsed = Number(normalized);

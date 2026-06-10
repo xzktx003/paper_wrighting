@@ -134,7 +134,7 @@ cp .env.example .env
 | `HOST`                            | 后端 Fastify 监听地址             | `0.0.0.0`                                |
 | `PORT`                            | 后端 REST + WebSocket 端口        | `4000`                                   |
 | `WEB_HOST`                        | Vite 前端监听地址                 | `0.0.0.0`                                |
-| `WEB_PORT`                        | Vite 前端端口                     | `3000`                                   |
+| `WEB_PORT`                        | Vite 前端端口                     | `8484`                                   |
 | `WEB_BACKEND_HOST`                | 前端代理到后端的主机              | `localhost`                              |
 | `WEB_BACKEND_PORT`                | 前端代理到后端的端口              | `4000`                                   |
 | `FILE_BROWSER_DEFAULT_LOCAL_PATH` | 文件浏览器默认本地目录            | 自动探测仓库根目录                       |
@@ -148,8 +148,8 @@ cp .env.example .env
 
 - `.env` 会被 git 忽略，适合写本机端口、路径和主机配置。
 - `scripts/restart-dev.sh` 会读取 `.env`。
-- 如果没有 `.env`，`restart-dev.sh` 自身默认前端 `3100`、后端 `3200`。
-- 如果直接复制 `.env.example`，其中 `WEB_PORT=3000`、`PORT=4000` 会覆盖脚本默认值。
+- 如果没有 `.env`，`restart-dev.sh` 自身默认前端 `8484`、后端 `4000`。
+- 如果直接复制 `.env.example`，其中 `WEB_PORT=8484`、`PORT=4000` 会保持脚本默认端口。
 
 ### 推荐启动方式
 
@@ -168,7 +168,7 @@ cp .env.example .env
 从手机或同网段机器访问，使用脚本输出的 `Network` 地址，例如：
 
 ```text
-http://10.30.0.22:3100
+http://10.30.0.22:8484
 ```
 
 ### 备用启动方式
@@ -187,7 +187,7 @@ pnpm --filter web dev
 健康检查：
 
 ```bash
-curl http://127.0.0.1:3200/api/health
+curl http://127.0.0.1:4000/api/health
 ```
 
 如果你用 `.env` 改了端口，请替换成实际后端端口。
@@ -426,7 +426,7 @@ sudo npx playwright install-deps
 
 ```bash
 ./scripts/restart-dev.sh
-curl http://127.0.0.1:3200/api/health
+curl http://127.0.0.1:4000/api/health
 ```
 
 如果复制了 `.env.example`，后端端口可能是 `4000`。如果你使用自己的 `.env`，请按实际 `PORT` 检查。

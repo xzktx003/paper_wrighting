@@ -12,7 +12,7 @@ import {
 test("uses repo defaults when HOST and SERVER_PORT are unset", () => {
   assert.deepEqual(resolveServerRuntimeConfig({}), {
     host: "0.0.0.0",
-    port: 3200,
+    port: 4000,
     terminalRegistryOutputEntries: DEFAULT_TERMINAL_REGISTRY_OUTPUT_ENTRIES,
     terminalScrollbackBytes: DEFAULT_TERMINAL_SCROLLBACK_BYTES,
     terminalTmuxCaptureLines: DEFAULT_TERMINAL_TMUX_CAPTURE_LINES,

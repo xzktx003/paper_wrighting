@@ -309,7 +309,7 @@ pnpm install
 常用变量：
 
 ```bash
-WEB_PORT=3100 SERVER_PORT=4100 ./scripts/restart-dev.sh
+WEB_PORT=8484 SERVER_PORT=4100 ./scripts/restart-dev.sh
 ```
 
 ### 手动启动
@@ -328,16 +328,16 @@ pnpm --dir apps/server dev
 
 注意：
 
-- 前端默认端口 3100，后端默认端口 3200。
-- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:3100/`。
-- 前端使用 HTTP 协议，地址为 `http://10.30.0.22:3100/`。
+- 前端默认端口 8484，后端默认端口 4000。
+- 手动启动前端默认是 HTTP，访问 `http://10.30.0.22:8484/`。
+- 前端使用 HTTP 协议，地址为 `http://10.30.0.22:8484/`。
 - 如果只启动前端，页面会打开，但 API、WebSocket、tmux、文件浏览器、VS Code Web 都不可用。
-- Vite 前端代理 `/api` 到 `http://localhost:3200`，代理 `/ws` 到 `ws://localhost:3200`。
+- Vite 前端代理 `/api` 到 `http://localhost:4000`，代理 `/ws` 到 `ws://localhost:4000`。
 
 ### 健康检查
 
 ```bash
-curl http://127.0.0.1:3200/api/health
+curl http://127.0.0.1:4000/api/health
 ```
 
 预期：
@@ -525,7 +525,7 @@ UI 和 API 应围绕 `AgentSessionRecord` 工作。不要让 terminal id、tmux 
 确认后端是否启动：
 
 ```bash
-curl http://127.0.0.1:3200/api/health
+curl http://127.0.0.1:4000/api/health
 ```
 
 如果失败，启动：
@@ -539,7 +539,7 @@ pnpm --dir apps/server dev
 手动 `pnpm --dir apps/web dev` 默认是 HTTP。应访问：
 
 ```text
-http://10.30.0.22:3100/
+http://10.30.0.22:8484/
 ```
 
 确保后端也已启动。
