@@ -79,3 +79,4 @@
 - Paper Writer 8787 服务停掉后无法重启，前端完全打不开：根因是当前运行目录缺失 `app/apps/backend/src` 与 ESM `package.json`，且 LLM 配置未落到后端读取的本地 `.env`，服务启动时先因源码缺失/恢复噪音失败，随后因空 API key 退出；修复为从 coverage 产物恢复后端源码、清理 Istanbul 标记、补 backend ESM package，并把本机配置同步到被 git 忽略的 `app/apps/backend/.env` 后后台启动。
 - tmux 扫描弹层上的滚轮误滚后方单屏终端：TerminalView document-level wheel 兜底按坐标命中终端，未排除 discovery overlay。修复为 wheel 目标在 `.discovery-overlay` 内时跳过终端兜底，让扫描结果列表正常滚动。
 - `restart-dev.sh` 返回成功后服务端口断开：普通 `nohup` 未稳定脱离调用 session，且前端默认端口与文档/期望不一致。修复为 `setsid ... < /dev/null` 后台启动前后端，前端默认 `8484`，并把 `WEB_BACKEND_HOST/WEB_BACKEND_PORT` 显式传给 Vite。
+- 多屏切换已打开 Codex 的 tmux/PTY 终端后出现 `[I`/`[O` 与方向键字面量 `OA`/`OB`/`OC`/`OD`：active PTY replay 不应重放终端输入模式开关；本地 tmux 路径要让 focus/mouse report 走 attached PTY，并把 application-cursor 箭头 `ESC OA/B/C/D` 映射成 tmux 方向键，不能用 send-keys 字面量注入 pane。

@@ -135,6 +135,10 @@ if (mode === "scroll" || mode === "scroll-live") {
 
   process.stdin.resume();
   emit("raw-ready");
+} else if (mode === "mode-replay") {
+  process.stdout.write(
+    "before\u001b[?1004hfocus\u001b[?1hcursor\u001b[?1000;1006hmouse\u001b[?2004hpaste\u001b=keypad\u001b>normal__MODE_REPLAY_READY__\n",
+  );
 } else if (mode === "cpr") {
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);

@@ -1,4 +1,6 @@
 const TERMINAL_REPLAY_PATTERNS = [
+  /\u001b\[\?[\d;]*[hl]/g,
+  /\u001b[=>]/g,
   /\u001b\[(?:[?>])?[\d;]*c/g,
   /\u001b\[\??[\d;]*n/g,
   /\u001b\[\??[\d;]*R/g,
@@ -15,6 +17,7 @@ const TERMINAL_INPUT_PATTERNS = [
 
 const TERMINAL_MOUSE_PAYLOAD_PATTERN =
   /^(?:(?:\u001b\[<\d+;\d+;\d+[mM])|(?:\u001b\[\d+;\d+;\d+M)|(?:\u001b\[M[\s\S]{3}))+$/;
+const TERMINAL_FOCUS_PAYLOAD_PATTERN = /^(?:\u001b\[[IO])+$/;
 
 function stripPatterns(text: string, patterns: RegExp[]): string {
   return patterns.reduce(
@@ -41,4 +44,11 @@ export function stripTerminalResponsePayload(payload: string): string {
 
 export function isTerminalMousePayload(payload: string): boolean {
   return TERMINAL_MOUSE_PAYLOAD_PATTERN.test(payload);
+}
+
+export function isTerminalPtyControlPayload(payload: string): boolean {
+  return (
+    TERMINAL_MOUSE_PAYLOAD_PATTERN.test(payload) ||
+    TERMINAL_FOCUS_PAYLOAD_PATTERN.test(payload)
+  );
 }

@@ -52,6 +52,10 @@ const CSI_KEY_MAP = new Map<string, string>([
   ["\x1b[B", "Down"],
   ["\x1b[C", "Right"],
   ["\x1b[D", "Left"],
+  ["\x1bOA", "Up"],
+  ["\x1bOB", "Down"],
+  ["\x1bOC", "Right"],
+  ["\x1bOD", "Left"],
 ]);
 
 function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
@@ -79,13 +83,13 @@ export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
   }
 
   for (let index = 0; index < input.length; ) {
-    const csiSequence = input.slice(index, index + 3);
-    const csiKey = CSI_KEY_MAP.get(csiSequence);
+    const arrowSequence = input.slice(index, index + 3);
+    const arrowKey = CSI_KEY_MAP.get(arrowSequence);
 
-    if (csiKey) {
+    if (arrowKey) {
       flushLiteral();
-      appendKeyStep(steps, csiKey);
-      index += csiSequence.length;
+      appendKeyStep(steps, arrowKey);
+      index += arrowSequence.length;
       continue;
     }
 

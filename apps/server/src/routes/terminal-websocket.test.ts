@@ -70,7 +70,9 @@ async function openTerminal(
 
           if (Date.now() >= deadline) {
             reject(
-              new Error(`terminal websocket did not receive marker ${marker}`),
+              new Error(
+                `terminal websocket did not receive marker ${marker}; buffer=${JSON.stringify(buffer)}`,
+              ),
             );
             return;
           }
@@ -127,6 +129,100 @@ test("terminal websocket forwards primary device-attribute replies so TUIs can f
     const output = terminal.getBuffer();
     assert.match(output, /__FILTER_OK__/);
     assert.match(output, /\?1;2c/);
+  } finally {
+    terminal?.close();
+
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+  }
+});
+
+test("terminal websocket sanitizes active PTY replay mode toggles before remounting xterm", async () => {
+  const { app } = buildServer();
+  let agentSessionId: string | undefined;
+  let terminal: WaitForTerminalTextResult | undefined;
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const terminalBaseUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const createRes = await fetch(`${baseUrl}/api/agent-launch/pty`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "default",
+        displayName: "terminal-replay-mode-filter",
+        agentKind: "shell",
+        workingDirectory: process.cwd(),
+        command:
+          "node ../../scripts/mock-terminal-agent.mjs mode-replay; sleep 3",
+      }),
+    });
+
+    assert.equal(createRes.status, 201);
+
+    const payload = (await createRes.json()) as { id: string };
+    agentSessionId = payload.id;
+
+    await new Promise<void>((resolve, reject) => {
+      const deadline = Date.now() + 3_000;
+
+      const poll = async () => {
+        const detailResponse = await fetch(
+          `${baseUrl}/api/agent-sessions/${agentSessionId}`,
+        );
+        const detail = (await detailResponse.json()) as {
+          outputEntries?: Array<{ text?: string }>;
+        };
+        const output = detail.outputEntries
+          ?.map((entry) => entry.text ?? "")
+          .join("");
+
+        if (output?.includes("__MODE_REPLAY_READY__")) {
+          resolve();
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          reject(new Error("PTY output did not reach session detail in time"));
+          return;
+        }
+
+        setTimeout(poll, 25);
+      };
+
+      void poll();
+    });
+
+    terminal = await openTerminal(
+      `${terminalBaseUrl}/ws/agent-sessions/${agentSessionId}/terminal`,
+    );
+    await terminal.waitFor(
+      "beforefocuscursormousepastekeypadnormal__MODE_REPLAY_READY__",
+    );
+
+    const output = terminal.getBuffer();
+    assert.match(
+      output,
+      /beforefocuscursormousepastekeypadnormal__MODE_REPLAY_READY__/,
+    );
+    assert.doesNotMatch(output, /\u001b\[\?1004h/);
+    assert.doesNotMatch(output, /\u001b\[\?1h/);
+    assert.doesNotMatch(output, /\u001b\[\?1000;1006h/);
+    assert.doesNotMatch(output, /\u001b\[\?2004h/);
+    assert.doesNotMatch(output, /\u001b[=>]/);
   } finally {
     terminal?.close();
 

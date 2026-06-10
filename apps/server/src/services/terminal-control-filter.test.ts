@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isTerminalPtyControlPayload,
   isTerminalMousePayload,
   sanitizeReplayForTerminal,
   stripTerminalResponsePayload,
@@ -28,6 +29,13 @@ test("keep normal keyboard escape sequences intact", () => {
   assert.equal(sanitized, "\u001b[A");
 });
 
+test("keep application-cursor keyboard escape sequences intact", () => {
+  assert.equal(stripTerminalResponsePayload("\u001bOA"), "\u001bOA");
+  assert.equal(stripTerminalResponsePayload("\u001bOB"), "\u001bOB");
+  assert.equal(stripTerminalResponsePayload("\u001bOC"), "\u001bOC");
+  assert.equal(stripTerminalResponsePayload("\u001bOD"), "\u001bOD");
+});
+
 test("keep CPR replies intact for interactive prompts", () => {
   const sanitized = stripTerminalResponsePayload("\u001b[12;42R");
 
@@ -47,6 +55,16 @@ test("identify xterm mouse reports that must enter tmux through the attached PTY
   assert.equal(isTerminalMousePayload("\u001b[A"), false);
   assert.equal(isTerminalMousePayload("\u001b[12;42R"), false);
   assert.equal(isTerminalMousePayload("whoami"), false);
+});
+
+test("identify terminal control payloads that must bypass tmux send-keys", () => {
+  assert.equal(isTerminalPtyControlPayload("\u001b[<0;12;8M"), true);
+  assert.equal(isTerminalPtyControlPayload("\u001b[I"), true);
+  assert.equal(isTerminalPtyControlPayload("\u001b[O"), true);
+  assert.equal(isTerminalPtyControlPayload("\u001b[I\u001b[O"), true);
+  assert.equal(isTerminalPtyControlPayload("\u001bOA"), false);
+  assert.equal(isTerminalPtyControlPayload("\u001b[A"), false);
+  assert.equal(isTerminalPtyControlPayload("whoami"), false);
 });
 
 test("strip OSC color-query replies so shell prompts do not echo rgb payload noise", () => {
@@ -104,4 +122,13 @@ test("sanitize replay removes window and cursor report sequences", () => {
   const sanitized = sanitizeReplayForTerminal(replay);
 
   assert.equal(sanitized, "prompt> prompt redrawstill here");
+});
+
+test("sanitize replay removes terminal input-mode toggles so remounts do not corrupt keyboard sequences", () => {
+  const replay =
+    "codex\u001b[?1004hfocus\u001b[?1hcursor\u001b[?1000;1006hmouse\u001b[?2004hpaste\u001b=\u001b>ready";
+
+  const sanitized = sanitizeReplayForTerminal(replay);
+
+  assert.equal(sanitized, "codexfocuscursormousepasteready");
 });

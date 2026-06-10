@@ -93,3 +93,18 @@ test("buildTmuxSendKeySteps maps mobile control keys without appending Enter", (
     { kind: "keys", keys: ["Up"] },
   ]);
 });
+
+test("buildTmuxSendKeySteps maps application-cursor arrow keys without literal input", () => {
+  assert.deepEqual(buildTmuxSendKeySteps("\x1bOA"), [
+    { kind: "keys", keys: ["Up"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x1bOB"), [
+    { kind: "keys", keys: ["Down"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x1bOC"), [
+    { kind: "keys", keys: ["Right"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x1bOD"), [
+    { kind: "keys", keys: ["Left"] },
+  ]);
+});
