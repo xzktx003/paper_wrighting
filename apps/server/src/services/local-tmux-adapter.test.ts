@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildTmuxCapturePaneArgs,
+  buildTmuxSendKeyPlan,
   buildTmuxSendKeySteps,
   isNoTmuxServerError,
   parsePaneInfo,
@@ -147,19 +148,45 @@ test("buildTmuxSendKeySteps maps xterm navigation keys without literal input", (
   ]);
 });
 
-test("buildTmuxSendKeySteps strips bracketed paste delimiters for tmux send-keys", () => {
+test("buildTmuxSendKeySteps preserves bracketed paste blocks for tmux send-keys", () => {
   assert.deepEqual(buildTmuxSendKeySteps("\x1b[200~hello codex\x1b[201~"), [
-    { kind: "literal", value: "hello codex" },
+    { kind: "literal", value: "\x1b[200~hello codex\x1b[201~" },
   ]);
 
   assert.deepEqual(
     buildTmuxSendKeySteps("before \x1b[200~line 1\nline 2\x1b[201~ after"),
     [
-      { kind: "literal", value: "before line 1" },
-      { kind: "keys", keys: ["Enter"] },
-      { kind: "literal", value: "line 2 after" },
+      {
+        kind: "literal",
+        value: "before \x1b[200~line 1\nline 2\x1b[201~ after",
+      },
     ],
   );
 
-  assert.deepEqual(buildTmuxSendKeySteps("\x1b[200~\x1b[201~"), []);
+  assert.deepEqual(buildTmuxSendKeySteps("\x1b[200~\x1b[201~"), [
+    { kind: "literal", value: "\x1b[200~\x1b[201~" },
+  ]);
+});
+
+test("buildTmuxSendKeyPlan keeps split bracketed paste chunks literal", () => {
+  const firstChunk = buildTmuxSendKeyPlan("\x1b[200~line 1\r");
+  assert.equal(firstChunk.bracketedPasteOpen, true);
+  assert.deepEqual(firstChunk.steps, [
+    { kind: "literal", value: "\x1b[200~line 1\r" },
+  ]);
+
+  const middleChunk = buildTmuxSendKeyPlan("line 2\r", {
+    bracketedPasteOpen: firstChunk.bracketedPasteOpen,
+  });
+  assert.equal(middleChunk.bracketedPasteOpen, true);
+  assert.deepEqual(middleChunk.steps, [{ kind: "literal", value: "line 2\r" }]);
+
+  const finalChunk = buildTmuxSendKeyPlan("line 3\x1b[201~\r", {
+    bracketedPasteOpen: middleChunk.bracketedPasteOpen,
+  });
+  assert.equal(finalChunk.bracketedPasteOpen, false);
+  assert.deepEqual(finalChunk.steps, [
+    { kind: "literal", value: "line 3\x1b[201~" },
+    { kind: "keys", keys: ["Enter"] },
+  ]);
 });

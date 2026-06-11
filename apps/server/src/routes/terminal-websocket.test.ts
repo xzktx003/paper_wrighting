@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { buildServer } from "../app.js";
@@ -329,15 +332,20 @@ test("terminal websocket drops focus reports for local tmux sessions so they do 
   }
 });
 
-test("terminal websocket strips bracketed paste delimiters for local tmux sessions", async () => {
+test("terminal websocket keeps split bracketed paste chunks literal for local tmux sessions", async () => {
   const { app } = buildServer();
-  const sessionName = `tmux-bracketed-paste-${Date.now()}`;
-  const readyMarker = `TMUX_PASTE_READY_${Date.now()}`;
-  const inputMarker = `TMUX_PASTE_INPUT_${Date.now()}`;
+  const sessionName = `tmux-split-bracketed-paste-${Date.now()}`;
+  const readyMarker = `TMUX_SPLIT_PASTE_READY_${Date.now()}`;
+  const pasteMarker = `__SPLIT_PASTE_END_${Date.now()}__`;
+  const capturePath = join(
+    tmpdir(),
+    `coding-kanban-split-paste-${Date.now()}.hex`,
+  );
   let agentSessionId: string | undefined;
   let terminal: WaitForTerminalTextResult | undefined;
 
   killTmuxSession(sessionName);
+  rmSync(capturePath, { force: true });
 
   runTmux([
     "new-session",
@@ -346,7 +354,25 @@ test("terminal websocket strips bracketed paste delimiters for local tmux sessio
     sessionName,
     "-c",
     process.cwd(),
-    `sh -lc 'printf "${readyMarker}\\n"; exec sh'`,
+    [
+      "node -e ",
+      JSON.stringify(
+        [
+          "const fs = require('node:fs');",
+          "process.stdin.setRawMode(true);",
+          "process.stdin.resume();",
+          `console.log(${JSON.stringify(readyMarker)});`,
+          "const chunks = [];",
+          "process.stdin.on('data', (chunk) => {",
+          "chunks.push(chunk);",
+          "const input = Buffer.concat(chunks);",
+          `if (input.includes(Buffer.from(${JSON.stringify(pasteMarker)}))) {`,
+          `fs.writeFileSync(${JSON.stringify(capturePath)}, input.toString('hex'));`,
+          "}",
+          "});",
+        ].join(""),
+      ),
+    ].join(""),
   ]);
 
   await app.listen({ port: 0, host: "127.0.0.1" });
@@ -382,15 +408,39 @@ test("terminal websocket strips bracketed paste delimiters for local tmux sessio
     );
     await terminal.waitFor(readyMarker);
 
-    terminal.send(`\u001b[200~printf "${inputMarker}\\n"\u001b[201~\r`);
-    await terminal.waitFor(inputMarker);
+    terminal.send("\u001b[200~first pasted line\r");
+    terminal.send("second pasted line\r");
+    terminal.send(`third pasted line ${pasteMarker}\u001b[201~`);
 
-    const output = terminal.getBuffer();
-    assert.match(output, new RegExp(inputMarker));
-    assert.doesNotMatch(output, /\[200~/);
-    assert.doesNotMatch(output, /\[201~/);
+    await new Promise<void>((resolve, reject) => {
+      const deadline = Date.now() + 3_000;
+
+      const poll = () => {
+        if (existsSync(capturePath)) {
+          resolve();
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          reject(new Error("split bracketed paste capture was not written"));
+          return;
+        }
+
+        setTimeout(poll, 25);
+      };
+
+      poll();
+    });
+
+    const capturedHex = readFileSync(capturePath, "utf8");
+    const expectedHex = Buffer.from(
+      `\u001b[200~first pasted line\rsecond pasted line\rthird pasted line ${pasteMarker}\u001b[201~`,
+    ).toString("hex");
+
+    assert.equal(capturedHex, expectedHex);
   } finally {
     terminal?.close();
+    rmSync(capturePath, { force: true });
 
     if (agentSessionId) {
       await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {

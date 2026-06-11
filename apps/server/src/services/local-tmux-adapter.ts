@@ -21,6 +21,15 @@ export type TmuxSendKeyStep =
   | { kind: "literal"; value: string }
   | { kind: "keys"; keys: string[] };
 
+export interface TmuxSendKeyPlan {
+  steps: TmuxSendKeyStep[];
+  bracketedPasteOpen: boolean;
+}
+
+export interface TmuxSendKeyPlanOptions {
+  bracketedPasteOpen?: boolean;
+}
+
 export interface LocalTmuxAdapterOptions {
   captureLines?: number;
 }
@@ -67,7 +76,8 @@ const CSI_KEY_MAP = new Map<string, string>([
   ["\x1bOS", "F4"],
 ]);
 
-const BRACKETED_PASTE_DELIMITER_PATTERN = /\x1b\[(?:200|201)~/g;
+const BRACKETED_PASTE_START = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
 
 const MODIFIED_CURSOR_KEY_PATTERN = /^\x1b\[1;([2-8])([ABCDHF])/;
 const TILDE_KEY_PATTERN =
@@ -179,6 +189,21 @@ function readTmuxKeySequence(
   return null;
 }
 
+function appendLiteralStep(steps: TmuxSendKeyStep[], value: string): void {
+  if (!value) {
+    return;
+  }
+
+  const lastStep = steps.at(-1);
+
+  if (lastStep?.kind === "literal") {
+    lastStep.value += value;
+    return;
+  }
+
+  steps.push({ kind: "literal", value });
+}
+
 function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
   const lastStep = steps.at(-1);
 
@@ -190,22 +215,60 @@ function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
   steps.push({ kind: "keys", keys: [key] });
 }
 
-export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
+export function buildTmuxSendKeyPlan(
+  input: string,
+  options: TmuxSendKeyPlanOptions = {},
+): TmuxSendKeyPlan {
   const steps: TmuxSendKeyStep[] = [];
   let literalBuffer = "";
-  const normalizedInput = input.replace(BRACKETED_PASTE_DELIMITER_PATTERN, "");
+  let bracketedPasteOpen = options.bracketedPasteOpen ?? false;
 
   function flushLiteral(): void {
     if (!literalBuffer) {
       return;
     }
 
-    steps.push({ kind: "literal", value: literalBuffer });
+    appendLiteralStep(steps, literalBuffer);
     literalBuffer = "";
   }
 
-  for (let index = 0; index < normalizedInput.length; ) {
-    const keySequence = readTmuxKeySequence(normalizedInput, index);
+  for (let index = 0; index < input.length; ) {
+    if (bracketedPasteOpen) {
+      const pasteEndIndex = input.indexOf(BRACKETED_PASTE_END, index);
+      const pasteEndExclusive =
+        pasteEndIndex === -1
+          ? input.length
+          : pasteEndIndex + BRACKETED_PASTE_END.length;
+
+      appendLiteralStep(steps, input.slice(index, pasteEndExclusive));
+      index = pasteEndExclusive;
+      bracketedPasteOpen = pasteEndIndex === -1;
+      continue;
+    }
+
+    if (input.startsWith(BRACKETED_PASTE_START, index)) {
+      const pasteEndIndex = input.indexOf(
+        BRACKETED_PASTE_END,
+        index + BRACKETED_PASTE_START.length,
+      );
+      const pasteEndExclusive =
+        pasteEndIndex === -1
+          ? input.length
+          : pasteEndIndex + BRACKETED_PASTE_END.length;
+
+      flushLiteral();
+      appendLiteralStep(steps, input.slice(index, pasteEndExclusive));
+      index = pasteEndExclusive;
+      bracketedPasteOpen = pasteEndIndex === -1;
+      continue;
+    }
+
+    if (input.startsWith(BRACKETED_PASTE_END, index)) {
+      index += BRACKETED_PASTE_END.length;
+      continue;
+    }
+
+    const keySequence = readTmuxKeySequence(input, index);
 
     if (keySequence) {
       flushLiteral();
@@ -214,7 +277,7 @@ export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
       continue;
     }
 
-    const currentChar = normalizedInput[index];
+    const currentChar = input[index];
     const controlKey = CONTROL_KEY_MAP.get(currentChar);
 
     if (controlKey) {
@@ -229,7 +292,11 @@ export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
   }
 
   flushLiteral();
-  return steps;
+  return { steps, bracketedPasteOpen };
+}
+
+export function buildTmuxSendKeySteps(input: string): TmuxSendKeyStep[] {
+  return buildTmuxSendKeyPlan(input).steps;
 }
 
 export interface TmuxSessionInfo {
@@ -360,6 +427,7 @@ function buildTmuxStatusPreview(sessionInfo: TmuxSessionInfo): string {
 
 export class LocalTmuxAdapter {
   private readonly captureLines: number;
+  private readonly bracketedPasteSessionIds = new Set<string>();
 
   constructor(
     private readonly registry: AgentSessionRegistry,
@@ -538,7 +606,17 @@ export class LocalTmuxAdapter {
       );
     }
 
-    for (const step of buildTmuxSendKeySteps(input.input)) {
+    const plan = buildTmuxSendKeyPlan(input.input, {
+      bracketedPasteOpen: this.bracketedPasteSessionIds.has(agentSession.id),
+    });
+
+    if (plan.bracketedPasteOpen) {
+      this.bracketedPasteSessionIds.add(agentSession.id);
+    } else {
+      this.bracketedPasteSessionIds.delete(agentSession.id);
+    }
+
+    for (const step of plan.steps) {
       if (step.kind === "literal") {
         await this.runTmux(["send-keys", "-t", paneId, "-l", step.value]);
       } else {
