@@ -1,8 +1,9 @@
 # 仓库 bug 修复记录
 
-- 文件浏览器右键“复制路径”在局域网 HTTP 页面失效：代码直接调用 `navigator.clipboard.writeText`，非安全上下文或权限受限时不可用；修复为新增剪贴板 helper，Clipboard API 不可用或被拒绝时回退隐藏 textarea + `execCommand('copy')`，并补文件/目录右键复制路径回归测试。
-- 多屏聚焦视图中选中不同终端后顶部标题和“改名”仍指向初始终端：标题栏直接读 App 层 `focusedSession`，而多屏切换输入窗格在侧栏未打开时不会同步 focused session；修复为标题、状态、改名和重连优先使用当前 active monitor slot 的 session。
-- 多屏聚焦视图从“其他会话”拖入屏幕时，拖拽缩影会混入多个其他会话预览：未设置专用 drag image，浏览器默认截图侧栏卡片时容易带上相邻缩影；修复为拖拽开始创建单会话拖影，结束或 drop 后清理。
+- 手机端快捷键缺少 Claude / Copilot CLI 常用控制键：`Shift+Tab`、`Ctrl+O`、`Ctrl+E` 和行编辑组合无法从手机触发，且快捷键类型中残留旧 id 有构建失败风险；修复为扩展手机快捷键表，并在本地 tmux 转换层映射到 `BTab`、`C-o`、`C-e`、`C-u/w/k/y` 等 key name。
+- 手机端快捷键说明弹窗缺少无障碍属性：没有 `aria-modal`、`aria-labelledby` 和 Tab 聚焦陷阱，屏幕阅读器用户无法正确聚焦弹窗；修复为增加 `aria-modal=”true”`、`aria-labelledby` 指向标题、Tab 循环限制和 Escape 关闭，卸载时还原页面焦点。
+- 手机端快捷键工具栏多行平铺占用纵向空间且不符合横向选择预期：修复为 `flex` 单行横向选择器，使用 `overflow-x: auto` 和 `touch-action: pan-x` 支持左右滑动，并把 `EOF` 按钮展示为 `Ctrl+D`。
+- 手机端输入框“发送”只填入 Agent 输入框但不提交任务：文本和回车合并在同一个 stdin payload 时，部分 Copilot/Claude/Codex TUI 没把同批回车当提交键；修复为“发送/粘贴执行”先 bracketed paste 文本，再单独发送 Enter，“粘贴”仍不自动提交。
 - 聚焦视图静态区域点击后输入失效或首字符重复：`AgentFocusView` 过度依赖 `keydown` 补发，且把按钮/链接当作输入控件；修复为在 `pointerdown` 直接归还终端焦点并避免重复转发。
 - 从终端切回 VS Code iframe 后焦点被终端抢回：`TerminalView` 未把 `iframe` 视为有意外部焦点；修复为把 `HTMLIFrameElement` 加入允许列表。
 - 从终端切到文件浏览器编辑器或 VS Code 后，输入过程中焦点仍会被终端抢走：终端只看当前 `activeElement`，交接瞬间看到 `body` 就误抢；同时 VS Code 抽屉把 `reused` 变化当成新实例；修复为增加外部输入焦点保护窗口，并忽略 `reused` 单独变化。

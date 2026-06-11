@@ -17,6 +17,10 @@ test("normalizeStdinPayload forwards mobile terminal controls without enter", ()
   assert.equal(normalizeStdinPayload("\t"), "\t");
   assert.equal(normalizeStdinPayload("\x03"), "\x03");
   assert.equal(normalizeStdinPayload("\x1b"), "\x1b");
+  assert.equal(normalizeStdinPayload("\x1b[Z"), "\x1b[Z");
   assert.equal(normalizeStdinPayload("\x1b[A"), "\x1b[A");
   assert.equal(normalizeStdinPayload("\x0c"), "\x0c");
+  assert.equal(normalizeStdinPayload("\x0f"), "\x0f");
+  assert.equal(normalizeStdinPayload("\x15"), "\x15");
+  assert.equal(normalizeStdinPayload("\x17"), "\x17");
 });

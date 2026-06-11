@@ -87,8 +87,20 @@ test("buildTmuxSendKeySteps maps mobile control keys without appending Enter", (
   assert.deepEqual(buildTmuxSendKeySteps("\t"), [
     { kind: "keys", keys: ["Tab"] },
   ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x1b[Z"), [
+    { kind: "keys", keys: ["BTab"] },
+  ]);
   assert.deepEqual(buildTmuxSendKeySteps("\x03"), [
     { kind: "keys", keys: ["C-c"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x0f"), [
+    { kind: "keys", keys: ["C-o"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x05"), [
+    { kind: "keys", keys: ["C-e"] },
+  ]);
+  assert.deepEqual(buildTmuxSendKeySteps("\x15\x17\x0b\x19"), [
+    { kind: "keys", keys: ["C-u", "C-w", "C-k", "C-y"] },
   ]);
   assert.deepEqual(buildTmuxSendKeySteps("\x1b[A"), [
     { kind: "keys", keys: ["Up"] },

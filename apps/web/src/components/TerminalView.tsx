@@ -164,7 +164,7 @@ export function TerminalView({
     const ownerToken = Symbol(agentSessionId);
     const ownerPriority = 2;
     let handleMouseDownCapture: (() => void) | null = null;
-    let handlePointerDownCapture: (() => void) | null = null;
+    let handlePointerDownCapture: ((event: PointerEvent) => void) | null = null;
     let handleTerminalFocusIn: ((event: FocusEvent) => void) | null = null;
     let handleTerminalFocusOut: ((event: FocusEvent) => void) | null = null;
     let handleWindowBlur: (() => void) | null = null;
@@ -1101,8 +1101,13 @@ export function TerminalView({
         return false;
       });
 
-      handlePointerDownCapture = () => {
+      handlePointerDownCapture = (event: PointerEvent) => {
         if (!inputEnabledRef.current) {
+          return;
+        }
+
+        if (isProtectedExternalFocusTarget(event.target as HTMLElement)) {
+          rememberExternalPointerIntent(event.target);
           return;
         }
 

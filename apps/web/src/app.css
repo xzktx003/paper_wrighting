@@ -2240,7 +2240,7 @@ input {
 
 .mobile-terminal-toolbar {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
   padding: 8px 10px;
   overflow-x: auto;
@@ -2256,7 +2256,7 @@ input {
 
 .mobile-terminal-key {
   flex: 0 0 auto;
-  min-width: 48px;
+  min-width: 64px;
   min-height: 36px;
   padding: 7px 10px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -2265,6 +2265,7 @@ input {
   color: rgba(244, 241, 234, 0.86);
   cursor: pointer;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .mobile-terminal-key--danger {

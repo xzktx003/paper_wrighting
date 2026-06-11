@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import {
-  buildMobileComposerInput,
+  buildMobileComposerInputFrames,
   type MobileComposerSendMode,
 } from "../lib/mobile-terminal-controls";
 
@@ -24,7 +24,9 @@ export function MobileAgentComposer({
 
     setSending(true);
     try {
-      await onSendInput(buildMobileComposerInput(text, mode));
+      for (const input of buildMobileComposerInputFrames(text, mode)) {
+        await onSendInput(input);
+      }
       setText("");
     } finally {
       setSending(false);

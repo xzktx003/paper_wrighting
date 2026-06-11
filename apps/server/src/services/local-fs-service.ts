@@ -23,6 +23,7 @@ import {
   guessMimeType,
   isBinaryBuffer,
   normalizeLocalPath,
+  validateChmodMode,
 } from "./file-system-utils.js";
 
 function toFileEntry(
@@ -44,37 +45,6 @@ function toFileEntry(
     permissions: formatPermissions(Number(stats.mode), type),
     isHidden: path.basename(entryPath).startsWith("."),
   };
-}
-
-const VALID_CHMOD_PATTERN = /^0[0-7]{3,4}$/;
-
-function validateChmodMode(mode: string): number {
-  if (!VALID_CHMOD_PATTERN.test(mode)) {
-    throw new Error("mode must be a valid octal permission (e.g. 755, 644)");
-  }
-
-  const parsed = Number.parseInt(mode, 8);
-
-  // Reject permissions that set world-writable on files or dangerous setuid/setgid
-  const others = parsed & 0o007;
-  const ownerExecute = (parsed >> 0) & 0o100;
-  const setuid = parsed & 0o4000;
-  const setgid = parsed & 0o2000;
-  const sticky = parsed & 0o1000;
-
-  // Disallow world-writable for files (only directories may have it for sticky)
-  const isDir = false; // caller context doesn't know here, so just block dangerous bits
-  if (others === 0o007 && (setuid || setgid)) {
-    throw new Error("mode cannot combine world-writable with setuid/setgid");
-  }
-
-  if (sticky && others !== 0o007 && others !== 0o000) {
-    throw new Error(
-      "sticky bit is only meaningful with world-writable directories",
-    );
-  }
-
-  return parsed;
 }
 
 export class LocalFsService {

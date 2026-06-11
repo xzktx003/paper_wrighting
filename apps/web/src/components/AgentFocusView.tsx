@@ -233,13 +233,15 @@ export function AgentFocusView({
   const safeActiveSlotId = activeSlotAvailable
     ? activeSlotId
     : (terminalSlots[0]?.id ?? DEFAULT_TERMINAL_MONITOR_SLOT_ID);
-  const activeTerminalSessionId =
+  // Derive the title/rename target from the active slot's session directly,
+  // so the header always reflects the pane the user is currently typing into,
+  // regardless of whether App-level focusedId is synchronized.
+  const activeSlotSessionId =
     terminalSlots.find((slot) => slot.id === safeActiveSlotId)?.sessionId ??
     null;
   const activeHeaderSession =
-    (activeTerminalSessionId
-      ? sessionById.get(activeTerminalSessionId)
-      : undefined) ?? focusedSession;
+    (activeSlotSessionId ? sessionById.get(activeSlotSessionId) : undefined) ??
+    focusedSession;
   const activeLayoutOption =
     TERMINAL_MONITOR_LAYOUT_OPTIONS.find(
       (option) => option.mode === terminalLayoutMode,
@@ -258,8 +260,8 @@ export function AgentFocusView({
   }, [headerCollapsed]);
 
   useEffect(() => {
-    onActiveTerminalSessionChange?.(activeTerminalSessionId);
-  }, [activeTerminalSessionId, onActiveTerminalSessionChange]);
+    onActiveTerminalSessionChange?.(activeSlotSessionId);
+  }, [activeSlotSessionId, onActiveTerminalSessionChange]);
 
   useEffect(() => {
     return () => {
@@ -558,8 +560,13 @@ export function AgentFocusView({
   }
 
   function finishSessionDrag() {
-    removeTerminalMonitorDragPreview();
     setDragOverSlotId(null);
+    // Defer removal so the browser has time to snapshot the drag image
+    // before we tear it down. A single frame is enough — the browser
+    // captures synchronously or on the next compositing pass.
+    requestAnimationFrame(() => {
+      removeTerminalMonitorDragPreview();
+    });
   }
 
   function handleSlotDragOver(
@@ -877,6 +884,17 @@ export function AgentFocusView({
         active?.isContentEditable ||
         active?.closest('[role="dialog"]') !== null ||
         active?.closest('[role="alertdialog"]') !== null;
+      // Guard: skip forwarding when active element is body or null.
+      // This is the transient handoff state immediately after the user clicks
+      // a static area. focusActiveTerminalTextarea() has already been called
+      // via handleFocusViewPointerDownCapture and will bring the textarea to
+      // focus asynchronously via requestAnimationFrame + setTimeout. The
+      // textarea's native input handler fires the key naturally on focus —
+      // forwarding here would send the same key twice.
+      if (active === document.body || active === null) {
+        return;
+      }
+
       if (
         !inInput &&
         !isInActiveTerminal(target) &&

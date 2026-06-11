@@ -52,7 +52,12 @@ const CONTROL_KEY_MAP = new Map<string, string>([
   ["\t", "Tab"],
   ["\n", "Enter"],
   ["\r", "Enter"],
+  ["\x0b", "C-k"],
   ["\x0c", "C-l"],
+  ["\x0f", "C-o"],
+  ["\x15", "C-u"],
+  ["\x17", "C-w"],
+  ["\x19", "C-y"],
   ["\x1b", "Escape"],
 ]);
 

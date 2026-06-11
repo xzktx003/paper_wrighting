@@ -18,6 +18,7 @@ import {
   guessMimeType,
   isBinaryBuffer,
   joinRemotePath,
+  validateChmodMode,
 } from "./file-system-utils.js";
 
 interface PooledConnection {
@@ -427,9 +428,8 @@ export class SftpService {
     inputPath: string,
     mode: string,
   ): Promise<void> {
-    assertSafeFilesystemPath(mode, "mode");
     const remotePath = await this.resolveRemotePath(target, inputPath);
-    const parsedMode = Number.parseInt(mode, 8);
+    const parsedMode = validateChmodMode(mode);
 
     await this.withConnection(target, async (client) =>
       withSftp(client, (sftp) => sftpChmod(sftp, remotePath, parsedMode)),

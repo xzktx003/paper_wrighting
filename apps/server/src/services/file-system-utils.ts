@@ -109,6 +109,33 @@ export function normalizeLocalPath(inputPath: string): string {
   return path.resolve(inputPath);
 }
 
+export const VALID_CHMOD_PATTERN = /^0[0-7]{3,4}$/;
+
+export function validateChmodMode(mode: string): number {
+  if (!VALID_CHMOD_PATTERN.test(mode)) {
+    throw new Error("mode must be a valid octal permission (e.g. 755, 644)");
+  }
+
+  const parsed = Number.parseInt(mode, 8);
+
+  const others = parsed & 0o007;
+  const setuid = parsed & 0o4000;
+  const setgid = parsed & 0o2000;
+  const sticky = parsed & 0o1000;
+
+  if (others === 0o007 && (setuid || setgid)) {
+    throw new Error("mode cannot combine world-writable with setuid/setgid");
+  }
+
+  if (sticky && others !== 0o007 && others !== 0o000) {
+    throw new Error(
+      "sticky bit is only meaningful with world-writable directories",
+    );
+  }
+
+  return parsed;
+}
+
 export function joinRemotePath(basePath: string, nextPath: string): string {
   if (nextPath.startsWith("/")) {
     return nextPath;

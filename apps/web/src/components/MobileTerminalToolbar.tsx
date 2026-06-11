@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MOBILE_TERMINAL_CONTROLS } from "../lib/mobile-terminal-controls";
 
@@ -14,16 +14,60 @@ interface MobileTerminalShortcutHelpProps {
 export function MobileTerminalShortcutHelp({
   onClose,
 }: MobileTerminalShortcutHelpProps) {
+  const titleId = "mobile-terminal-shortcut-help-title";
+  const panelRef = useRef<HTMLElement>(null);
+  const previouslyFocused = useRef<Element | null>(null);
+
+  useEffect(() => {
+    previouslyFocused.current = document.activeElement;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    panel.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (
+        e.shiftKey
+          ? document.activeElement === first
+          : document.activeElement === last
+      ) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+
+    panel.addEventListener("keydown", handleKeyDown);
+    return () => {
+      panel.removeEventListener("keydown", handleKeyDown);
+      (previouslyFocused.current as HTMLElement | undefined)?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div className="mobile-terminal-help-backdrop" role="presentation">
       <section
         aria-label="手机终端快捷键说明"
+        aria-labelledby={titleId}
+        aria-modal="true"
         className="mobile-terminal-help-panel"
+        ref={panelRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="mobile-terminal-help-header">
           <div>
-            <strong>快捷键说明</strong>
+            <strong id={titleId}>快捷键说明</strong>
             <span>点击快捷键会直接发送到当前终端</span>
           </div>
           <button
