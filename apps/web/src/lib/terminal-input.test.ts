@@ -2,7 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildReplayTerminalProtocolResponse,
   isTerminalProtocolResponsePayload,
+  stripTerminalCapabilityQueriesFromOutput,
   stripTerminalResponsePayload,
 } from "./terminal-input.js";
 
@@ -103,5 +105,21 @@ describe("stripTerminalResponsePayload", () => {
     assert.equal(isTerminalProtocolResponsePayload("\u001b[12;42R"), true);
     assert.equal(isTerminalProtocolResponsePayload("\u001b[A"), false);
     assert.equal(isTerminalProtocolResponsePayload("whoami"), false);
+  });
+
+  it("builds minimal replies for replayed terminal capability queries", () => {
+    assert.equal(
+      buildReplayTerminalProtocolResponse("boot\u001b[c\u001b[6n"),
+      "\u001b[?1;2c\u001b[1;1R",
+    );
+    assert.equal(buildReplayTerminalProtocolResponse("plain output"), "");
+  });
+
+  it("strips browser-rendered capability queries that the PTY runtime already answered", () => {
+    assert.equal(
+      stripTerminalCapabilityQueriesFromOutput("boot\u001b[c\u001b[6nready"),
+      "bootready",
+    );
+    assert.equal(stripTerminalCapabilityQueriesFromOutput("plain"), "plain");
   });
 });

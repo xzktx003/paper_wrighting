@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
   realpathSync,
@@ -145,6 +146,174 @@ test("scanAgentDirectory excludes tmux panes whose cwd is outside the scanned su
     assert.equal(matchedTmux, undefined);
   } finally {
     killTmuxSession(sessionName);
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("scanAgentDirectory keeps tmux pane cwd intact when the path contains a colon", () => {
+  const rootDir = makeTempDir("agent-scan-tmux-colon-");
+  const colonDir = path.join(rootDir, "project:with-colon");
+  const sessionName = `scan-colon-${Date.now()}`;
+
+  mkdirSync(colonDir, { recursive: true });
+  killTmuxSession(sessionName);
+
+  execFileSync(
+    TMUX_BINARY,
+    [
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      colonDir,
+      "sh",
+      "-lc",
+      "sleep 30",
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
+
+  try {
+    const response = scanAgentDirectory({ path: colonDir });
+    const matchedTmux = response.results.find(
+      (result) => result.tmuxSession === sessionName,
+    );
+
+    assert.equal(matchedTmux?.workingDirectory, colonDir);
+  } finally {
+    killTmuxSession(sessionName);
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("scanAgentDirectory classifies tmux sessions by the detected agent kind", () => {
+  const rootDir = makeTempDir("agent-scan-tmux-kind-");
+  const sessionName = `codex-scan-${Date.now()}`;
+
+  killTmuxSession(sessionName);
+
+  execFileSync(
+    TMUX_BINARY,
+    [
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      rootDir,
+      "sh",
+      "-lc",
+      "sleep 30",
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
+
+  try {
+    const response = scanAgentDirectory({ path: rootDir });
+    const matchedTmux = response.results.find(
+      (result) => result.tmuxSession === sessionName,
+    );
+
+    assert.equal(matchedTmux?.agentKind, "codex");
+  } finally {
+    killTmuxSession(sessionName);
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("scanAgentDirectory ignores local process rows with malformed pid prefixes", () => {
+  const originalPath = process.env.PATH;
+  const rootDir = makeTempDir("agent-scan-pgrep-pid-");
+  const binDir = path.join(rootDir, "bin");
+  const workspaceDir = path.join(rootDir, "workspace");
+
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(workspaceDir, { recursive: true });
+
+  const pgrepPath = path.join(binDir, "pgrep");
+  writeFileSync(
+    pgrepPath,
+    [
+      "#!/bin/sh",
+      `printf '123abc codex --workdir ${workspaceDir}\\n'`,
+      "",
+    ].join("\n"),
+  );
+  chmodSync(pgrepPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+  try {
+    const response = scanAgentDirectory({ path: workspaceDir });
+    const malformedProcess = response.results.find(
+      (result) => result.pid === 123,
+    );
+
+    assert.equal(malformedProcess, undefined);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("scanAgentDirectory ignores malformed remote history timestamps", () => {
+  const originalPath = process.env.PATH;
+  const rootDir = makeTempDir("agent-scan-remote-timestamp-");
+  const binDir = path.join(rootDir, "bin");
+
+  mkdirSync(binDir, { recursive: true });
+
+  const sshPath = path.join(binDir, "ssh");
+  writeFileSync(
+    sshPath,
+    [
+      "#!/bin/sh",
+      "for arg in \"$@\"; do",
+      "  command=\"$arg\"",
+      "done",
+      "case \"$command\" in",
+      "  'printf %s \"$HOME\"')",
+      "    printf '/home/tester'",
+      "    ;;",
+      "  find*)",
+      "    printf '/workspace/project/.codex\\n'",
+      "    ;;",
+      "  stat*)",
+      "    printf '1710000000abc\\n'",
+      "    ;;",
+      "  *)",
+      "    ;;",
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(sshPath, 0o755);
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+  try {
+    const response = scanAgentDirectory({
+      path: "/workspace",
+      sshTarget: { host: "example.test", username: "tester" },
+    });
+    const remoteHistory = response.results.find(
+      (result) => result.historyPath === "/workspace/project/.codex",
+    );
+
+    assert.equal(remoteHistory?.lastActivity, undefined);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
     rmSync(rootDir, { recursive: true, force: true });
   }
 });

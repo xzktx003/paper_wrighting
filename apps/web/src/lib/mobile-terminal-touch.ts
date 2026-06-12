@@ -1,6 +1,7 @@
 export const MOBILE_TERMINAL_MIN_FONT_SIZE = 11;
 export const MOBILE_TERMINAL_MAX_FONT_SIZE = 24;
 export const MOBILE_TERMINAL_DEFAULT_FONT_SIZE = 15;
+const MOBILE_TERMINAL_DEFAULT_LINE_HEIGHT = 16;
 export const MOBILE_TERMINAL_FONT_SIZE_STORAGE_KEY =
   "mobile-terminal-font-size";
 
@@ -60,7 +61,10 @@ export function computeMobileTerminalScrollLines({
   remainingDeltaY: number;
   scrollLines: number;
 } {
-  const safeLineHeight = Math.max(1, lineHeight);
+  const safeLineHeight =
+    Number.isFinite(lineHeight) && lineHeight >= 1
+      ? lineHeight
+      : MOBILE_TERMINAL_DEFAULT_LINE_HEIGHT;
   const movedLines = Math.trunc(accumulatedDeltaY / safeLineHeight);
 
   return {

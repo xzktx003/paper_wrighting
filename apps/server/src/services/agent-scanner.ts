@@ -45,6 +45,13 @@ const AGENT_INDICATORS: Record<string, { dirs: string[]; files: string[] }> = {
 };
 
 const AGENT_PROCESS_NAMES = ["claude", "copilot", "codex", "aider", "cursor"];
+const TMUX_PANE_FIELD_SEPARATOR = "\t";
+const TMUX_PANE_FORMAT = [
+  "#{session_name}",
+  "#{pane_id}",
+  "#{pane_current_path}",
+  "#{pane_current_command}",
+].join(TMUX_PANE_FIELD_SEPARATOR);
 const SCAN_PRUNE_DIRS = [
   ".git",
   "node_modules",
@@ -68,6 +75,21 @@ const INDICATOR_TO_AGENT_KIND = new Map(
     ]),
   ),
 );
+
+function parseProcessId(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseUnixTimestampSeconds(value: string): number | null {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return null;
+
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
 
 interface IndicatorHit {
   agentKind: string;
@@ -303,8 +325,8 @@ function scanLocalProcesses(dirPath: string): ScanResult[] {
       if (!line.trim()) continue;
 
       const parts = line.trim().split(/\s+/);
-      const pid = parseInt(parts[0], 10);
-      if (isNaN(pid)) continue;
+      const pid = parseProcessId(parts[0]);
+      if (pid === null) continue;
 
       const cmdline = parts.slice(1).join(" ");
       if (commandLineMatchesScope(cmdline, dirPath, false)) {
@@ -322,33 +344,41 @@ function scanLocalProcesses(dirPath: string): ScanResult[] {
   return results;
 }
 
+function detectTmuxAgentKind(session?: string, command?: string): string {
+  const normalizedCommand = command?.toLowerCase() ?? "";
+  const normalizedSession = session?.toLowerCase() ?? "";
+
+  return (
+    AGENT_PROCESS_NAMES.find(
+      (name) =>
+        normalizedCommand.includes(name) || normalizedSession.includes(name),
+    ) ?? "shell"
+  );
+}
+
 function scanLocalTmux(dirPath: string): ScanResult[] {
   const results: ScanResult[] = [];
 
   const tmuxBin = resolveTmuxBinary();
 
   const panes = execLocal(
-    `${tmuxBin} list-panes -a -F '#{session_name}:#{pane_id}:#{pane_current_path}:#{pane_current_command}' 2>/dev/null || true`,
+    `${quoteForPosixShell(tmuxBin)} list-panes -a -F ${quoteForPosixShell(TMUX_PANE_FORMAT)} 2>/dev/null || true`,
   );
   if (!panes) return results;
 
   for (const line of panes.split("\n")) {
     if (!line.trim()) continue;
 
-    const parts = line.split(":");
+    const parts = line.split(TMUX_PANE_FIELD_SEPARATOR);
     if (parts.length < 4) continue;
 
     const [session, paneId, panePath, command] = parts;
     if (!isLocalPathWithinScope(panePath, dirPath)) continue;
 
-    const isAgent = AGENT_PROCESS_NAMES.some(
-      (name) =>
-        command?.toLowerCase().includes(name) ||
-        session?.toLowerCase().includes(name),
-    );
+    const agentKind = detectTmuxAgentKind(session, command);
 
     results.push({
-      agentKind: isAgent ? (command ?? "shell") : "shell",
+      agentKind,
       status: "running",
       displayName: `tmux:${session} (${command})`,
       workingDirectory: panePath ?? dirPath,
@@ -438,7 +468,8 @@ function scanCopilotSessionsRemote(
     if (lockFile) {
       const pidMatch = lockFile.match(/inuse\.(\d+)\.lock/);
       if (pidMatch) {
-        const lockPid = pidMatch[1];
+        const lockPid = parseProcessId(pidMatch[1]);
+        if (lockPid === null) continue;
         // Check if the process is still alive
         const alive = execRemote(
           sshTarget,
@@ -496,8 +527,11 @@ function scanCopilotSessionsLocal(dirPath: string): ScanResult[] {
       for (const lf of lockFiles) {
         const pidMatch = lf.match(/inuse\.(\d+)\.lock/);
         if (pidMatch) {
+          const pid = parseProcessId(pidMatch[1]);
+          if (pid === null) continue;
+
           try {
-            process.kill(parseInt(pidMatch[1], 10), 0);
+            process.kill(pid, 0);
             isRunning = true;
           } catch {
             // Process not alive
@@ -539,8 +573,8 @@ function scanRemoteHistory(
       sshTarget,
       `stat -c %Y ${quoteForPosixShell(indicatorPath)} 2>/dev/null || stat -f %m ${quoteForPosixShell(indicatorPath)} 2>/dev/null || echo ''`,
     );
-    const timestamp = parseInt(timestampOutput.trim(), 10);
-    const lastActivity = isNaN(timestamp)
+    const timestamp = parseUnixTimestampSeconds(timestampOutput);
+    const lastActivity = timestamp === null
       ? undefined
       : new Date(timestamp * 1000).toISOString();
 
@@ -573,8 +607,8 @@ function scanRemoteProcesses(
       if (!line.trim()) continue;
 
       const parts = line.trim().split(/\s+/);
-      const pid = parseInt(parts[0], 10);
-      if (isNaN(pid)) continue;
+      const pid = parseProcessId(parts[0]);
+      if (pid === null) continue;
 
       const cmdline = parts.slice(1).join(" ");
       if (commandLineMatchesScope(cmdline, remotePath, true)) {
@@ -601,14 +635,14 @@ function scanRemoteTmux(
 
   const panes = execRemote(
     sshTarget,
-    `tmux list-panes -a -F '#{session_name}:#{pane_id}:#{pane_current_path}:#{pane_current_command}' 2>/dev/null || true`,
+    `tmux list-panes -a -F ${quoteForPosixShell(TMUX_PANE_FORMAT)} 2>/dev/null || true`,
   );
   if (!panes) return results;
 
   for (const line of panes.split("\n")) {
     if (!line.trim()) continue;
 
-    const parts = line.split(":");
+    const parts = line.split(TMUX_PANE_FIELD_SEPARATOR);
     if (parts.length < 4) continue;
 
     const [session, paneId, panePath, command] = parts;
@@ -618,14 +652,10 @@ function scanRemoteTmux(
     }
 
     // Also check if this pane runs a known agent process
-    const isAgent = AGENT_PROCESS_NAMES.some(
-      (name) =>
-        command?.toLowerCase() === name ||
-        session?.toLowerCase().includes(name),
-    );
+    const agentKind = detectTmuxAgentKind(session, command);
 
     results.push({
-      agentKind: isAgent ? (command ?? "shell") : "shell",
+      agentKind,
       status: "running",
       displayName: `tmux:${session}/${command} (远程: ${panePath ? path.posix.basename(panePath) : remotePath})`,
       workingDirectory: panePath ?? remotePath,

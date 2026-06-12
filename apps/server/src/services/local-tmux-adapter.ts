@@ -209,6 +209,15 @@ function appendLiteralStep(steps: TmuxSendKeyStep[], value: string): void {
   steps.push({ kind: "literal", value });
 }
 
+function parseTmuxAttachedCount(value: string | undefined): number {
+  if (!value || !/^\d+$/.test(value)) {
+    return 0;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : 0;
+}
+
 function appendKeyStep(steps: TmuxSendKeyStep[], key: string): void {
   const lastStep = steps.at(-1);
 
@@ -330,7 +339,7 @@ export function parsePaneInfo(stdout: string): TmuxPaneInfo[] {
 
       return {
         sessionName,
-        attachedCount: Number.parseInt(attachedCount ?? "0", 10) || 0,
+        attachedCount: parseTmuxAttachedCount(attachedCount),
         windowActive: windowActive === "1",
         paneActive: paneActive === "1",
         paneId,

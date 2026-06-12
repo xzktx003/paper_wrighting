@@ -62,6 +62,36 @@ const DEFAULT_CREATE_ENTRY_NAMES: Record<CreateEntryKind, string> = {
   file: "新建文件.txt",
 };
 
+export const FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT = 240;
+export const FILE_BROWSER_PREVIEW_MIN_HEIGHT = 160;
+export const FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT = 180;
+
+export function parseFileBrowserPreviewHeight(raw: string | null): number {
+  if (!raw) {
+    return FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT;
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= FILE_BROWSER_PREVIEW_MIN_HEIGHT
+    ? parsed
+    : FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT;
+}
+
+export function clampFileBrowserPreviewHeight(
+  height: number,
+  layoutHeight: number,
+): number {
+  const maxHeight = Math.max(
+    FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT,
+    layoutHeight - FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT,
+  );
+
+  return Math.min(
+    maxHeight,
+    Math.max(FILE_BROWSER_PREVIEW_MIN_HEIGHT, height),
+  );
+}
+
 function getCreateEntryLabel(kind: CreateEntryKind): string {
   return kind === "directory" ? "文件夹" : "文件";
 }
@@ -182,15 +212,11 @@ export function FileBrowserDrawer({
   const [dragDepth, setDragDepth] = useState(0);
   const [previewHeight, setPreviewHeight] = useState(() => {
     try {
-      const raw = localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY);
-      if (!raw) {
-        return 240;
-      }
-
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) ? parsed : 240;
+      return parseFileBrowserPreviewHeight(
+        localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY),
+      );
     } catch {
-      return 240;
+      return parseFileBrowserPreviewHeight(null);
     }
   });
   const [pathInputValue, setPathInputValue] = useState("");
@@ -257,6 +283,36 @@ export function FileBrowserDrawer({
       // ignore storage failures
     }
   }, [previewHeight]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const layout = previewLayoutRef.current;
+    if (!layout) {
+      return;
+    }
+
+    const clampToLayout = () => {
+      setPreviewHeight((current) =>
+        clampFileBrowserPreviewHeight(current, layout.clientHeight),
+      );
+    };
+
+    clampToLayout();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(clampToLayout);
+    observer.observe(layout);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [open]);
 
   useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
@@ -332,10 +388,9 @@ export function FileBrowserDrawer({
     }
 
     const delta = resizeState.startY - clientY;
-    const maxHeight = Math.max(180, layout.clientHeight - 180);
-    const nextHeight = Math.min(
-      maxHeight,
-      Math.max(160, resizeState.startHeight + delta),
+    const nextHeight = clampFileBrowserPreviewHeight(
+      resizeState.startHeight + delta,
+      layout.clientHeight,
     );
     setPreviewHeight(nextHeight);
   }
@@ -540,7 +595,7 @@ export function FileBrowserDrawer({
           className="file-browser-content"
           ref={previewLayoutRef}
           style={{
-            gridTemplateRows: `minmax(180px, 1fr) 8px ${previewHeight}px`,
+            gridTemplateRows: `minmax(${FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT}px, 1fr) 8px ${previewHeight}px`,
           }}
         >
           <div className="file-browser-list">

@@ -27,6 +27,56 @@ interface PersistedBrowserScopeState {
   sortDirection: SortDirection;
 }
 
+function buildFallbackBrowserScopeState(
+  defaultPath: string,
+): PersistedBrowserScopeState {
+  return {
+    currentPath: defaultPath,
+    showHidden: false,
+    filterQuery: "",
+    sortKey: "name",
+    sortDirection: "asc",
+  };
+}
+
+export function parsePersistedBrowserScopeState(
+  raw: string | null,
+  defaultPath: string,
+): PersistedBrowserScopeState {
+  const fallback = buildFallbackBrowserScopeState(defaultPath);
+
+  if (!raw) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedBrowserScopeState>;
+    const currentPath =
+      typeof parsed.currentPath === "string" ? parsed.currentPath.trim() : "";
+
+    return {
+      currentPath: currentPath || fallback.currentPath,
+      showHidden:
+        typeof parsed.showHidden === "boolean"
+          ? parsed.showHidden
+          : fallback.showHidden,
+      filterQuery:
+        typeof parsed.filterQuery === "string" ? parsed.filterQuery : "",
+      sortKey:
+        parsed.sortKey === "size" ||
+        parsed.sortKey === "modifiedAt" ||
+        parsed.sortKey === "permissions" ||
+        parsed.sortKey === "name"
+          ? parsed.sortKey
+          : "name",
+      sortDirection:
+        parsed.sortDirection === "desc" ? "desc" : fallback.sortDirection,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export function getFileBrowserParentPath(inputPath: string): string {
   if (!inputPath || inputPath === "/") {
     return "/";
@@ -98,43 +148,13 @@ function loadPersistedBrowserScopeState(
   hostScopeKey: string,
   defaultPath: string,
 ): PersistedBrowserScopeState {
-  const fallback: PersistedBrowserScopeState = {
-    currentPath: defaultPath,
-    showHidden: false,
-    filterQuery: "",
-    sortKey: "name",
-    sortDirection: "asc",
-  };
-
   try {
-    const raw = localStorage.getItem(
-      buildScopeStorageKey(scopeKey, hostScopeKey),
+    return parsePersistedBrowserScopeState(
+      localStorage.getItem(buildScopeStorageKey(scopeKey, hostScopeKey)),
+      defaultPath,
     );
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed = JSON.parse(raw) as Partial<PersistedBrowserScopeState>;
-    return {
-      currentPath:
-        typeof parsed.currentPath === "string" && parsed.currentPath.trim()
-          ? parsed.currentPath
-          : fallback.currentPath,
-      showHidden: Boolean(parsed.showHidden),
-      filterQuery:
-        typeof parsed.filterQuery === "string" ? parsed.filterQuery : "",
-      sortKey:
-        parsed.sortKey === "size" ||
-        parsed.sortKey === "modifiedAt" ||
-        parsed.sortKey === "permissions" ||
-        parsed.sortKey === "name"
-          ? parsed.sortKey
-          : "name",
-      sortDirection:
-        parsed.sortDirection === "desc" ? "desc" : fallback.sortDirection,
-    };
   } catch {
-    return fallback;
+    return parsePersistedBrowserScopeState(null, defaultPath);
   }
 }
 

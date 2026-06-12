@@ -4,6 +4,19 @@ function storageKey(agentSessionId: string): string {
   return `vscode-web-state:${agentSessionId}`;
 }
 
+function isSafeVsCodeWebUrl(url: string): boolean {
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function isResponseLike(value: unknown): value is OpenVsCodeWebResponse {
   if (!value || typeof value !== "object") {
     return false;
@@ -15,6 +28,7 @@ function isResponseLike(value: unknown): value is OpenVsCodeWebResponse {
       candidate.provider === "openvscode-server") &&
     typeof candidate.reused === "boolean" &&
     typeof candidate.url === "string" &&
+    isSafeVsCodeWebUrl(candidate.url) &&
     typeof candidate.workingDirectory === "string"
   );
 }

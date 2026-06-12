@@ -8,13 +8,14 @@
     "dev:restart": "./scripts/restart-dev.sh",
     "build": "pnpm --filter shared build && pnpm --filter server build && pnpm --filter web build",
     "check": "pnpm --filter shared build && pnpm --filter server build && pnpm --filter web build",
-    "e2e": "playwright test",
+    "e2e": "node ./scripts/playwright-preflight.mjs && playwright test",
     "test": "pnpm --recursive test && node --test scripts/*.test.mjs",
     "format": "pnpm --recursive format"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "concurrently": "^9.2.1",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "ws": "^8.21.0"
   }
 }

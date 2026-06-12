@@ -50,6 +50,23 @@ export function assertSafeFilesystemPath(value: string, field = "path"): void {
   }
 }
 
+export function parseFileMode(value: string): number {
+  const trimmed = value.trim();
+  if (!/^[0-7]{3,4}$/.test(trimmed)) {
+    throw new Error("mode must be a 3 or 4 digit octal permission");
+  }
+
+  return Number.parseInt(trimmed, 8);
+}
+
+export function normalizePreviewByteLimit(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+}
+
 export function detectFileEntryType(mode: number): FileEntryType {
   if ((mode & TYPE_MASK) === DIRECTORY_MODE) {
     return "directory";
@@ -112,11 +129,11 @@ export function normalizeLocalPath(inputPath: string): string {
 export const VALID_CHMOD_PATTERN = /^0[0-7]{3,4}$/;
 
 export function validateChmodMode(mode: string): number {
-  if (!VALID_CHMOD_PATTERN.test(mode)) {
-    throw new Error("mode must be a valid octal permission (e.g. 755, 644)");
+  if (!/^[0-7]{3,4}$/.test(mode.trim())) {
+    throw new Error("mode must be a 3 or 4 digit octal permission");
   }
 
-  const parsed = Number.parseInt(mode, 8);
+  const parsed = Number.parseInt(mode.trim(), 8);
 
   const others = parsed & 0o007;
   const setuid = parsed & 0o4000;

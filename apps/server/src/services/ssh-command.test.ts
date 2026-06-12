@@ -129,3 +129,64 @@ test("formatSshDestination rejects unsafe values", () => {
     /Invalid username/,
   );
 });
+
+test("buildSshArgs rejects invalid ssh and forwarding ports", () => {
+  assert.throws(
+    () =>
+      buildSshArgs({
+        host: "127.0.0.1",
+        port: 0,
+      }),
+    /Invalid ssh port/,
+  );
+
+  assert.throws(
+    () =>
+      buildSshArgs(
+        {
+          host: "127.0.0.1",
+          port: "22" as unknown as number,
+        },
+        {
+          connectTimeoutSeconds: 5,
+        },
+      ),
+    /Invalid ssh port/,
+  );
+
+  assert.throws(
+    () =>
+      buildSshArgs(
+        {
+          host: "127.0.0.1",
+          port: 22,
+        },
+        {
+          localForwardings: [
+            {
+              localPort: 0,
+              remoteHost: "127.0.0.1",
+              remotePort: 13338,
+            },
+          ],
+        },
+      ),
+    /Invalid local forward local port/,
+  );
+});
+
+test("buildSshArgs rejects invalid connect timeouts", () => {
+  assert.throws(
+    () =>
+      buildSshArgs(
+        {
+          host: "127.0.0.1",
+          port: 22,
+        },
+        {
+          connectTimeoutSeconds: 0,
+        },
+      ),
+    /Invalid connect timeout/,
+  );
+});

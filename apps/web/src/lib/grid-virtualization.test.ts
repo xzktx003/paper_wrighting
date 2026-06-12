@@ -62,4 +62,28 @@ describe("grid virtualization", () => {
   it("uses one column when the grid is narrower than the card minimum", () => {
     assert.equal(computeGridColumnCount(320), 1);
   });
+
+  it("falls back to a stable slice when layout measurements are unavailable", () => {
+    const window = computeVirtualGridWindow({
+      itemCount: 20,
+      containerWidth: Number.NaN,
+      viewportHeight: Number.NaN,
+      scrollTop: Number.NaN,
+      rowHeight: Number.NaN,
+      gap: Number.NaN,
+      overscanRows: Number.NaN,
+    });
+
+    assert.deepEqual(window, {
+      columns: 1,
+      totalRows: 20,
+      totalHeight: 5104,
+      startRow: 0,
+      endRow: 1,
+      startIndex: 0,
+      endIndex: 2,
+      visibleCount: 2,
+      offsetY: 0,
+    });
+  });
 });

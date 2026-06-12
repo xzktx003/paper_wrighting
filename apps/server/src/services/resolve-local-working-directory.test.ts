@@ -28,6 +28,16 @@ test("resolveLocalWorkingDirectory falls back for missing relative directories",
   );
 });
 
+test("resolveLocalWorkingDirectory falls back for traversal segments", () => {
+  assert.equal(resolveLocalWorkingDirectory("../outside"), process.cwd());
+  assert.equal(resolveLocalWorkingDirectory("nested/../outside"), process.cwd());
+});
+
+test("resolveLocalWorkingDirectory falls back for invalid path characters", () => {
+  assert.equal(resolveLocalWorkingDirectory("project\u0000name"), process.cwd());
+  assert.equal(resolveLocalWorkingDirectory("project\nname"), process.cwd());
+});
+
 test("resolveLocalWorkingDirectory expands the home directory shortcut", () => {
   assert.equal(resolveLocalWorkingDirectory("~"), os.homedir());
   assert.equal(resolveLocalWorkingDirectory("~/"), os.homedir());

@@ -26,6 +26,29 @@ function assertSafeSshField(name: string, value: string | undefined): void {
   }
 }
 
+function assertSafePort(name: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    throw new Error(`Invalid ${name}`);
+  }
+}
+
+function assertSafePositiveInteger(
+  name: string,
+  value: number | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid ${name}`);
+  }
+}
+
 export function formatSshDestination(sshTarget: SshTarget): string {
   assertSafeSshField("host", sshTarget.host);
   assertSafeSshField("username", sshTarget.username);
@@ -39,11 +62,18 @@ export function buildSshArgs(
   sshTarget: SshTarget,
   options: BuildSshArgsOptions = {},
 ): string[] {
+  assertSafePort("ssh port", sshTarget.port);
+  assertSafePositiveInteger(
+    "connect timeout",
+    options.connectTimeoutSeconds,
+  );
   assertSafeSshField("identity file", sshTarget.identityFile);
   assertSafeSshField("remote command", options.remoteCommand);
   for (const forward of options.localForwardings ?? []) {
     assertSafeSshField("local forward bind address", forward.bindAddress);
     assertSafeSshField("local forward host", forward.remoteHost);
+    assertSafePort("local forward local port", forward.localPort);
+    assertSafePort("local forward remote port", forward.remotePort);
   }
 
   const args: string[] = [];

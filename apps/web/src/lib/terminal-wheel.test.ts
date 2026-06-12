@@ -82,4 +82,20 @@ describe("computeTerminalWheelScrollLines", () => {
       },
     );
   });
+
+  it("falls back when terminal line or page measurements are unavailable", () => {
+    assert.deepEqual(
+      computeTerminalWheelScrollLines({
+        deltaMode: TERMINAL_WHEEL_DELTA_PAGE,
+        deltaY: 1,
+        lineHeight: Number.NaN,
+        pageHeight: Number.NaN,
+        previousDeltaY: 0,
+      }),
+      {
+        remainingDeltaY: 0,
+        scrollLines: 10,
+      },
+    );
+  });
 });

@@ -22,6 +22,7 @@ import {
   formatPermissions,
   guessMimeType,
   isBinaryBuffer,
+  normalizePreviewByteLimit,
   normalizeLocalPath,
   validateChmodMode,
 } from "./file-system-utils.js";
@@ -120,7 +121,10 @@ export class LocalFsService {
 
     try {
       const fileStats = await stat(resolvedPath);
-      const bytesToRead = Math.min(fileStats.size, maxBytes);
+      const bytesToRead = Math.min(
+        fileStats.size,
+        normalizePreviewByteLimit(maxBytes),
+      );
       const buffer = Buffer.alloc(bytesToRead);
       const { bytesRead } = await fileHandle.read(buffer, 0, bytesToRead, 0);
       const contentBuffer = buffer.subarray(0, bytesRead);

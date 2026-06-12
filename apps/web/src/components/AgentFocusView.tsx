@@ -12,6 +12,7 @@ import type { AgentSessionRecord } from "@agent-orchestrator/shared";
 import { FocusSidebarSessionCard } from "./FocusSidebarSessionCard";
 import { LazyTerminalView } from "./LazyTerminalView";
 import { TerminalPreview } from "./TerminalPreview";
+import { sendTerminalInputViaBridge } from "../lib/terminal-input-bridge";
 import {
   focusActiveTerminalTextarea,
   getActiveTerminalTextarea,
@@ -81,6 +82,44 @@ interface TerminalPaneContextMenuState {
   y: number;
 }
 
+interface FocusFallbackKeyboardInput {
+  key: string;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}
+
+export function buildFocusFallbackTerminalInput(
+  event: FocusFallbackKeyboardInput,
+): string | null {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return null;
+  }
+
+  switch (event.key) {
+    case "Enter":
+      return "\r";
+    case "Backspace":
+      return "\x7f";
+    case "Tab":
+      return "\t";
+    case "Escape":
+      return "\x1b";
+    case "ArrowUp":
+      return "\x1b[A";
+    case "ArrowDown":
+      return "\x1b[B";
+    case "ArrowRight":
+      return "\x1b[C";
+    case "ArrowLeft":
+      return "\x1b[D";
+    case "Delete":
+      return "\x1b[3~";
+    default:
+      return event.key.length === 1 ? event.key : null;
+  }
+}
+
 function shouldUseTerminalMonitorDragImage(): boolean {
   const testFlags = window as Window & {
     __disableTerminalMonitorDragImageForTest?: boolean;
@@ -129,29 +168,52 @@ function saveFocusHeaderHeaderCollapsed(collapsed: boolean): void {
   }
 }
 
-function readTerminalMonitorDragPayload(
+export function resolveFocusHeaderSession(options: {
+  focusedSession: AgentSessionRecord;
+  activeTerminalSessionId: string | null;
+  headerSessionId: string | null;
+  sessions: AgentSessionRecord[];
+  syncActiveTerminalWithFocus: boolean;
+}): AgentSessionRecord {
+  const sessionId = options.syncActiveTerminalWithFocus
+    ? options.activeTerminalSessionId
+    : options.headerSessionId;
+
+  if (!sessionId) {
+    return options.focusedSession;
+  }
+
+  return (
+    options.sessions.find((session) => session.id === sessionId) ??
+    options.focusedSession
+  );
+}
+
+export function readTerminalMonitorDragPayload(
   dataTransfer: DataTransfer,
 ): TerminalMonitorDragPayload | null {
-  const raw =
-    dataTransfer.getData(TERMINAL_MONITOR_DRAG_MIME) ||
-    dataTransfer.getData("text/plain");
+  const raw = dataTransfer.getData(TERMINAL_MONITOR_DRAG_MIME);
   if (!raw) {
     return null;
   }
 
   try {
     const parsed = JSON.parse(raw) as Partial<TerminalMonitorDragPayload>;
-    return typeof parsed.sessionId === "string"
+    const sessionId =
+      typeof parsed.sessionId === "string" ? parsed.sessionId.trim() : "";
+    const sourceSlotId =
+      typeof parsed.sourceSlotId === "string"
+        ? parsed.sourceSlotId.trim()
+        : "";
+
+    return sessionId
       ? {
-          sessionId: parsed.sessionId,
-          sourceSlotId:
-            typeof parsed.sourceSlotId === "string"
-              ? parsed.sourceSlotId
-              : undefined,
+          sessionId,
+          ...(sourceSlotId ? { sourceSlotId } : {}),
         }
       : null;
   } catch {
-    return { sessionId: raw };
+    return null;
   }
 }
 
@@ -190,6 +252,7 @@ export function AgentFocusView({
   const [activeSlotId, setActiveSlotId] = useState(
     DEFAULT_TERMINAL_MONITOR_SLOT_ID,
   );
+  const [headerSessionId, setHeaderSessionId] = useState(focusedSession.id);
   const [terminalSlots, setTerminalSlots] = useState<TerminalMonitorSlot[]>(
     () =>
       normalizeTerminalMonitorSlots({
@@ -215,6 +278,10 @@ export function AgentFocusView({
   const layoutMenuRef = useRef<HTMLDivElement | null>(null);
   const paneContextMenuRef = useRef<HTMLDivElement | null>(null);
   const dragPreviewElementRef = useRef<HTMLElement | null>(null);
+  const pendingFallbackTerminalInputRef = useRef<
+    Array<{ sessionId: string; input: string }>
+  >([]);
+  const fallbackInputFlushScheduledRef = useRef(false);
   const sessionById = useMemo(() => {
     return new Map(sessions.map((session) => [session.id, session]));
   }, [sessions]);
@@ -236,12 +303,16 @@ export function AgentFocusView({
   // Derive the title/rename target from the active slot's session directly,
   // so the header always reflects the pane the user is currently typing into,
   // regardless of whether App-level focusedId is synchronized.
-  const activeSlotSessionId =
+  const activeTerminalSessionId =
     terminalSlots.find((slot) => slot.id === safeActiveSlotId)?.sessionId ??
     null;
-  const activeHeaderSession =
-    (activeSlotSessionId ? sessionById.get(activeSlotSessionId) : undefined) ??
-    focusedSession;
+  const activeHeaderSession = resolveFocusHeaderSession({
+    focusedSession,
+    activeTerminalSessionId,
+    headerSessionId,
+    sessions,
+    syncActiveTerminalWithFocus,
+  });
   const activeLayoutOption =
     TERMINAL_MONITOR_LAYOUT_OPTIONS.find(
       (option) => option.mode === terminalLayoutMode,
@@ -260,8 +331,12 @@ export function AgentFocusView({
   }, [headerCollapsed]);
 
   useEffect(() => {
-    onActiveTerminalSessionChange?.(activeSlotSessionId);
-  }, [activeSlotSessionId, onActiveTerminalSessionChange]);
+    onActiveTerminalSessionChange?.(activeTerminalSessionId);
+  }, [activeTerminalSessionId, onActiveTerminalSessionChange]);
+
+  useEffect(() => {
+    setHeaderSessionId(focusedSession.id);
+  }, [focusedSession.id]);
 
   useEffect(() => {
     return () => {
@@ -376,15 +451,59 @@ export function AgentFocusView({
     focusActiveTerminalTextarea();
   }, [focusedSession.id, safeActiveSlotId, terminalLayoutMode, terminalSlots]);
 
-  function activateSlot(slot: TerminalMonitorSlot) {
+  function activateSlot(
+    slot: TerminalMonitorSlot,
+    options: { updateHeader?: boolean } = {},
+  ) {
     if (!slot.sessionId) {
       return;
     }
 
     setActiveSlotId(slot.id);
+    if (syncActiveTerminalWithFocus || options.updateHeader) {
+      setHeaderSessionId(slot.sessionId);
+    }
     if (syncActiveTerminalWithFocus && slot.sessionId !== focusedSession.id) {
       onSwitchFocus(slot.sessionId);
     }
+  }
+
+  function flushPendingFallbackTerminalInput(attempt = 0) {
+    fallbackInputFlushScheduledRef.current = false;
+    const pending = pendingFallbackTerminalInputRef.current;
+    if (pending.length === 0) {
+      return;
+    }
+
+    const remaining: Array<{ sessionId: string; input: string }> = [];
+    for (const item of pending) {
+      if (!sendTerminalInputViaBridge(item.sessionId, item.input)) {
+        remaining.push(item);
+      }
+    }
+    pendingFallbackTerminalInputRef.current = remaining;
+
+    if (remaining.length > 0 && attempt < 40) {
+      fallbackInputFlushScheduledRef.current = true;
+      window.setTimeout(
+        () => flushPendingFallbackTerminalInput(attempt + 1),
+        50,
+      );
+    }
+  }
+
+  function queueFallbackTerminalInput(sessionId: string, input: string) {
+    if (sendTerminalInputViaBridge(sessionId, input)) {
+      return;
+    }
+
+    pendingFallbackTerminalInputRef.current.push({ sessionId, input });
+    if (fallbackInputFlushScheduledRef.current) {
+      return;
+    }
+
+    fallbackInputFlushScheduledRef.current = true;
+    window.requestAnimationFrame(() => flushPendingFallbackTerminalInput());
   }
 
   function handlePanePointerDownCapture(
@@ -409,7 +528,7 @@ export function AgentFocusView({
       return;
     }
 
-    activateSlot(slot);
+    activateSlot(slot, { updateHeader: syncActiveTerminalWithFocus });
   }
 
   function handleSelectSlotSession(slotId: string, sessionId: string) {
@@ -900,25 +1019,12 @@ export function AgentFocusView({
         !isInActiveTerminal(target) &&
         !isInActiveTerminal(active)
       ) {
+        const input = buildFocusFallbackTerminalInput(e);
         const textarea = getActiveTerminalTextarea();
-        if (textarea) {
+        if (activeTerminalSessionId && input !== null) {
           e.preventDefault();
-          textarea.focus();
-          const forwarded = new KeyboardEvent("keydown", {
-            key: e.key,
-            code: e.code,
-            keyCode: e.keyCode,
-            which: e.which,
-            ctrlKey: e.ctrlKey,
-            altKey: e.altKey,
-            shiftKey: e.shiftKey,
-            metaKey: e.metaKey,
-            repeat: e.repeat,
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-          });
-          textarea.dispatchEvent(forwarded);
+          textarea?.focus();
+          queueFallbackTerminalInput(activeTerminalSessionId, input);
           e.stopPropagation();
         }
       }
@@ -926,7 +1032,7 @@ export function AgentFocusView({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onExit, safeActiveSlotId]);
+  }, [activeTerminalSessionId, onExit, safeActiveSlotId]);
 
   return (
     <div
@@ -1124,7 +1230,7 @@ export function AgentFocusView({
                       className={`focus-terminal-input-btn${isActiveInputPane ? " focus-terminal-input-btn--active" : ""}`}
                       aria-disabled={isActiveInputPane ? "true" : undefined}
                       disabled={!session}
-                      onClick={() => activateSlot(slot)}
+                      onClick={() => activateSlot(slot, { updateHeader: true })}
                       type="button"
                     >
                       {isActiveInputPane ? "输入中" : "设为输入"}

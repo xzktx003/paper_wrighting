@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -132,6 +132,71 @@ test("ensureSession starts remote code-server targets for SSH sessions", async (
   assert.match(remoteCommands[1] ?? "", /kill '4242'/);
 });
 
+test("ensureSession ignores partially numeric remote vscode preferred ports", async () => {
+  const previousPort = process.env.VSCODE_WEB_REMOTE_PORT;
+  const tunnelLaunches: Array<{ command: string; args: string[] }> = [];
+  const tunnel = new FakeChildProcess();
+  process.env.VSCODE_WEB_REMOTE_PORT = "14444abc";
+
+  try {
+    const manager = new VsCodeWebManager({
+      allocatePort: async () => 43133,
+      runRemoteCommand: async (_sshTarget: SshTarget, command: string) => {
+        assert.doesNotMatch(command, /14444/);
+        assert.match(command, /13338/);
+        if (command.includes('printf "state=%s\\n" "$STATE"')) {
+          return [
+            "state=started",
+            "port=13338",
+            "workingDirectory=/srv/remote-project",
+            "pid=4243",
+            "",
+          ].join("\n");
+        }
+
+        return "";
+      },
+      spawnProcess: (command: string, args: string[]) => {
+        tunnelLaunches.push({ command, args });
+        return tunnel as never;
+      },
+      resolveTunnelTarget: async (sshTarget: SshTarget) => sshTarget,
+      waitForUrlReady: async () => {},
+    });
+
+    await manager.ensureSession(
+      buildSession("session-remote-port", {
+        sourceType: "remote-connect",
+        sshTarget: { host: "10.30.0.24", username: "xuzk" },
+        workingDirectory: "~/remote-project",
+      }),
+    );
+
+    assert.deepEqual(tunnelLaunches[0]?.args, [
+      "-F",
+      "/dev/null",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=5",
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-L",
+      "127.0.0.1:43133:127.0.0.1:13338",
+      "-N",
+      "xuzk@10.30.0.24",
+    ]);
+
+    await manager.stopSession("session-remote-port");
+  } finally {
+    if (previousPort === undefined) {
+      delete process.env.VSCODE_WEB_REMOTE_PORT;
+    } else {
+      process.env.VSCODE_WEB_REMOTE_PORT = previousPort;
+    }
+  }
+});
+
 test("ensureSession resolves ssh aliases before launching configless remote vscode tunnels", async () => {
   const tunnelLaunches: Array<{ command: string; args: string[] }> = [];
   const tunnel = new FakeChildProcess();
@@ -195,6 +260,27 @@ test("resolveSshTunnelTarget keeps numeric hosts but still applies ssh config po
   assert.deepEqual(resolved, {
     host: "10.30.0.23",
     port: 10022,
+    username: "xuzk",
+    identityFile: "/tmp/test-key",
+  });
+});
+
+test("resolveSshTunnelTarget ignores partially numeric ssh config ports", async () => {
+  const resolved = await resolveSshTunnelTarget(
+    { host: "gpu22", port: 2200, username: "xuzk" },
+    async () =>
+      [
+        "user xuzk",
+        "hostname 10.30.0.23",
+        "port 10022abc",
+        "identityfile /tmp/test-key",
+        "",
+      ].join("\n"),
+  );
+
+  assert.deepEqual(resolved, {
+    host: "10.30.0.23",
+    port: 2200,
     username: "xuzk",
     identityFile: "/tmp/test-key",
   });
@@ -320,6 +406,54 @@ test("ensureSession launches one global code-server and returns session-specific
   );
 
   await manager.dispose();
+});
+
+test("ensureSession recovers from malformed persisted user settings", async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), "vscode-web-settings-"));
+  const settingsPath = join(tempRoot, "user-data", "User", "settings.json");
+  const child = new FakeChildProcess();
+  const files = new Map<string, string>();
+
+  try {
+    await mkdir(join(tempRoot, "user-data", "User"), { recursive: true });
+    await writeFile(settingsPath, "{bad-json", "utf8");
+
+    const manager = new VsCodeWebManager({
+      allocatePort: async () => 43112,
+      createDataRoot: async () => tempRoot,
+      findCommand: async (candidate) =>
+        candidate === "code-server" ? "/usr/bin/code-server" : null,
+      resolveLaunchEnv: async () => ({
+        HOME: "/tmp/demo-home",
+        PATH: "/tmp/demo-bin",
+        SHELL: "/bin/bash",
+      }),
+      resolveExtensionsDir: resolveTestExtensionsDir,
+      spawnProcess: () => child as never,
+      waitForUrlReady: async () => {},
+      writeFile: async (pathValue, content) => {
+        files.set(pathValue, content);
+      },
+    });
+
+    await manager.ensureSession(buildSession("session-bad-settings"));
+
+    const userSettings = JSON.parse(files.get(settingsPath) ?? "{}");
+    assert.equal(
+      userSettings["terminal.integrated.defaultProfile.linux"],
+      "coding-kanban-user-shell",
+    );
+    assert.equal(
+      userSettings["terminal.integrated.profiles.linux"][
+        "coding-kanban-user-shell"
+      ].path,
+      "/bin/bash",
+    );
+
+    await manager.dispose();
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("ensureSession auto-installs code-server when no provider is initially available", async () => {
@@ -584,6 +718,57 @@ test("ensureSession reuses a matching current-user code-server from the process 
   await manager.dispose();
 });
 
+test("ensureSession ignores process-list code-server ports outside the TCP range", async () => {
+  const launches: Array<{ command: string; args: string[] }> = [];
+  const readyUrls: string[] = [];
+  const child = new FakeChildProcess();
+  const manager = new VsCodeWebManager({
+    allocatePort: async () => 43127,
+    createDataRoot: async () => TEST_DATA_ROOT,
+    findCommand: async (candidate) =>
+      candidate === "code-server" ? "/usr/bin/code-server" : null,
+    listUserProcesses: async () => [
+      {
+        pid: 321657,
+        args: [
+          "/usr/bin/code-server",
+          "--auth",
+          "none",
+          "--bind-addr",
+          "127.0.0.1:70000",
+          "--disable-update-check",
+          "--config",
+          `${TEST_DATA_ROOT}/config.yaml`,
+          "--user-data-dir",
+          `${TEST_DATA_ROOT}/user-data`,
+          "--extensions-dir",
+          `${TEST_DATA_ROOT}/extensions`,
+        ].join(" "),
+      },
+    ],
+    resolveExtensionsDir: resolveTestExtensionsDir,
+    spawnProcess: (command, args) => {
+      launches.push({ command, args });
+      return child as never;
+    },
+    waitForUrlReady: async (url) => {
+      readyUrls.push(url);
+    },
+    writeFile: async () => {},
+  });
+
+  const result = await manager.ensureSession(
+    buildSession("session-invalid-process-port"),
+  );
+
+  assert.equal(launches.length, 1);
+  assert.equal(result.reused, false);
+  assert.deepEqual(readyUrls, ["http://127.0.0.1:43127"]);
+  assert.equal(manager.getProxyTargetUrl(), "http://127.0.0.1:43127");
+
+  await manager.dispose();
+});
+
 test("ensureSession does not rewrite an unchanged workspace file", async () => {
   const child = new FakeChildProcess();
   const writes = new Map<string, number>();
@@ -760,6 +945,51 @@ test("ensureSession reuses a persisted port across global server restarts so the
   );
 
   await manager.dispose();
+});
+
+test("ensureSession ignores out-of-range persisted vscode web ports", async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), "vscode-web-port-"));
+  const child = new FakeChildProcess();
+  const preferredPorts: Array<number | undefined> = [];
+  const launches: Array<{ args: string[] }> = [];
+  const writtenFiles = new Map<string, string>();
+
+  try {
+    await writeFile(join(tempRoot, "port.json"), '{"port":70000}\n', "utf8");
+
+    const manager = new VsCodeWebManager({
+      allocatePort: async (preferredPort) => {
+        preferredPorts.push(preferredPort);
+        return 43126;
+      },
+      createDataRoot: async () => tempRoot,
+      findCommand: async (candidate) =>
+        candidate === "code-server" ? "/usr/bin/code-server" : null,
+      findRunningServer: async () => null,
+      resolveExtensionsDir: resolveTestExtensionsDir,
+      spawnProcess: (_command, args) => {
+        launches.push({ args });
+        return child as never;
+      },
+      waitForUrlReady: async () => {},
+      writeFile: async (pathValue, content) => {
+        writtenFiles.set(pathValue, content);
+      },
+    });
+
+    await manager.ensureSession(buildSession("session-invalid-port"));
+
+    assert.deepEqual(preferredPorts, [undefined]);
+    assert.ok(launches[0]?.args.includes("0.0.0.0:43126"));
+    assert.equal(
+      writtenFiles.get(join(tempRoot, "port.json")),
+      `${JSON.stringify({ port: 43126 }, null, 2)}\n`,
+    );
+
+    await manager.dispose();
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("ensureSession uses the resolved shell env and strips inherited VS Code IPC hooks before spawning", async () => {

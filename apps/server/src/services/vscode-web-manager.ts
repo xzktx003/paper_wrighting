@@ -230,9 +230,13 @@ function mergeUserSettingsContent(
   let existingSettings: Record<string, unknown> = {};
 
   if (existingContent) {
-    const parsed = JSON.parse(existingContent);
-    if (isRecord(parsed)) {
-      existingSettings = parsed;
+    try {
+      const parsed = JSON.parse(existingContent);
+      if (isRecord(parsed)) {
+        existingSettings = parsed;
+      }
+    } catch {
+      existingSettings = {};
     }
   }
 
@@ -406,8 +410,8 @@ async function defaultResolvePreferredPort(
     const content = await readFile(portFile, "utf8");
     const parsed = JSON.parse(content);
     const port = (parsed as { port?: unknown }).port;
-    if (typeof port === "number" && Number.isInteger(port) && port > 0) {
-      return port;
+    if (typeof port === "number") {
+      return parseStrictPort(String(port));
     }
   } catch {
     // ignore corrupted port files; we will reallocate.
@@ -564,6 +568,18 @@ function hasFlagValue(args: string, flag: string, value: string): boolean {
   ).test(args);
 }
 
+function parseStrictPort(value: string): number | null {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 65535
+    ? parsed
+    : null;
+}
+
 function extractRunningServerPort(
   provider: VsCodeWebProvider,
   args: string,
@@ -579,8 +595,7 @@ function extractRunningServerPort(
     return null;
   }
 
-  const port = Number.parseInt(match[1] ?? "", 10);
-  return Number.isInteger(port) && port > 0 ? port : null;
+  return parseStrictPort(match[1] ?? "");
 }
 
 async function defaultFindRunningServer(
@@ -765,8 +780,8 @@ export async function resolveSshTunnelTarget(
     if (key === "hostname") {
       resolvedHost = value;
     } else if (key === "port") {
-      const parsedPort = Number.parseInt(value, 10);
-      if (Number.isInteger(parsedPort) && parsedPort > 0) {
+      const parsedPort = parseStrictPort(value);
+      if (parsedPort !== null) {
         resolvedPort = parsedPort;
       }
     } else if (key === "user") {
@@ -888,11 +903,7 @@ function resolveRemoteBindHost(): string {
 }
 
 function resolveRemotePreferredPort(): number {
-  const configured = Number.parseInt(
-    process.env.VSCODE_WEB_REMOTE_PORT?.trim() || "",
-    10,
-  );
-  return Number.isInteger(configured) && configured > 0 ? configured : 13338;
+  return parseStrictPort(process.env.VSCODE_WEB_REMOTE_PORT ?? "") ?? 13338;
 }
 
 function sanitizeRemoteHostLabel(host: string): string {

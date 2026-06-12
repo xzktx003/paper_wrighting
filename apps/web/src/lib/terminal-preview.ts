@@ -14,6 +14,12 @@ export function sanitizeTerminalPreviewText(text: string): string {
     .replace(CONTROL_CHAR_PATTERN, "");
 }
 
+function resolvePositiveLimit(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value !== undefined
+    ? Math.max(1, Math.floor(value))
+    : fallback;
+}
+
 export function buildTerminalPreviewLines(
   text: string | null | undefined,
   options: {
@@ -26,10 +32,10 @@ export function buildTerminalPreviewLines(
     return [SUSPENDED_TERMINAL_PREVIEW_TEXT];
   }
 
-  const maxLines = Math.max(1, options.maxLines ?? DEFAULT_MAX_LINES);
-  const maxLineLength = Math.max(
-    1,
-    options.maxLineLength ?? DEFAULT_MAX_LINE_LENGTH,
+  const maxLines = resolvePositiveLimit(options.maxLines, DEFAULT_MAX_LINES);
+  const maxLineLength = resolvePositiveLimit(
+    options.maxLineLength,
+    DEFAULT_MAX_LINE_LENGTH,
   );
   const lines = sanitizeTerminalPreviewText(text ?? "")
     .split("\n")

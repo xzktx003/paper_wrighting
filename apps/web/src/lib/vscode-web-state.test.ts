@@ -93,4 +93,13 @@ describe("vscode-web-state", () => {
 
     assert.equal(loadCachedVsCodeWebState("session-a"), null);
   });
+
+  it("ignores cached vscode urls with non-web schemes", () => {
+    store.set(
+      "vscode-web-state:session-a",
+      JSON.stringify(buildResponse("javascript:alert(1)")),
+    );
+
+    assert.equal(loadCachedVsCodeWebState("session-a"), null);
+  });
 });

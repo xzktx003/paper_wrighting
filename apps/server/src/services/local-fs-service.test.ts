@@ -75,3 +75,38 @@ test("LocalFsService creates, renames, chmods, and removes files", async () => {
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test("LocalFsService rejects chmod modes that are not complete octal permissions", async () => {
+  const rootDir = createTempRoot();
+  const service = new LocalFsService();
+  const filePath = path.join(rootDir, "draft.txt");
+  writeFileSync(filePath, "draft");
+
+  try {
+    await assert.rejects(() => service.chmod(filePath, "777abc"), {
+      message: /mode must be a 3 or 4 digit octal permission/,
+    });
+    await assert.rejects(() => service.chmod(filePath, "888"), {
+      message: /mode must be a 3 or 4 digit octal permission/,
+    });
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("LocalFsService treats non-finite preview byte limits as an empty preview", async () => {
+  const rootDir = createTempRoot();
+  const service = new LocalFsService();
+  const filePath = path.join(rootDir, "visible.txt");
+  writeFileSync(filePath, "preview text");
+
+  try {
+    const preview = await service.preview(filePath, Number.NaN);
+
+    assert.equal(preview.content, "");
+    assert.equal(preview.truncated, true);
+    assert.equal(preview.size, "preview text".length);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

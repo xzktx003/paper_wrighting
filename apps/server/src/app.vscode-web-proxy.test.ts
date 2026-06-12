@@ -121,6 +121,51 @@ test("GET /vscode/* prefers browser origin host but forwards HTTP protocol to th
   }
 });
 
+test("GET /vscode/* ignores malformed forwarded host before falling back to browser origin", async () => {
+  let receivedForwardedHost = "";
+  const upstream = createServer((request, response) => {
+    receivedForwardedHost =
+      (request.headers["x-forwarded-host"] as string | undefined) ?? "";
+    response.statusCode = 204;
+    response.end();
+  });
+  const upstreamPort = await listen(upstream);
+
+  const { app } = buildServer({
+    vsCodeWebManager: {
+      dispose: async () => {},
+      getProxyTargetUrl: () => `http://127.0.0.1:${upstreamPort}`,
+    } as never,
+  });
+
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/vscode/`, {
+      headers: {
+        origin: "https://127.0.0.1:3000",
+        "x-forwarded-host": "bad host",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(receivedForwardedHost, "127.0.0.1:3000");
+  } finally {
+    await app.close();
+    await new Promise<void>((resolve, reject) => {
+      upstream.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("GET /vscode returns 503 when no active VS Code Web target exists", async () => {
   const { app } = buildServer({
     vsCodeWebManager: {

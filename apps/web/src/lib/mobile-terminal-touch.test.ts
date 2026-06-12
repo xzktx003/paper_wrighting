@@ -33,6 +33,18 @@ describe("mobile terminal touch helpers", () => {
     });
   });
 
+  it("falls back when computed terminal line height is unavailable", () => {
+    const result = computeMobileTerminalScrollLines({
+      accumulatedDeltaY: 34,
+      lineHeight: Number.NaN,
+    });
+
+    assert.deepEqual(result, {
+      remainingDeltaY: 2,
+      scrollLines: -2,
+    });
+  });
+
   it("measures pinch distance and clamps font size", () => {
     assert.equal(
       measureTouchDistance(

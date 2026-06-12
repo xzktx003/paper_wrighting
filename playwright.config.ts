@@ -36,6 +36,27 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   workers: 1,
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        browserName: 'chromium' as const,
+        channel: 'chromium-headless-shell' as const,
+      },
+    },
+    {
+      name: 'firefox',
+      use: {
+        browserName: 'firefox' as const,
+      },
+    },
+    {
+      name: 'webkit',
+      use: {
+        browserName: 'webkit' as const,
+      },
+    },
+  ],
   use: {
     baseURL:
       process.env.PLAYWRIGHT_BASE_URL ??

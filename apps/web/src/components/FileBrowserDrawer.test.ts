@@ -3,7 +3,14 @@ import { describe, it } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { FileBrowserDrawer } from "./FileBrowserDrawer.js";
+import {
+  clampFileBrowserPreviewHeight,
+  FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT,
+  FILE_BROWSER_PREVIEW_MIN_HEIGHT,
+  FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT,
+  FileBrowserDrawer,
+  parseFileBrowserPreviewHeight,
+} from "./FileBrowserDrawer.js";
 
 describe("FileBrowserDrawer", () => {
   it("renders the file list without the legacy side directory tree", () => {
@@ -60,5 +67,48 @@ describe("FileBrowserDrawer", () => {
 
     assert.doesNotMatch(markup, /file-browser-tree/);
     assert.doesNotMatch(markup, /目录树/);
+  });
+});
+
+describe("parseFileBrowserPreviewHeight", () => {
+  it("restores valid persisted preview heights", () => {
+    assert.equal(parseFileBrowserPreviewHeight("320"), 320);
+  });
+
+  it("falls back when persisted preview height is too small", () => {
+    assert.equal(
+      parseFileBrowserPreviewHeight(String(FILE_BROWSER_PREVIEW_MIN_HEIGHT - 1)),
+      FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT,
+    );
+  });
+
+  it("falls back on non-numeric persisted preview heights", () => {
+    assert.equal(
+      parseFileBrowserPreviewHeight("not-a-number"),
+      FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT,
+    );
+  });
+
+  it("falls back when no preview height was saved", () => {
+    assert.equal(
+      parseFileBrowserPreviewHeight(null),
+      FILE_BROWSER_PREVIEW_DEFAULT_HEIGHT,
+    );
+  });
+});
+
+describe("clampFileBrowserPreviewHeight", () => {
+  it("keeps restored preview height inside the available file browser layout", () => {
+    assert.equal(
+      clampFileBrowserPreviewHeight(10_000, 640),
+      640 - FILE_BROWSER_PREVIEW_MIN_LIST_HEIGHT,
+    );
+  });
+
+  it("keeps restored preview height above the preview minimum", () => {
+    assert.equal(
+      clampFileBrowserPreviewHeight(1, 640),
+      FILE_BROWSER_PREVIEW_MIN_HEIGHT,
+    );
   });
 });

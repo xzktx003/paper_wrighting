@@ -34,6 +34,20 @@ describe("terminal preview", () => {
     );
   });
 
+  it("falls back to bounded defaults when preview limits are invalid", () => {
+    const longLine = "x".repeat(180);
+    assert.deepEqual(
+      buildTerminalPreviewLines(
+        ["one", "two", "three", "four", "five", "six", longLine].join("\n"),
+        {
+          maxLines: Number.NaN,
+          maxLineLength: Number.NaN,
+        },
+      ),
+      ["two", "three", "four", "five", "six", `${"x".repeat(159)}…`],
+    );
+  });
+
   it("uses stable placeholder text when output is empty or suspended", () => {
     assert.deepEqual(buildTerminalPreviewLines(" \n\t "), [
       EMPTY_TERMINAL_PREVIEW_TEXT,

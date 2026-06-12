@@ -4,6 +4,26 @@
 - 手机端快捷键说明弹窗缺少无障碍属性：没有 `aria-modal`、`aria-labelledby` 和 Tab 聚焦陷阱，屏幕阅读器用户无法正确聚焦弹窗；修复为增加 `aria-modal=”true”`、`aria-labelledby` 指向标题、Tab 循环限制和 Escape 关闭，卸载时还原页面焦点。
 - 手机端快捷键工具栏多行平铺占用纵向空间且不符合横向选择预期：修复为 `flex` 单行横向选择器，使用 `overflow-x: auto` 和 `touch-action: pan-x` 支持左右滑动，并把 `EOF` 按钮展示为 `Ctrl+D`。
 - 手机端输入框“发送”只填入 Agent 输入框但不提交任务：文本和回车合并在同一个 stdin payload 时，部分 Copilot/Claude/Codex TUI 没把同批回车当提交键；修复为“发送/粘贴执行”先 bracketed paste 文本，再单独发送 Enter，“粘贴”仍不自动提交。
+- SSH 命令参数构造只校验字符串字段，未运行时校验 `port`、本地转发端口和连接超时；JSON 请求可传入字符串端口、0 或越界值并透传给 `ssh -p` / `-L`。修复为 `buildSshArgs` 强制端口为 1-65535 整数、连接超时为正整数，并补非法端口回归测试。
+- SSH 主机列表解析多 alias `Host` 行时会把整串 alias 当成一个主机名，或因同一行存在通配 alias 而跳过可用主机；非法 `Port` 还会在 JSON 中泄漏成 `null`。修复为逐 alias 展开、过滤通配 alias，并把非法端口回退到 22。
+- 本地 agent / PTY 启动 cwd 解析没有复用文件系统路径安全规则，`..`、空字节或换行等脏 `workingDirectory` 可能进入 spawn cwd 解析路径。修复为 `resolveLocalWorkingDirectory` 入口复用 `assertSafeFilesystemPath`，非法 cwd 回退当前工作目录。
+- stdin 接口缺少 `input` 或 `input` 非字符串时会把坏输入透传到 runtime，导致内部异常或 500。修复为 `/api/agent-sessions/:id/stdin` 入口统一校验输入类型，非法请求返回 400。
+- session 改名接口 `displayName` 非字符串时会直接 `.trim()` 抛错并返回 500。修复为 `PATCH /api/agent-sessions/:id` 先校验 displayName 类型，非字符串返回 400。
+- session 隐藏接口 `hidden` 字段用 `Boolean(hidden)` 强制转换，字符串 `"false"` 会被当作 true 并隐藏会话。修复为 `PATCH /api/agent-sessions/:id` 要求 hidden 必须是真实 boolean，非法类型返回 400 且不修改会话。
+- 文件浏览器 chmod 接口会接受 `777abc` 这类非完整八进制权限字符串，`parseInt(mode, 8)` 会截断成 `0777` 执行，且路由层可能把非法参数归成 500。修复为新增严格权限解析，仅接受 3 或 4 位八进制权限，本地/SFTP chmod 共用规则，非法 mode、空路径、非法路径字符等参数错误返回 400。
+- 文件上传接口遇到非法 multipart JSON 字段（如损坏的 `relativePaths` 或非字符串数组）会按 500 返回。修复为显式解析并校验 `sshTarget` / `relativePaths` 字段，非法上传参数统一返回 400。
+- 前端文件上传遇到 HTTP 2xx 但响应体为空、非 JSON 或缺少 `uploadedPaths` 时，`xhr.onload` 中的 JSON 解析/类型断言会让异常逃逸出 Promise。修复为集中解析并校验上传响应结构，非法响应通过 Promise reject 返回明确错误。
+- 前端通用 API helper 对所有成功响应都调用 `response.json()`，导致 `killTmuxSession` 等 `204 No Content` 成功操作在客户端仍抛 JSON 解析错误。修复为成功响应解析器支持 204/空响应体，并继续校验非空 JSON。
+- 前端通用 API helper 在 HTTP 失败且响应头为 JSON 时直接调用 `response.json()`，空 JSON 或损坏 JSON 会把语法错误暴露给调用方。修复为失败响应解析器只采用合法 `{ error: string }`，否则回退到 `Request failed: <status>`；纯文本错误仍保留原文。
+- agent session snapshot WebSocket 对消息直接 `JSON.parse` 并断言为 snapshot，损坏帧、代理噪声或未来非 snapshot 事件可能让前端消息处理器抛错并停留在旧状态。修复为新增快照事件解析器，非法 JSON、非 snapshot 和畸形 payload 安全忽略。
+- 文件浏览器预览区高度从 localStorage 恢复时只校验最小值，旧缓存里的超大高度会挤占文件列表；修复为复用拖拽时的容器高度夹紧规则，打开抽屉和容器尺寸变化时重新夹紧预览高度。
+- 目录建议接口缺少 `prefix` 或 `prefix` 非字符串时会在 service 内部 `.trim()` 抛错并返回 500。修复为 `listDirectorySuggestions` 入口校验 prefix 类型，路由映射为 400，并补缺失/非字符串回归。
+- 文件浏览器 JSON 接口仍直接读取请求体字段，非字符串 `path`、非法 `showHidden` / `maxBytes`、错误类型 `newPath` 或非法 SSH 端口会触发内部异常或进入文件/SFTP 服务。修复为 `/api/fs/list|operation|preview|chmod|download` 入口统一校验请求体、路径、操作类型、布尔值、预览大小和 SSH 目标；上传 `sshTarget` 元数据也复用同一校验。
+- 会话详情、聚焦、stdin、删除等路由遇到不存在的 session id 时会把 registry 的 `Unknown agent session` 异常暴露成泛化 500。修复为 agent session 路由插件统一将该已知错误映射为 404，并补常见路由回归。
+- `pnpm e2e` 在缺少 Playwright Chromium 系统库（如 `libatk-1.0.so.0`）的机器上会刷出全部浏览器用例失败，掩盖真实回归信号。修复为 e2e 入口先运行 Chromium preflight；缺库时直接输出缺失库名和 `npx playwright install` / `sudo npx playwright install-deps` 处理步骤。
+- 文件浏览器右键“复制路径”在局域网 HTTP 页面失效：代码直接调用 `navigator.clipboard.writeText`，非安全上下文或权限受限时不可用；修复为新增剪贴板 helper，Clipboard API 不可用或被拒绝时回退隐藏 textarea + `execCommand('copy')`，并补文件/目录右键复制路径回归测试。
+- 多屏聚焦视图中选中不同终端后顶部标题和“改名”仍指向初始终端：标题栏直接读 App 层 `focusedSession`，而多屏切换输入窗格在侧栏未打开时不会同步 focused session；修复为标题、状态、改名和重连优先使用当前 active monitor slot 的 session。
+- 多屏聚焦视图从“其他会话”拖入屏幕时，拖拽缩影会混入多个其他会话预览：未设置专用 drag image，浏览器默认截图侧栏卡片时容易带上相邻缩影；修复为拖拽开始创建单会话拖影，结束或 drop 后清理。
 - 聚焦视图静态区域点击后输入失效或首字符重复：`AgentFocusView` 过度依赖 `keydown` 补发，且把按钮/链接当作输入控件；修复为在 `pointerdown` 直接归还终端焦点并避免重复转发。
 - 从终端切回 VS Code iframe 后焦点被终端抢回：`TerminalView` 未把 `iframe` 视为有意外部焦点；修复为把 `HTMLIFrameElement` 加入允许列表。
 - 从终端切到文件浏览器编辑器或 VS Code 后，输入过程中焦点仍会被终端抢走：终端只看当前 `activeElement`，交接瞬间看到 `body` 就误抢；同时 VS Code 抽屉把 `reused` 变化当成新实例；修复为增加外部输入焦点保护窗口，并忽略 `reused` 单独变化。
@@ -87,3 +107,64 @@
 - `Shift+Left` 等修饰键组合在本地 tmux 终端里变成 `[1;2D` / `D`：xterm 发出 `ESC[1;2D`，但 `buildTmuxSendKeySteps` 只识别普通箭头，导致 send-keys 路径把 ESC 和字面量拆开注入 pane。修复为将 xterm modified cursor/navigation CSI 序列映射成 tmux key name（如 `S-Left`、`C-Right`、`C-S-Down`、`S-PPage`），并保护前后端过滤层继续原样转发这些键序列。
 - Codex 会话中右键粘贴多行内容被逐行提交：上一版剥离 bracketed paste 起止符后，区块内换行重新落入 `Enter` 映射。最终修复为完整保留 `ESC[200~ ... ESC[201~` 区块并作为单个 literal 发送给 tmux，区块外换行仍保持 Enter 语义。
 - Codex 会话多行右键粘贴的 bracketed paste 可能被 WebSocket/xterm 分成多帧：tmux 输入转换必须按 session 记住 `ESC[200~` 已打开，直到看到 `ESC[201~` 才恢复普通 Enter 映射；不要只依赖单个 stdin payload 内完整匹配 paste 区块。
+- tmux 扫描遇到 cwd 含 `:` 的 pane 会漏扫或路径错位：`agent-scanner` 不能用冒号解析 `tmux list-panes` 字段，需使用不会和普通路径冲突的字段分隔符；已改为 tab 分隔，并覆盖真实 tmux 含冒号路径回归。
+- tmux 扫描会把 session 名命中的 agent 误保存成原始 pane 命令，例如 `codex-*` session 运行 `sh` 时被归类为 `sh`。修复为检测函数只返回已知 agent kind 或 `shell`，并补真实 tmux session 归类回归。
+- 终端 resize 接口直接信任 `cols` / `rows`，缺失、字符串、0 或超出安全整数范围的值可能传入 `node-pty.resize()`；修复为路由层要求两个字段都是正安全整数，非法请求返回 400，并补 resize 输入校验回归。
+- 加入已发现 tmux 会话接口直接解构请求体，缺失 body 会触发 500，非法 `interactionState` / `sshTarget.port` 可能写入畸形会话记录；修复为先校验必填字符串、合法交互状态和 SSH 端口范围，非法请求统一返回 400。
+- 聚焦会话接口缺失或非字符串 `agentSessionId` 时会把坏输入传给 registry 并走内部异常路径；修复为 `/api/agent-sessions/focus` 入口校验 `agentSessionId` 字符串类型，非法请求返回 400。
+- 注册会话接口会把缺失必填字段、非法枚举或错误类型的 transport 引用直接写入 registry，形成畸形 session；修复为 `/api/agent-sessions/register` 校验必填字符串、已知枚举、可选 SSH 目标和 transport 引用字段，非法请求返回 400。
+- agent 启动接口会把缺失命令、错误类型字段或非法 SSH 目标直接透传给本地/SSH/PTY runtime，触发内部异常或畸形启动；修复为 `/api/agent-launch/local|remote|pty|ssh-pty` 在路由入口校验必填字符串、命令、SSH 目标和端口范围，非法请求返回 400 且不注册会话。
+- agent 发现接口会把缺失 `path`、错误类型字段或非法 SSH 目标交给 tmux/目录扫描，导致客户端输入错误走内部异常或 shell/SSH 路径；修复为 `/api/agent-discovery/tmux/scan` 和 `/api/agent-discovery/scan` 入口校验请求体、扫描路径和 SSH 目标，非法请求返回 400。
+- VS Code Web 启动时如果持久化的 `user-data/User/settings.json` 损坏，合并终端 profile 设置会直接抛出 JSON 解析异常，导致会话打不开。修复为把损坏设置按空对象恢复并重写受管终端 profile，补 malformed settings 回归。
+- shell 启动环境探测输出损坏 JSON 时会向上传播原始 `SyntaxError`，诊断依赖 Node parser 文案且不属于稳定业务错误。修复为把标记间 malformed JSON 包装成受控的 startup env parse 错误，并补回归测试。
+- terminal WebSocket binary 控制帧以前依赖 Node 宽松 base64 解码，`data` 带非法字符时仍可能解码合法前缀并写入 PTY。修复为 binary frame 只接受规范 base64 字符串，非法帧忽略，不再把损坏帧变成终端输入。
+- terminal WebSocket resize 控制帧以前只做 `JSON.parse` 类型断言，非整数、0 或超安全整数的 `cols/rows` 可进入 PTY resize 路径。修复为复用 REST resize 的正整数校验，非法 resize 帧直接忽略，并补解析器回归。
+- 前端终端收到未知事件或畸形 replay 的 `terminal-control` JSON 帧时会静默吞帧且不解除输入禁用，用户可能等到 8 秒 safety timeout 才能输入。修复为抽出控制帧解析器，未知/畸形控制帧按普通输出处理并立即走输入解锁路径。
+- 前端布局状态恢复时用 `Boolean(parsed.sidebarCollapsed)` / `Boolean(parsed.topbarCollapsed)` 解析本地存储，字符串 `"false"` 或数字 `1` 这类陈旧/损坏值会被误当作折叠状态，导致页面启动后错误进入紧凑或沉浸布局。修复为只接受真实 boolean，其他值回退默认展开，并补本地存储回归。
+- 文件浏览器按作用域恢复本地状态时用 `Boolean(parsed.showHidden)` 解析“显示隐藏文件”，陈旧存储里的字符串 `"false"` 会被误当作 `true`，导致隐藏文件意外显示。修复为抽出持久化状态解析器，只接受真实 boolean，并补合法偏好、陈旧值和损坏 JSON 回归。
+- 文件浏览器侧栏 UI 状态恢复时同样用 `Boolean(parsed.mainCollapsed)` / `Boolean(parsed.sideCollapsed)` 解析折叠标记，并直接接受任意有限 `width`；陈旧字符串 `"false"` 会误折叠侧栏，`0` 或负数宽度会生成不可用布局。修复为抽出面板 UI 状态解析器，只接受真实 boolean 和不小于最小宽度的数值，并让启动恢复与拖拽 resize 共用同一最小宽度常量。
+- 文件浏览器预览区高度从本地存储恢复时接受任意有限数字，`0`、负数或过小高度会把预览区压到不可用状态，而拖拽路径本身已有最小值。修复为抽出预览高度解析器，恢复时同样要求不小于最小预览高度，并补有效值、过小值、非数字和空值回归。
+- 文件浏览器侧栏会话缓存恢复 SSH 主机时只判断 `preset` 存在，损坏缓存可把错误类型的 host/port/defaultPath 注入文件浏览器状态；修复为集中解析 side-panel session state，验证 SSH preset 必填字段和端口范围，非法缓存回退本机。
+- 文件浏览器/VS Code 侧栏打开状态已迁移到 App 级全局状态后，启动仍读取旧会话缓存里的 `activeTool`，会让 stale localStorage 自动打开侧栏。修复为初始侧栏工具解析器忽略 legacy `activeTool`，不再从会话缓存恢复打开状态。
+- 文件浏览器作用域状态恢复要返回清洗后的当前路径。旧逻辑只用 `trim()` 判空但返回原始字符串，stale localStorage 中的首尾空白会变成真实列表请求路径；修复为恢复 `currentPath` 前先 trim，全空白回退默认路径。
+- agent 扫描进程列表时用 `parseInt` 解析 `pgrep` PID 字段，`123abc` 这类损坏行会被当成 PID 123 并误报运行中的 agent。修复为进程扫描和 Copilot lock 探测只接受完整的正安全整数 PID，并补 malformed PID 回归。
+- SSH config 解析 `Port` 时用 `Number.parseInt`，`2222abc` 这类部分数字值会被截断成 2222 并进入 SSH 预设。修复为端口字段必须是完整数字字符串且在 1-65535 内，否则回退默认 22，并补 partial port 回归。
+- tmux pane 元数据解析 attached count 时用 `Number.parseInt`，`1abc` 这类损坏值会被截断成 1，导致发现弹层把实际无法确认 attached 的会话误标为运行中。修复为 attached count 只接受完整非负安全整数，非法值按 0 处理，并补 malformed count 回归。
+- VS Code Web 远程隧道解析 `ssh -G` 输出端口时也用 `Number.parseInt`，`port 10022abc` 会被截断成 10022 并覆盖调用方原始端口。修复为隧道目标端口只接受完整的 1-65535 数字字符串，非法端口行被忽略并保留原端口，并补 partial port 回归。
+- `VSCODE_WEB_REMOTE_PORT` 远程 VS Code Web 首选端口解析使用 `Number.parseInt`，`14444abc` 会被截断成 14444 并进入远程启动命令和 SSH tunnel。修复为环境变量只接受完整的 1-65535 数字字符串，非法值回退默认 13338，并补 partial env port 回归。
+- 远程 agent 历史扫描解析 `stat` 时间戳时使用 `parseInt`，`1710000000abc` 这类损坏输出会被截断成合法时间并显示错误 last activity。修复为远程历史 mtime 只接受完整的非负安全整数秒，非法值不写入 `lastActivity`，并补 fake SSH 回归。
+- VS Code Web 本地 `port.json` 持久化端口只检查正整数，`70000` 这类越界端口会被当作 preferred port 传给分配器，可能导致启动失败或无法绑定。修复为持久化端口同样必须在 1-65535 内，非法缓存忽略并用新分配端口覆盖。
+- VS Code Web 复用当前用户进程时，从 `--bind-addr` / `--port` 解析出的端口只检查正数，`70000` 这类越界端口会被误当成可复用服务，导致代理目标指向无效 TCP 端口。修复为进程列表端口也复用完整 1-65535 校验，非法进程被忽略并启动新的有效实例。
+- 多屏终端监控窗格 drop 解析不能信任普通 `text/plain`。旧逻辑会把外部文本拖拽内容当 session id 走布局/focus 变更路径；修复为只接受自定义 terminal monitor MIME 的 JSON payload，畸形 payload 和普通文本直接忽略。
+- VS Code Web 抽屉会先渲染缓存响应再做服务端确认，因此 localStorage 中的 cached `url` 必须按 iframe 边界校验。旧逻辑只要求字符串；修复为只恢复 HTTP(S) 绝对 URL 或根相对路径，拒绝 `javascript:` 等非 Web scheme。
+- 手机端终端触摸滚动计算不能假设测得的 CSS line-height 一定是有限数字；当 computed line-height 不可解析时旧逻辑会输出 `NaN` 滚动量。修复为行高非法时回退默认 16px，保持触摸滚动历史可用。
+- 桌面端终端滚轮计算也不能用 `Math.max(1, value)` 兜底非数字测量值，因为 `NaN` 会继续传播。修复为 terminal wheel helper 显式校验 line/page height 为有限数字，否则使用 16px 行高和 160px 页高兜底。
+- agent 宫格虚拟化必须把 DOM 测量值当作不可信输入。旧 helper 遇到 `NaN` 宽高、scrollTop、rowHeight、gap 或 overscan 会把 `NaN` 扩散到 columns / slice index，导致虚拟化列表可能空白；修复为集中有限数兜底，保留稳定首屏 slice。
+- 轻量终端预览限制值也必须按不可信输入处理。旧 helper 对 `maxLines` / `maxLineLength` 使用 `Math.max(1, value)`，传入 `NaN` 会关闭 slice 和截断上限；修复为仅接受有限正数并取整，非法值回退默认 6 行 / 160 字符限制。
+- SFTP 预览的 `maxBytes: 0` 不能构造成 `start: 0, end: 0`，否则远程会返回第一个字节而不是空预览。修复为零字节上限只做 stat 并直接返回空内容，同时保留 truncation/size 信息。
+- 文件预览服务层也要防御非有限 `maxBytes`。旧本地实现会在 `Buffer.alloc(NaN)` 抛错，旧 SFTP 实现会生成非有限 range 并读回首字节；修复为共用预览字节上限归一化，非法或非正值返回空预览，正数取整。
+- 文件下载响应头不能直接拼接原始 basename。文件名包含引号会破坏 `Content-Disposition` 的 quoted-string；统一清洗下载文件名中的引号、反斜杠、分号和控制字符后再写入本地/远程文件与目录 zip 下载响应头，并补 quoted filename 回归。
+- 前端下载文件名解析要支持 `filename*=UTF-8''...`。旧逻辑只匹配 quoted `filename`，会丢失服务端返回的 UTF-8 编码文件名；修复为优先解析 RFC 5987 UTF-8 编码名，再回退 quoted/unquoted filename 和路径 basename。
+- 前端写入 `anchor.download` 前不能信任响应头文件名。旧解析会保留 `/` 和 `\`，让编码 header 可产生带目录分隔符的建议名称；修复为所有 header 候选和路径回退名统一替换路径分隔符与控制字符。
+- 多屏终端监控 custom drag payload 要求真实 session id。旧解析只检查字段类型，空白字符串可进入 pane placement；修复为 trim 后要求非空 session id，并忽略空白 source slot。
+- terminal WebSocket 控制帧不能依赖 JSON 字段顺序。旧入口只识别以 `{"type":"resize"` / `{"type":"binary"` 开头的字符串，字段重排会被写入终端；修复为先解析控制帧对象，再按 type 分派或忽略非法控制帧。
+- terminal WebSocket 客户端帧只要进入 typed 控制命名空间，就不能再回落成 shell 输入。旧解析对未知字符串 `type` 返回普通输入路径，未来扩展帧或畸形 typed 帧会污染终端；修复为未知 typed 控制帧直接忽略，无 `type` 的 JSON 仍按用户输入处理。
+- VS Code Web 代理转发 Host 必须只来自统一解析层。旧逻辑信任原始 `x-forwarded-host`，且解析失败后还会把原始 `Host` 复制给上游；修复为拒绝空白、路径分隔符、控制字符和无法作为 URL authority 解析的 Host，代理层不再保留原始 Host 旁路。
+- 文件上传 `relativePaths` 属于不可信 multipart 元数据，必须在创建父目录前做路径边界校验。旧路由会先 `mkdir(dirname(path.join(target, relativePath)))`，`../escape/file.txt` 可在目标目录外产生副作用；修复为解析阶段 trim、复用 `assertSafeFilesystemPath` 并拒绝 POSIX/Windows 绝对路径，非法上传返回 400 且不创建逃逸目录。
+- 焦点视图 `focusedId` 本地缓存和文件浏览器路径缓存一样需要返回清洗后的值。旧启动逻辑只用 `trim()` 判空但保留原始 id，首尾空白会让 focus 模式找不到对应 session；修复为集中 `parseFocusViewState`，trim 后恢复 id，空白/损坏缓存回退默认 grid。
+- 目录建议的 `sshTarget` 不能靠 SSH 执行失败来表达坏请求。旧服务只校验 `prefix`，错误类型的 `sshTarget` 或端口会被 catch 成 enabled=false 的 200；修复为服务入口校验 SSH 目标对象、host、端口和可选字符串字段，非法 metadata 直接 400。
+- agent session PATCH 的校验阶段不能和 tmux rename 副作用交错。旧路由会先用合法 `displayName` 重命名 tmux session，再发现 `hidden` 类型非法并返回 400；修复为先校验完整 payload，再执行 rename/update，保证坏请求不改变会话名。
+- tmux attach 历史回放测试的 fixture readiness wait 不应假设全量测试负载下 tmux 5 秒内一定输出完 80 行。仅放宽等待 fixture marker 的超时，避免在待测回放逻辑前误报失败。
+- agent session PATCH 入口要和其他 mutating routes 一样要求 body 是对象。旧逻辑会把字符串/数组请求体当成空更新并返回当前 session；修复为 non-object body 直接 400。
+- multipart upload 的 fallback filename 和 `relativePaths` 一样是不可信路径元数据。旧路由在无 `relativePaths` 时会让空文件名落到目录写入路径并冒出底层文件错误；修复为 filename 也先做相对路径安全校验。
+- 目录建议 SSH target 的字符串字段也要在路由边界拒绝控制字符。旧服务虽然已校验字段类型和端口，但 `host`/`username`/`identityFile` 中的换行、回车或 NUL 会落到 SSH helper 后被 catch 成 enabled=false 的 200；修复为解析阶段直接返回 400，避免坏 metadata 被误报成远程不可用。
+- SFTP 递归删除必须忽略服务端返回的 `.` / `..`。旧实现直接递归所有 readdir 项，可能尝试删除当前目录或父目录；修复为在 `removePathRecursive` 中跳过 dot entries，并用 fake SFTP session 覆盖只删除真实子项。
+- filesystem 路由里的 SSH target 字符串字段也必须和目录建议入口一样拒绝控制字符。旧 JSON 路由会把带换行的 host 传入 SFTP 后暴露成 500，multipart upload 则可能把坏 metadata 当成本地上传成功；修复为 `optionalSshTarget` 对 host/username/identityFile 统一返回 400，并覆盖 JSON 与上传 metadata。
+- agent-sessions 路由里的 SSH target 解析也不能只依赖底层 SSH helper。旧 remote launch 对带换行 host 返回 500，tmux scan 会吞成 200，tmux add 会注册异常 metadata；修复为 `optionalSshTarget` 在 host/username/identityFile 上拒绝 NUL/CR/LF，并覆盖 launch/discovery/tmux-add 三类入口。
+- agent session 注册接口里的 `transportRef.sshPort` 属于 TCP 端口 metadata，不能只校验 safe integer。旧逻辑会接受 `70000` 并持久化到会话记录；修复为 nested transportRef 端口复用 1-65535 边界，非法注册直接 400。
+- 文件浏览器侧栏 session cache 恢复 SSH preset 时也要拒绝控制字符。旧解析只校验字段类型和端口范围，stale localStorage 中的换行/回车/NUL 可恢复出后端会拒绝的 SSH 选中主机；修复为 `parseSidePanelSessionStates` 对 cached preset 字符串统一拒绝 NUL/CR/LF，非法缓存回退本机。
+- 前端上传不要在 JSON XHR 成功响应上读取 `responseText`。`XMLHttpRequest.responseType = "json"` 时 Chromium 会禁止读取 `responseText`，旧 `uploadFiles` 因此在服务端已写入文件后仍 reject，文件浏览器列表不刷新；修复为 `parseXhrUploadResponse` 优先使用 `xhr.response`，仅无解析响应时读取文本回退。
+- 多屏 focus header 不能无条件跟随 active terminal。侧栏关闭时点击另一个监控 pane 只是切换输入目标，不应改变焦点标题/侧栏上下文；修复为 `resolveFocusHeaderSession` 只在 `syncActiveTerminalWithFocus` 开启时让标题跟随 active terminal，关闭时保持 `focusedSession`。
+- Copilot/Codex 类 TUI 的 DA/DSR 握手不能依赖前端 xterm 订阅时序。服务端 PTY runtime 看到 `ESC[c` / `ESC[6n` 时直接写回 `ESC[?1;2c` / `ESC[1;1R`，避免 mock 停在 handshake timeout 或 ready 后不收输入。
+- 焦点页终端 replay/mount/focus race 期间不能丢用户快速键入。TerminalView 在 replay 完成前缓冲输入并先同步 focus-in 再冲刷；AgentFocusView 对非编辑 UI 捕获到的按键按 active session bridge 排队，LazyTerminalView 尚未挂载时也不丢。
+- 服务端 PTY runtime 已回答 DA/DSR 后，前端不要再把这些查询写进 xterm。否则 xterm 会自动生成第二个 CPR，双击 focus transition 可触发 `cpr-duplicate`；前端渲染前剥离已处理的能力查询即可保留服务端单一应答源。

@@ -34,3 +34,23 @@ export function stripTerminalResponsePayload(payload: string): string {
 export function isTerminalProtocolResponsePayload(payload: string): boolean {
   return TERMINAL_PROTOCOL_RESPONSE_PAYLOAD_PATTERN.test(payload);
 }
+
+export function buildReplayTerminalProtocolResponse(payload: string): string {
+  let response = "";
+
+  if (/\u001b\[(?:0)?c/.test(payload)) {
+    response += "\u001b[?1;2c";
+  }
+
+  if (/\u001b\[6n/.test(payload)) {
+    response += "\u001b[1;1R";
+  }
+
+  return response;
+}
+
+export function stripTerminalCapabilityQueriesFromOutput(
+  payload: string,
+): string {
+  return payload.replace(/\u001b\[(?:0)?c|\u001b\[6n/g, "");
+}

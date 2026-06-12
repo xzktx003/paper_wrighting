@@ -44,6 +44,14 @@ test("summarizeTmuxSessions groups panes by session and prefers active pane", ()
   assert.equal(sessions[1].interactionState, "detached");
 });
 
+test("parsePaneInfo treats malformed attached counts as detached", () => {
+  const sessions = summarizeTmuxSessions(
+    parsePaneInfo("dev\t1abc\t1\t1\t%1\tcopilot\t/Users/hx/dev"),
+  );
+
+  assert.equal(sessions[0]?.interactionState, "detached");
+});
+
 test("isNoTmuxServerError classifies missing server errors", () => {
   assert.equal(
     isNoTmuxServerError(

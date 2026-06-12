@@ -15,6 +15,15 @@ export async function registerSshHostsRoutes(
 
   fastify.post<{ Body: DirectorySuggestionsInput }>(
     "/api/directory-suggestions",
-    async (request) => listDirectorySuggestions(request.body),
+    async (request, reply) => {
+      try {
+        return listDirectorySuggestions(request.body);
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: error instanceof Error ? error.message : "Invalid request",
+        };
+      }
+    },
   );
 }

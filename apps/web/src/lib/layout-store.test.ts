@@ -62,4 +62,18 @@ describe("layout-store", () => {
     assert.equal(state.sidebarCollapsed, false);
     assert.equal(state.topbarCollapsed, false);
   });
+
+  it("ignores non-boolean collapsed values from stale storage", () => {
+    store.set(
+      "agent-console-layout",
+      JSON.stringify({
+        sidebarCollapsed: "false",
+        topbarCollapsed: 1,
+      }),
+    );
+
+    const state = loadLayoutState();
+    assert.equal(state.sidebarCollapsed, false);
+    assert.equal(state.topbarCollapsed, false);
+  });
 });

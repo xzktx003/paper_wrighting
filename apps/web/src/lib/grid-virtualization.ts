@@ -28,14 +28,21 @@ export interface VirtualGridWindow {
   offsetY: number;
 }
 
+function finiteOrDefault(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export function computeGridColumnCount(
   containerWidth: number,
   minCardWidth = AGENT_GRID_MIN_CARD_WIDTH,
   gap = AGENT_GRID_GAP,
 ): number {
-  const safeWidth = Math.max(0, containerWidth);
-  const safeMinCardWidth = Math.max(1, minCardWidth);
-  const safeGap = Math.max(0, gap);
+  const safeWidth = Math.max(0, finiteOrDefault(containerWidth, 0));
+  const safeMinCardWidth = Math.max(
+    1,
+    finiteOrDefault(minCardWidth, AGENT_GRID_MIN_CARD_WIDTH),
+  );
+  const safeGap = Math.max(0, finiteOrDefault(gap, AGENT_GRID_GAP));
 
   if (safeWidth <= AGENT_GRID_SINGLE_COLUMN_MAX_WIDTH) {
     return 1;
@@ -57,11 +64,14 @@ export function computeVirtualGridWindow({
   gap = AGENT_GRID_GAP,
   overscanRows = AGENT_GRID_OVERSCAN_ROWS,
 }: VirtualGridWindowInput): VirtualGridWindow {
-  const safeItemCount = Math.max(0, itemCount);
+  const safeItemCount = Math.max(0, Math.floor(finiteOrDefault(itemCount, 0)));
   const columns = computeGridColumnCount(containerWidth, minCardWidth, gap);
   const totalRows = Math.ceil(safeItemCount / columns);
-  const safeRowHeight = Math.max(1, rowHeight);
-  const safeGap = Math.max(0, gap);
+  const safeRowHeight = Math.max(
+    1,
+    finiteOrDefault(rowHeight, AGENT_GRID_CARD_HEIGHT),
+  );
+  const safeGap = Math.max(0, finiteOrDefault(gap, AGENT_GRID_GAP));
   const rowStride = safeRowHeight + safeGap;
   const totalHeight =
     totalRows * safeRowHeight + Math.max(0, totalRows - 1) * safeGap;
@@ -80,8 +90,11 @@ export function computeVirtualGridWindow({
     };
   }
 
-  const safeViewportHeight = Math.max(0, viewportHeight);
-  const safeScrollTop = Math.max(0, scrollTop);
+  const safeViewportHeight = Math.max(
+    0,
+    finiteOrDefault(viewportHeight, AGENT_GRID_CARD_HEIGHT),
+  );
+  const safeScrollTop = Math.max(0, finiteOrDefault(scrollTop, 0));
   const lastPossibleRow = Math.max(0, totalRows - 1);
   const firstVisibleRow = Math.min(
     lastPossibleRow,
@@ -91,7 +104,10 @@ export function computeVirtualGridWindow({
     lastPossibleRow,
     Math.floor((safeScrollTop + safeViewportHeight) / rowStride),
   );
-  const safeOverscanRows = Math.max(0, overscanRows);
+  const safeOverscanRows = Math.max(
+    0,
+    Math.floor(finiteOrDefault(overscanRows, AGENT_GRID_OVERSCAN_ROWS)),
+  );
   const startRow = Math.max(0, firstVisibleRow - safeOverscanRows);
   const endRow = Math.min(lastPossibleRow, lastVisibleRow + safeOverscanRows);
   const startIndex = startRow * columns;

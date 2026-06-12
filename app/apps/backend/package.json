@@ -1,0 +1,8 @@
+{
+  "name": "paper-writer-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}

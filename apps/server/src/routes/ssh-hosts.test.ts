@@ -74,3 +74,74 @@ test("POST /api/directory-suggestions disables remote suggestions when passwordl
     await app.close();
   }
 });
+
+test("POST /api/directory-suggestions rejects missing or non-string prefixes as client errors", async () => {
+  const app = await buildApp();
+
+  try {
+    for (const payload of [{}, { prefix: 42 }]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/directory-suggestions",
+        payload,
+      });
+
+      assert.equal(res.statusCode, 400);
+      assert.match(JSON.parse(res.payload).error, /prefix must be a string/);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /api/directory-suggestions rejects malformed ssh targets as client errors", async () => {
+  const app = await buildApp();
+
+  try {
+    const invalidRequests = [
+      {
+        prefix: "/tmp",
+        sshTarget: "example.test",
+      },
+      {
+        prefix: "/tmp",
+        sshTarget: {
+          host: "",
+        },
+      },
+      {
+        prefix: "/tmp",
+        sshTarget: {
+          host: "example.test",
+          port: "22",
+        },
+      },
+      {
+        prefix: "/tmp",
+        sshTarget: {
+          host: "example.test\n-oProxyCommand=sh",
+        },
+      },
+      {
+        prefix: "/tmp",
+        sshTarget: {
+          host: "example.test",
+          username: "demo\ruser",
+        },
+      },
+    ];
+
+    for (const payload of invalidRequests) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/directory-suggestions",
+        payload,
+      });
+
+      assert.equal(res.statusCode, 400);
+      assert.match(JSON.parse(res.payload).error, /sshTarget/);
+    }
+  } finally {
+    await app.close();
+  }
+});

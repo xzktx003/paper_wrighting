@@ -12,17 +12,31 @@ interface ParsedHost {
   identityFile?: string;
 }
 
-export function parseSshConfig(): SshHostPreset[] {
-  const configPath = resolve(homedir(), ".ssh", "config");
-  let content: string;
-  try {
-    content = readFileSync(configPath, "utf-8");
-  } catch {
-    return [];
+function expandHostAliases(value: string): string[] {
+  return value
+    .split(/\s+/)
+    .map((alias) => alias.trim())
+    .filter((alias) => alias && !alias.includes("*") && !alias.includes("?"));
+}
+
+function parseSshConfigPort(value: string | undefined): number {
+  const normalized = value?.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) {
+    return 22;
   }
 
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535
+    ? parsed
+    : 22;
+}
+
+export function parseSshConfigContent(
+  content: string,
+  homeDirectory = homedir(),
+): SshHostPreset[] {
   const hosts: ParsedHost[] = [];
-  let current: ParsedHost | null = null;
+  let currentHosts: ParsedHost[] = [];
 
   for (const rawLine of content.split("\n")) {
     const line = rawLine.trim();
@@ -35,18 +49,16 @@ export function parseSshConfig(): SshHostPreset[] {
     const keyLower = key.toLowerCase();
 
     if (keyLower === "host") {
-      if (value.includes("*") || value.includes("?")) {
-        current = null;
-        continue;
-      }
-      current = { name: value };
-      hosts.push(current);
-    } else if (current) {
-      if (keyLower === "hostname") current.hostname = value;
-      else if (keyLower === "port") current.port = value;
-      else if (keyLower === "user") current.user = value;
-      else if (keyLower === "identityfile") {
-        current.identityFile = value.replace(/^~/, homedir());
+      currentHosts = expandHostAliases(value).map((name) => ({ name }));
+      hosts.push(...currentHosts);
+    } else if (currentHosts.length > 0) {
+      for (const current of currentHosts) {
+        if (keyLower === "hostname") current.hostname = value;
+        else if (keyLower === "port") current.port = value;
+        else if (keyLower === "user") current.user = value;
+        else if (keyLower === "identityfile") {
+          current.identityFile = value.replace(/^~/, homeDirectory);
+        }
       }
     }
   }
@@ -56,9 +68,21 @@ export function parseSshConfig(): SshHostPreset[] {
     .map((h) => ({
       name: h.name,
       host: h.hostname!,
-      port: parseInt(h.port ?? "22", 10),
+      port: parseSshConfigPort(h.port),
       username: h.user,
       identityFile: h.identityFile,
       defaultPath: "~/",
     }));
+}
+
+export function parseSshConfig(): SshHostPreset[] {
+  const configPath = resolve(homedir(), ".ssh", "config");
+  let content: string;
+  try {
+    content = readFileSync(configPath, "utf-8");
+  } catch {
+    return [];
+  }
+
+  return parseSshConfigContent(content);
 }

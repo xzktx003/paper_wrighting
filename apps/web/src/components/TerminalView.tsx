@@ -27,8 +27,16 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   clampTerminalFontSize,
 } from "../lib/terminal-font-size";
-import { shouldAttemptTerminalInputForward } from "../lib/terminal-input-forwarding";
-import { stripTerminalResponsePayload } from "../lib/terminal-input";
+import { parseTerminalControlFrame } from "../lib/terminal-control-frame";
+import {
+  shouldAttemptTerminalInputForward,
+  shouldBufferTerminalInputBeforeReady,
+} from "../lib/terminal-input-forwarding";
+import {
+  stripTerminalCapabilityQueriesFromOutput,
+  stripTerminalResponsePayload,
+} from "../lib/terminal-input";
+import { registerTerminalInputBridge } from "../lib/terminal-input-bridge";
 import { computeTerminalWheelScrollLines } from "../lib/terminal-wheel";
 
 interface TerminalViewProps {
@@ -48,12 +56,6 @@ type TerminalContainer = HTMLDivElement & {
 interface TerminalInputOwner {
   token: symbol;
   priority: number;
-}
-
-interface TerminalControlFrame {
-  __agentOrchestrator: "terminal-control";
-  event: "replay" | "replay-complete";
-  data?: string;
 }
 
 interface TerminalGeometry {
@@ -79,6 +81,35 @@ const MOBILE_TOUCH_LISTENER_OPTIONS = {
 
 const previewGeometryCache = new Map<string, TerminalGeometry>();
 const terminalInputOwners = new Map<string, TerminalInputOwner>();
+
+function buildTerminalKeyboardInput(event: KeyboardEvent): string | null {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return null;
+  }
+
+  switch (event.key) {
+    case "Enter":
+      return "\r";
+    case "Backspace":
+      return "\x7f";
+    case "Tab":
+      return "\t";
+    case "Escape":
+      return "\x1b";
+    case "ArrowUp":
+      return "\x1b[A";
+    case "ArrowDown":
+      return "\x1b[B";
+    case "ArrowRight":
+      return "\x1b[C";
+    case "ArrowLeft":
+      return "\x1b[D";
+    case "Delete":
+      return "\x1b[3~";
+    default:
+      return event.key.length === 1 ? event.key : null;
+  }
+}
 
 export function TerminalView({
   agentSessionId,
@@ -140,7 +171,9 @@ export function TerminalView({
     }
 
     term.options.cursorBlink = inputEnabled;
-    term.options.disableStdin = !terminalInputReadyRef.current;
+    // Keep xterm stdin enabled so replayed terminal capability queries can
+    // produce DA/DSR replies; normal user input is still gated in term.onData.
+    term.options.disableStdin = false;
   }, [inputEnabled]);
 
   useEffect(() => {
@@ -174,6 +207,7 @@ export function TerminalView({
     let handleMobileTouchEnd: ((event: TouchEvent) => void) | null = null;
     let handleTerminalWheelCapture: ((event: WheelEvent) => void) | null = null;
     let handleDocumentWheelCapture: ((event: WheelEvent) => void) | null = null;
+    let unregisterTerminalInputBridge: (() => void) | null = null;
     let handleDocumentPointerDownCapture:
       | ((event: PointerEvent) => void)
       | null = null;
@@ -264,7 +298,7 @@ export function TerminalView({
         selectionBackground: "rgba(255, 152, 0, 0.3)",
       },
       scrollback: TERMINAL_SCROLLBACK_LINES,
-      disableStdin: true,
+      disableStdin: false,
     });
 
     const fitAddon = new FitAddon();
@@ -385,12 +419,17 @@ export function TerminalView({
     };
 
     const writeTerminalOutput = (data: string) => {
+      const renderableData = stripTerminalCapabilityQueriesFromOutput(data);
+      if (!renderableData) {
+        return;
+      }
+
       const preserveViewport =
         userScrollLockedRef.current &&
         term.buffer.active.viewportY < term.buffer.active.baseY;
       const viewportYBeforeWrite = term.buffer.active.viewportY;
 
-      term.write(data, () => {
+      term.write(renderableData, () => {
         if (disposed || !preserveViewport || !userScrollLockedRef.current) {
           return;
         }
@@ -643,6 +682,9 @@ export function TerminalView({
     > | null = null;
     let replayComplete = false;
     let lastReportedTerminalFocus: "in" | "out" | null = null;
+    const pendingInputBeforeReady: Array<
+      { type: "text"; data: string } | { type: "binary"; data: string }
+    > = [];
 
     const terminalWantsFocusReports = () => {
       return (
@@ -715,6 +757,74 @@ export function TerminalView({
         syncTerminalFocusReport();
       }
     };
+
+    const sendTerminalInput = (
+      input: { type: "text"; data: string } | { type: "binary"; data: string },
+    ) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !ensureInputOwner()) {
+        return false;
+      }
+
+      reportFocusedTerminalBeforeInput();
+      if (input.type === "text") {
+        ws.send(input.data);
+      } else {
+        ws.send(
+          JSON.stringify({
+            type: "binary",
+            data: btoa(input.data),
+          }),
+        );
+      }
+      return true;
+    };
+
+    const flushPendingInputBeforeReady = () => {
+      if (
+        pendingInputBeforeReady.length > 0 &&
+        terminalWantsFocusReports() &&
+        lastReportedTerminalFocus !== "in" &&
+        ws?.readyState === WebSocket.OPEN &&
+        ensureInputOwner()
+      ) {
+        ws.send("\u001b[I");
+        lastReportedTerminalFocus = "in";
+      }
+
+      while (pendingInputBeforeReady.length > 0) {
+        const input = pendingInputBeforeReady[0]!;
+        if (!sendTerminalInput(input)) {
+          return;
+        }
+        pendingInputBeforeReady.shift();
+      }
+    };
+
+    unregisterTerminalInputBridge = registerTerminalInputBridge(
+      agentSessionId,
+      (input) => {
+        if (!interactive || !inputEnabledRef.current) {
+          return false;
+        }
+
+        if (!ws || ws.readyState !== WebSocket.OPEN || !ensureInputOwner()) {
+          return false;
+        }
+
+        focusInteractiveTerminal(true);
+        if (terminalWantsFocusReports() && lastReportedTerminalFocus !== "in") {
+          ws.send("\u001b[I");
+          lastReportedTerminalFocus = "in";
+        }
+
+        if (!terminalInputReadyRef.current) {
+          pendingInputBeforeReady.push({ type: "text", data: input });
+          return true;
+        }
+
+        return sendTerminalInput({ type: "text", data: input });
+      },
+    );
 
     // Safety net: if the WebSocket never sends replay-complete (e.g. connection
     // refused, server error, or long replay transfer), unblock stdin after 8
@@ -983,44 +1093,50 @@ export function TerminalView({
       if (inputEnabledRef.current) {
         scheduleFocusInteractiveTerminal();
         scheduleTerminalFocusReport();
+        flushPendingInputBeforeReady();
       }
     };
 
     const handleTerminalFrame = (payload: string) => {
       recordTerminalFrame(payload);
 
-      try {
-        const parsed = JSON.parse(payload) as TerminalControlFrame;
-        if (parsed.__agentOrchestrator !== "terminal-control") {
-          enableTerminalInput();
-          writeTerminalOutput(payload);
-          scheduleTerminalFocusReport();
-          return;
-        }
-
-        if (parsed.event === "replay" && typeof parsed.data === "string") {
-          writeTerminalOutput(parsed.data);
-          scheduleTerminalFocusReport();
-          return;
-        }
-
-        if (parsed.event === "replay-complete") {
-          enableTerminalInput();
-        }
-        return;
-      } catch {
-        enableTerminalInput();
-        writeTerminalOutput(payload);
+      const parsed = parseTerminalControlFrame(payload);
+      if (parsed.type === "replay") {
+        writeTerminalOutput(parsed.data);
         scheduleTerminalFocusReport();
+        return;
       }
+
+      if (parsed.type === "replay-complete") {
+        enableTerminalInput();
+        return;
+      }
+
+      enableTerminalInput();
+      writeTerminalOutput(parsed.data);
+      scheduleTerminalFocusReport();
     };
 
     term.onData((data) => {
       const sanitized = stripTerminalResponsePayload(data);
       const socketOpen = ws?.readyState === WebSocket.OPEN;
       if (
+        shouldBufferTerminalInputBeforeReady({
+          inputEnabled: inputEnabledRef.current,
+          terminalInputReady: terminalInputReadyRef.current,
+          sanitizedPayload: sanitized,
+          socketOpen,
+        }) &&
+        ensureInputOwner()
+      ) {
+        pendingInputBeforeReady.push({ type: "text", data: sanitized });
+        return;
+      }
+
+      if (
         !shouldAttemptTerminalInputForward({
           inputEnabled: inputEnabledRef.current,
+          terminalInputReady: terminalInputReadyRef.current,
           sanitizedPayload: sanitized,
           socketOpen,
         })
@@ -1028,9 +1144,10 @@ export function TerminalView({
         return;
       }
 
-      if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
-        reportFocusedTerminalBeforeInput();
+      if (ws && !inputEnabledRef.current) {
         ws.send(sanitized);
+      } else {
+        sendTerminalInput({ type: "text", data: sanitized });
       }
     });
 
@@ -1038,8 +1155,22 @@ export function TerminalView({
       const sanitized = stripTerminalResponsePayload(data);
       const socketOpen = ws?.readyState === WebSocket.OPEN;
       if (
+        shouldBufferTerminalInputBeforeReady({
+          inputEnabled: inputEnabledRef.current,
+          terminalInputReady: terminalInputReadyRef.current,
+          sanitizedPayload: sanitized,
+          socketOpen,
+        }) &&
+        ensureInputOwner()
+      ) {
+        pendingInputBeforeReady.push({ type: "binary", data: sanitized });
+        return;
+      }
+
+      if (
         !shouldAttemptTerminalInputForward({
           inputEnabled: inputEnabledRef.current,
+          terminalInputReady: terminalInputReadyRef.current,
           sanitizedPayload: sanitized,
           socketOpen,
         })
@@ -1047,14 +1178,15 @@ export function TerminalView({
         return;
       }
 
-      if (ws && (!inputEnabledRef.current || ensureInputOwner())) {
-        reportFocusedTerminalBeforeInput();
+      if (ws && !inputEnabledRef.current) {
         ws.send(
           JSON.stringify({
             type: "binary",
             data: btoa(sanitized),
           }),
         );
+      } else {
+        sendTerminalInput({ type: "binary", data: sanitized });
       }
     });
 
@@ -1222,6 +1354,28 @@ export function TerminalView({
         }
 
         const target = event.target as HTMLElement | null;
+        const fallbackInput = buildTerminalKeyboardInput(event);
+        if (
+          fallbackInput !== null &&
+          !terminalInputReadyRef.current &&
+          (!target || !isProtectedExternalFocusTarget(target))
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          focusInteractiveTerminal(true);
+          pendingInputBeforeReady.push({ type: "text", data: fallbackInput });
+          if (
+            terminalWantsFocusReports() &&
+            lastReportedTerminalFocus !== "in" &&
+            ws?.readyState === WebSocket.OPEN &&
+            ensureInputOwner()
+          ) {
+            ws.send("\u001b[I");
+            lastReportedTerminalFocus = "in";
+          }
+          return;
+        }
+
         if (
           target &&
           !target.closest(".terminal-view") &&
@@ -1376,6 +1530,7 @@ export function TerminalView({
       if (handleDocumentWheelCapture) {
         document.removeEventListener("wheel", handleDocumentWheelCapture, true);
       }
+      unregisterTerminalInputBridge?.();
       if (handleDocumentPointerDownCapture) {
         document.removeEventListener(
           "pointerdown",

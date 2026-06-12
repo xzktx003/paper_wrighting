@@ -109,7 +109,12 @@ function parseShellStartupEnv(
     throw new Error("Could not parse shell startup environment output");
   }
 
-  const parsed = JSON.parse(match[1]);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1]);
+  } catch {
+    throw new Error("Could not parse shell startup environment JSON");
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Shell startup environment did not return an object");
   }

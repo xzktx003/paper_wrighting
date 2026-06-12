@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import test from "node:test";
 
 import {
@@ -21,7 +22,35 @@ function createDependencies(
 }
 
 class FakeSftpSession {
+  directories = new Set<string>();
+  directoryEntries = new Map<
+    string,
+    Array<{
+      filename: string;
+      longname: string;
+      attrs: { mode: number; size: number; mtime: number };
+    }>
+  >();
+  removedDirectories: string[] = [];
+  removedFiles: string[] = [];
+  readRanges: Array<{ start?: number; end?: number }> = [];
+
   end(): void {}
+
+  stat(
+    remotePath: string,
+    callback: (
+      error: Error | undefined,
+      stats?: { mode: number; size: number; mtime: number },
+    ) => void,
+  ): void {
+    if (this.directories.has(remotePath)) {
+      callback(undefined, { mode: 0o040755, size: 0, mtime: 1_717_000_000 });
+      return;
+    }
+
+    callback(undefined, { mode: 0o100644, size: 6, mtime: 1_717_000_000 });
+  }
 
   realpath(
     remotePath: string,
@@ -31,7 +60,7 @@ class FakeSftpSession {
   }
 
   readdir(
-    _remotePath: string,
+    remotePath: string,
     callback: (
       error: Error | undefined,
       items?: Array<{
@@ -41,18 +70,52 @@ class FakeSftpSession {
       }>,
     ) => void,
   ): void {
-    callback(undefined, [
-      {
-        filename: "workspace",
-        longname: "drwxr-xr-x",
-        attrs: { mode: 0o040755, size: 0, mtime: 1_717_000_000 },
-      },
-    ]);
+    callback(
+      undefined,
+      this.directoryEntries.get(remotePath) ?? [
+        {
+          filename: "workspace",
+          longname: "drwxr-xr-x",
+          attrs: { mode: 0o040755, size: 0, mtime: 1_717_000_000 },
+        },
+      ],
+    );
+  }
+
+  chmod(
+    _remotePath: string,
+    _mode: number,
+    callback: (error?: Error) => void,
+  ): void {
+    callback();
+  }
+
+  unlink(remotePath: string, callback: (error?: Error) => void): void {
+    this.removedFiles.push(remotePath);
+    callback();
+  }
+
+  rmdir(remotePath: string, callback: (error?: Error) => void): void {
+    this.removedDirectories.push(remotePath);
+    callback();
+  }
+
+  createReadStream(
+    _remotePath: string,
+    options?: { start?: number; end?: number },
+  ): Readable {
+    this.readRanges.push({
+      start: options?.start,
+      end: options?.end,
+    });
+    return Readable.from(Buffer.from("remote", "utf8").subarray(0, 1));
   }
 }
 
 class FakeSshClient extends EventEmitter {
   private ready = false;
+
+  readonly session = new FakeSftpSession();
 
   connectCalls = 0;
 
@@ -73,7 +136,7 @@ class FakeSshClient extends EventEmitter {
       return;
     }
 
-    callback(undefined, new FakeSftpSession());
+    callback(undefined, this.session);
   }
 
   end(): this {
@@ -152,4 +215,96 @@ test("list reuses a single pending connection safely for concurrent requests", a
     assert.equal(result.value.path, "/home/demo");
     assert.equal(result.value.entries[0]?.name, "workspace");
   }
+});
+
+test("chmod rejects malformed octal modes before opening an SSH connection", async () => {
+  const client = new FakeSshClient();
+  const service = new SftpService(() => client as never);
+
+  await assert.rejects(
+    () =>
+      service.chmod(
+        {
+          host: "example.com",
+          username: "demo",
+        },
+        "/tmp/file.txt",
+        "777abc",
+      ),
+    {
+      message: /mode must be a 3 or 4 digit octal permission/,
+    },
+  );
+  assert.equal(client.connectCalls, 0);
+});
+
+test("preview with zero maxBytes does not read the first remote byte", async () => {
+  const client = new FakeSshClient();
+  const service = new SftpService(() => client as never);
+
+  const preview = await service.preview(
+    {
+      host: "example.com",
+      username: "demo",
+    },
+    "/tmp/file.txt",
+    0,
+  );
+
+  assert.equal(preview.content, "");
+  assert.equal(preview.truncated, true);
+  assert.deepEqual(client.session.readRanges, []);
+});
+
+test("preview with a non-finite maxBytes does not create a remote read range", async () => {
+  const client = new FakeSshClient();
+  const service = new SftpService(() => client as never);
+
+  const preview = await service.preview(
+    {
+      host: "example.com",
+      username: "demo",
+    },
+    "/tmp/file.txt",
+    Number.NaN,
+  );
+
+  assert.equal(preview.content, "");
+  assert.equal(preview.truncated, true);
+  assert.deepEqual(client.session.readRanges, []);
+});
+
+test("remove skips dot directory entries during recursive SFTP deletion", async () => {
+  const client = new FakeSshClient();
+  const service = new SftpService(() => client as never);
+
+  client.session.directories.add("/tmp/project");
+  client.session.directoryEntries.set("/tmp/project", [
+    {
+      filename: ".",
+      longname: "drwxr-xr-x",
+      attrs: { mode: 0o040755, size: 0, mtime: 1_717_000_000 },
+    },
+    {
+      filename: "..",
+      longname: "drwxr-xr-x",
+      attrs: { mode: 0o040755, size: 0, mtime: 1_717_000_000 },
+    },
+    {
+      filename: "file.txt",
+      longname: "-rw-r--r--",
+      attrs: { mode: 0o100644, size: 4, mtime: 1_717_000_000 },
+    },
+  ]);
+
+  await service.remove(
+    {
+      host: "example.com",
+      username: "demo",
+    },
+    "/tmp/project",
+  );
+
+  assert.deepEqual(client.session.removedFiles, ["/tmp/project/file.txt"]);
+  assert.deepEqual(client.session.removedDirectories, ["/tmp/project"]);
 });

@@ -180,3 +180,26 @@ test("resolveShellStartupEnv falls back to interactive startup for plain sh", as
 
   assert.deepEqual(invokedArgs.slice(0, 2), ["-i", "-c"]);
 });
+
+test("resolveShellStartupEnv rejects malformed startup env JSON with a controlled error", async () => {
+  await assert.rejects(
+    resolveShellStartupEnv(
+      {
+        HOME: "/tmp/demo-home",
+        SHELL: "/bin/zsh",
+      },
+      {
+        marker: "__TEST_ENV__",
+        shellPath: "/bin/zsh",
+        execFileImpl: (_file, _args, _options, callback) => {
+          callback(
+            null,
+            "noise\n__TEST_ENV__\n{not-json}\n__TEST_ENV__\n",
+            "",
+          );
+        },
+      },
+    ),
+    /Could not parse shell startup environment JSON/,
+  );
+});

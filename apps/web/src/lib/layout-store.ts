@@ -18,8 +18,14 @@ export function loadLayoutState(): LayoutState {
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw) as Partial<LayoutState>;
     return {
-      sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
-      topbarCollapsed: Boolean(parsed.topbarCollapsed),
+      sidebarCollapsed:
+        typeof parsed.sidebarCollapsed === "boolean"
+          ? parsed.sidebarCollapsed
+          : DEFAULT_STATE.sidebarCollapsed,
+      topbarCollapsed:
+        typeof parsed.topbarCollapsed === "boolean"
+          ? parsed.topbarCollapsed
+          : DEFAULT_STATE.topbarCollapsed,
     };
   } catch {
     return DEFAULT_STATE;

@@ -98,6 +98,20 @@ export function stripAlternateScreenSwitches(data: string): string {
 }
 export { sanitizeReplayForTerminal } from "./terminal-control-filter.js";
 
+export function buildTerminalCapabilityResponse(data: string): string {
+  let response = "";
+
+  if (/\u001b\[(?:0)?c/.test(data)) {
+    response += "\u001b[?1;2c";
+  }
+
+  if (/\u001b\[6n/.test(data)) {
+    response += "\u001b[1;1R";
+  }
+
+  return response;
+}
+
 interface LocalPtySpawnPlan {
   file: string;
   args: string[];
@@ -272,6 +286,7 @@ export class PtyRuntimeManager {
         return;
       }
 
+      this.answerTerminalCapabilityQueries(handle, output);
       this.appendScrollback(handle, output);
 
       for (const listener of handle.dataListeners) {
@@ -358,6 +373,7 @@ export class PtyRuntimeManager {
         return;
       }
 
+      this.answerTerminalCapabilityQueries(handle, output);
       this.appendScrollback(handle, output);
 
       for (const listener of handle.dataListeners) {
@@ -510,6 +526,7 @@ export class PtyRuntimeManager {
         return;
       }
 
+      this.answerTerminalCapabilityQueries(handle, output);
       this.appendScrollback(handle, output);
       for (const listener of handle.dataListeners) {
         listener(output);
@@ -581,6 +598,7 @@ export class PtyRuntimeManager {
         return;
       }
 
+      this.answerTerminalCapabilityQueries(handle, output);
       this.appendScrollback(handle, output);
       for (const listener of handle.dataListeners) {
         listener(output);
@@ -655,6 +673,16 @@ export class PtyRuntimeManager {
 
   private appendScrollback(handle: PtyHandle, data: string): void {
     appendPtyScrollback(handle, data, this.maxScrollbackBytes);
+  }
+
+  private answerTerminalCapabilityQueries(
+    handle: PtyHandle,
+    data: string,
+  ): void {
+    const response = buildTerminalCapabilityResponse(data);
+    if (response) {
+      handle.ptyProcess.write(response);
+    }
   }
 
   private normalizePtyOutput(handle: PtyHandle, data: string): string {

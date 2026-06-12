@@ -183,11 +183,96 @@ function listRemoteDirectorySuggestions(
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalStringField(
+  input: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`sshTarget.${field} must be a string`);
+  }
+
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error(`sshTarget.${field} contains invalid characters`);
+  }
+
+  return value;
+}
+
+function requiredStringField(
+  input: Record<string, unknown>,
+  field: string,
+): string {
+  const value = input[field];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`sshTarget.${field} is required`);
+  }
+
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error(`sshTarget.${field} contains invalid characters`);
+  }
+
+  return value;
+}
+
+function optionalSshPort(input: Record<string, unknown>): number | undefined {
+  const value = input.port;
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 65535
+  ) {
+    throw new Error("sshTarget.port must be an integer from 1 to 65535");
+  }
+
+  return value;
+}
+
+function optionalSshTarget(input: unknown): SshTarget | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+
+  if (!isPlainObject(input)) {
+    throw new Error("sshTarget must be an object");
+  }
+
+  const host = requiredStringField(input, "host");
+  const port = optionalSshPort(input);
+  const username = optionalStringField(input, "username");
+  const identityFile = optionalStringField(input, "identityFile");
+
+  return {
+    host,
+    ...(port !== undefined ? { port } : {}),
+    ...(username !== undefined ? { username } : {}),
+    ...(identityFile !== undefined ? { identityFile } : {}),
+  };
+}
+
 export function listDirectorySuggestions(
   input: DirectorySuggestionsInput,
 ): DirectorySuggestionsResponse {
-  if (input.sshTarget) {
-    return listRemoteDirectorySuggestions(input.sshTarget, input.prefix);
+  if (!input || typeof input.prefix !== "string") {
+    throw new Error("prefix must be a string");
+  }
+
+  const sshTarget = optionalSshTarget(input.sshTarget);
+  if (sshTarget) {
+    return listRemoteDirectorySuggestions(sshTarget, input.prefix);
   }
 
   return listLocalDirectorySuggestions(input.prefix);

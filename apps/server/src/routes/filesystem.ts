@@ -34,12 +34,274 @@ const { ZipArchive } = archiverModule as unknown as {
   ZipArchive: ZipArchiveConstructor;
 };
 
+function sanitizeDownloadFilename(filename: string): string {
+  return filename.replace(/["\\;]/g, "_").replace(/[\x00-\x1f\x7f]/g, "_");
+}
+
+function buildAttachmentDisposition(filename: string): string {
+  return `attachment; filename="${sanitizeDownloadFilename(filename)}"`;
+}
+
 function parseMaybeSshTarget(value: string | undefined): SshTarget | undefined {
   if (!value) {
     return undefined;
   }
 
-  return JSON.parse(value) as SshTarget;
+  const parsed = parseJsonField<unknown>(value, "sshTarget");
+  return optionalSshTarget({ sshTarget: parsed });
+}
+
+function parseJsonField<T>(value: string, fieldName: string): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    throw new Error(`${fieldName} must be valid JSON`);
+  }
+}
+
+function parseRelativePaths(value: string): string[] {
+  const parsed = parseJsonField<unknown>(value, "relativePaths");
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((entry) => typeof entry !== "string")
+  ) {
+    throw new Error("relativePaths must be a JSON array of strings");
+  }
+
+  return parsed.map((entry) =>
+    validateRelativeUploadPath(entry, "relativePaths"),
+  );
+}
+
+function validateRelativeUploadPath(value: string, field: string): string {
+  const trimmed = value.trim();
+  assertSafeFilesystemPath(trimmed, field);
+  if (path.isAbsolute(trimmed) || path.win32.isAbsolute(trimmed)) {
+    throw new Error(`${field} entries must be relative paths`);
+  }
+
+  return trimmed;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalStringField(
+  input: Record<string, unknown>,
+  field: string,
+  label = field,
+): string | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error(`${label} contains invalid characters`);
+  }
+
+  return value;
+}
+
+function requireStringField(
+  input: Record<string, unknown>,
+  field: string,
+): string {
+  const value = optionalStringField(input, field);
+  if (!value?.trim()) {
+    throw new Error(`${field} is required`);
+  }
+
+  return value;
+}
+
+function optionalBooleanField(
+  input: Record<string, unknown>,
+  field: string,
+): boolean | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new Error(`${field} must be a boolean`);
+  }
+
+  return value;
+}
+
+function optionalNonNegativeSafeIntegerField(
+  input: Record<string, unknown>,
+  field: string,
+): number | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new Error(`${field} must be a non-negative safe integer`);
+  }
+
+  return value;
+}
+
+function optionalSshPort(input: Record<string, unknown>): number | undefined {
+  const value = input.port;
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 65535
+  ) {
+    throw new Error("sshTarget.port must be an integer from 1 to 65535");
+  }
+
+  return value;
+}
+
+function optionalSshTarget(
+  input: Record<string, unknown>,
+): SshTarget | undefined {
+  const value = input.sshTarget;
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error("sshTarget must be an object");
+  }
+
+  const host = optionalStringField(value, "host", "sshTarget.host");
+  if (!host?.trim()) {
+    throw new Error("sshTarget.host is required");
+  }
+
+  const port = optionalSshPort(value);
+  const username = optionalStringField(value, "username", "sshTarget.username");
+  const identityFile = optionalStringField(
+    value,
+    "identityFile",
+    "sshTarget.identityFile",
+  );
+
+  return {
+    host,
+    ...(port !== undefined ? { port } : {}),
+    ...(username !== undefined ? { username } : {}),
+    ...(identityFile !== undefined ? { identityFile } : {}),
+  };
+}
+
+function validateListFilesInput(input: ListFilesInput | undefined): {
+  path?: string;
+  sshTarget?: SshTarget;
+  showHidden?: boolean;
+} {
+  if (input === undefined) {
+    return {};
+  }
+
+  if (!isPlainObject(input)) {
+    throw new Error("request body must be an object");
+  }
+
+  const pathValue = optionalStringField(input, "path");
+  const sshTarget = optionalSshTarget(input);
+  const showHidden = optionalBooleanField(input, "showHidden");
+
+  return {
+    ...(pathValue !== undefined ? { path: pathValue } : {}),
+    ...(sshTarget !== undefined ? { sshTarget } : {}),
+    ...(showHidden !== undefined ? { showHidden } : {}),
+  };
+}
+
+function validateFileOperationInput(
+  input: FileOperationInput | undefined,
+): FileOperationInput {
+  if (!isPlainObject(input)) {
+    throw new Error("request body must be an object");
+  }
+
+  const operation = input.operation;
+  if (
+    operation !== "mkdir" &&
+    operation !== "rename" &&
+    operation !== "delete"
+  ) {
+    throw new Error("operation must be mkdir, rename, or delete");
+  }
+
+  const newPath = optionalStringField(input, "newPath");
+  const sshTarget = optionalSshTarget(input);
+
+  return {
+    operation,
+    path: requireStringField(input, "path"),
+    ...(newPath !== undefined ? { newPath } : {}),
+    ...(sshTarget !== undefined ? { sshTarget } : {}),
+  };
+}
+
+function validateFilePreviewInput(
+  input: FilePreviewInput | undefined,
+): FilePreviewInput {
+  if (!isPlainObject(input)) {
+    throw new Error("request body must be an object");
+  }
+
+  const sshTarget = optionalSshTarget(input);
+  const maxBytes = optionalNonNegativeSafeIntegerField(input, "maxBytes");
+
+  return {
+    path: requireStringField(input, "path"),
+    ...(sshTarget !== undefined ? { sshTarget } : {}),
+    ...(maxBytes !== undefined ? { maxBytes } : {}),
+  };
+}
+
+function validateChmodInput(input: ChmodInput | undefined): ChmodInput {
+  if (!isPlainObject(input)) {
+    throw new Error("request body must be an object");
+  }
+
+  const sshTarget = optionalSshTarget(input);
+
+  return {
+    path: requireStringField(input, "path"),
+    mode: requireStringField(input, "mode"),
+    ...(sshTarget !== undefined ? { sshTarget } : {}),
+  };
+}
+
+function validateDownloadInput(
+  input: { path: string; sshTarget?: SshTarget } | undefined,
+): { path: string; sshTarget?: SshTarget } {
+  if (!isPlainObject(input)) {
+    throw new Error("request body must be an object");
+  }
+
+  const sshTarget = optionalSshTarget(input);
+
+  return {
+    path: requireStringField(input, "path"),
+    ...(sshTarget !== undefined ? { sshTarget } : {}),
+  };
 }
 
 function resolveDefaultLocalPath(): string {
@@ -77,7 +339,21 @@ function getErrorStatusCode(error: unknown): number {
     return 403;
   }
 
-  if (message.includes("cannot contain")) {
+  if (
+    message.includes("is required") ||
+    message.includes("contains invalid characters") ||
+    message.includes("cannot contain") ||
+    message.includes("mode must be") ||
+    message.includes("must be valid JSON") ||
+    message.includes("must be a JSON array") ||
+    message.includes("must be relative paths") ||
+    message.includes("must be a string") ||
+    message.includes("must be a boolean") ||
+    message.includes("must be an object") ||
+    message.includes("must be an integer") ||
+    message.includes("must be a non-negative safe integer") ||
+    message.includes("operation must be")
+  ) {
     return 400;
   }
 
@@ -97,25 +373,31 @@ export async function registerFilesystemRoutes(
   fastify.post<{ Body: ListFilesInput }>(
     "/api/fs/list",
     async (request, reply) => {
-      const requestedPath = request.body.path?.trim()
-        ? request.body.path
-        : request.body.sshTarget
+      let input: ReturnType<typeof validateListFilesInput>;
+
+      try {
+        input = validateListFilesInput(request.body);
+      } catch (error) {
+        reply.code(400);
+        return { error: (error as Error).message };
+      }
+
+      const requestedPath = input.path?.trim()
+        ? input.path
+        : input.sshTarget
           ? "~"
           : resolveDefaultLocalPath();
 
       try {
-        if (request.body.sshTarget) {
+        if (input.sshTarget) {
           return await sftpService.list(
-            request.body.sshTarget,
+            input.sshTarget,
             requestedPath,
-            request.body.showHidden,
+            input.showHidden,
           );
         }
 
-        return await localFsService.list(
-          requestedPath,
-          request.body.showHidden,
-        );
+        return await localFsService.list(requestedPath, input.showHidden);
       } catch (error) {
         reply.code(getErrorStatusCode(error));
         return {
@@ -128,9 +410,14 @@ export async function registerFilesystemRoutes(
   fastify.post<{ Body: FileOperationInput }>(
     "/api/fs/operation",
     async (request, reply) => {
-      const { operation, path: targetPath, newPath, sshTarget } = request.body;
-
       try {
+        const {
+          operation,
+          path: targetPath,
+          newPath,
+          sshTarget,
+        } = validateFileOperationInput(request.body);
+
         if (operation === "mkdir") {
           const createdPath = sshTarget
             ? await sftpService.mkdir(sshTarget, targetPath)
@@ -175,18 +462,17 @@ export async function registerFilesystemRoutes(
     "/api/fs/preview",
     async (request, reply) => {
       try {
-        if (request.body.sshTarget) {
+        const input = validateFilePreviewInput(request.body);
+
+        if (input.sshTarget) {
           return await sftpService.preview(
-            request.body.sshTarget,
-            request.body.path,
-            request.body.maxBytes,
+            input.sshTarget,
+            input.path,
+            input.maxBytes,
           );
         }
 
-        return await localFsService.preview(
-          request.body.path,
-          request.body.maxBytes,
-        );
+        return await localFsService.preview(input.path, input.maxBytes);
       } catch (error) {
         reply.code(getErrorStatusCode(error));
         return {
@@ -200,14 +486,12 @@ export async function registerFilesystemRoutes(
     "/api/fs/chmod",
     async (request, reply) => {
       try {
-        if (request.body.sshTarget) {
-          await sftpService.chmod(
-            request.body.sshTarget,
-            request.body.path,
-            request.body.mode,
-          );
+        const input = validateChmodInput(request.body);
+
+        if (input.sshTarget) {
+          await sftpService.chmod(input.sshTarget, input.path, input.mode);
         } else {
-          await localFsService.chmod(request.body.path, request.body.mode);
+          await localFsService.chmod(input.path, input.mode);
         }
 
         return { ok: true };
@@ -224,8 +508,9 @@ export async function registerFilesystemRoutes(
     "/api/fs/download",
     async (request, reply) => {
       try {
-        const targetPath = request.body.path;
-        const sshTarget = request.body.sshTarget;
+        const { path: targetPath, sshTarget } = validateDownloadInput(
+          request.body,
+        );
         const basename = path.basename(targetPath);
 
         if (sshTarget) {
@@ -233,7 +518,7 @@ export async function registerFilesystemRoutes(
           if (isDir) {
             reply.header(
               "Content-Disposition",
-              `attachment; filename="${basename}.zip"`,
+              buildAttachmentDisposition(`${basename}.zip`),
             );
             reply.header("Content-Type", "application/zip");
             const archive = new ZipArchive({ zlib: { level: 5 } });
@@ -259,7 +544,7 @@ export async function registerFilesystemRoutes(
           );
           reply.header(
             "Content-Disposition",
-            `attachment; filename="${basename}"`,
+            buildAttachmentDisposition(basename),
           );
           reply.header("Content-Type", "application/octet-stream");
           return reply.send(stream);
@@ -271,7 +556,7 @@ export async function registerFilesystemRoutes(
         if (stats.isDirectory()) {
           reply.header(
             "Content-Disposition",
-            `attachment; filename="${basename}.zip"`,
+            buildAttachmentDisposition(`${basename}.zip`),
           );
           reply.header("Content-Type", "application/zip");
           const archive = new ZipArchive({ zlib: { level: 5 } });
@@ -283,7 +568,7 @@ export async function registerFilesystemRoutes(
         const stream = localFsService.createReadStream(targetPath);
         reply.header(
           "Content-Disposition",
-          `attachment; filename="${basename}"`,
+          buildAttachmentDisposition(basename),
         );
         reply.header("Content-Type", "application/octet-stream");
         return reply.send(stream);
@@ -314,11 +599,7 @@ export async function registerFilesystemRoutes(
           } else if (part.fieldname === "sshTarget") {
             sshTarget = parseMaybeSshTarget(String(part.value));
           } else if (part.fieldname === "relativePaths") {
-            const parsed = JSON.parse(String(part.value)) as string[];
-            relativePaths = parsed.map((p) => {
-              assertSafeFilesystemPath(p, "relativePaths entry");
-              return p;
-            });
+            relativePaths = parseRelativePaths(String(part.value));
           }
           continue;
         }
@@ -334,7 +615,10 @@ export async function registerFilesystemRoutes(
         } else if (relativePaths.length > 0 && relativePaths[fileIndex]) {
           nextPath = path.join(targetDirectory ?? "", relativePaths[fileIndex]);
         } else {
-          nextPath = path.join(targetDirectory ?? "", part.filename);
+          nextPath = path.join(
+            targetDirectory ?? "",
+            validateRelativeUploadPath(part.filename, "filename"),
+          );
         }
 
         const parentDir = path.dirname(nextPath);

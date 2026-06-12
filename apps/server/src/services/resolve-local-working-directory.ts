@@ -2,6 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import { statSync } from "node:fs";
 
+import { assertSafeFilesystemPath } from "./file-system-utils.js";
+
 function resolveExistingDirectory(candidate: string): string {
   try {
     if (statSync(candidate).isDirectory()) {
@@ -18,6 +20,12 @@ export function resolveLocalWorkingDirectory(
   workingDirectory?: string,
 ): string {
   if (!workingDirectory) {
+    return process.cwd();
+  }
+
+  try {
+    assertSafeFilesystemPath(workingDirectory, "workingDirectory");
+  } catch {
     return process.cwd();
   }
 

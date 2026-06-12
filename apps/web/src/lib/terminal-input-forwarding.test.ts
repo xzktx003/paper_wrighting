@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { shouldAttemptTerminalInputForward } from "./terminal-input-forwarding.js";
+import {
+  shouldAttemptTerminalInputForward,
+  shouldBufferTerminalInputBeforeReady,
+} from "./terminal-input-forwarding.js";
 
 describe("terminal input forwarding", () => {
   it("does not forward stdin from monitor-only panes", () => {
@@ -55,6 +58,57 @@ describe("terminal input forwarding", () => {
       shouldAttemptTerminalInputForward({
         inputEnabled: true,
         sanitizedPayload: "",
+        socketOpen: true,
+      }),
+      false,
+    );
+  });
+
+  it("blocks normal active-pane input before replay completes while allowing protocol replies", () => {
+    assert.equal(
+      shouldAttemptTerminalInputForward({
+        inputEnabled: true,
+        terminalInputReady: false,
+        sanitizedPayload: "whoami",
+        socketOpen: true,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldAttemptTerminalInputForward({
+        inputEnabled: true,
+        terminalInputReady: false,
+        sanitizedPayload: "\u001b[?1;2c\u001b[12;42R",
+        socketOpen: true,
+      }),
+      true,
+    );
+  });
+
+  it("buffers active-pane user input before replay completes instead of dropping it", () => {
+    assert.equal(
+      shouldBufferTerminalInputBeforeReady({
+        inputEnabled: true,
+        terminalInputReady: false,
+        sanitizedPayload: "hello",
+        socketOpen: true,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldBufferTerminalInputBeforeReady({
+        inputEnabled: false,
+        terminalInputReady: false,
+        sanitizedPayload: "hello",
+        socketOpen: true,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldBufferTerminalInputBeforeReady({
+        inputEnabled: true,
+        terminalInputReady: false,
+        sanitizedPayload: "\u001b[?1;2c",
         socketOpen: true,
       }),
       false,

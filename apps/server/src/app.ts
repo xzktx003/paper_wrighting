@@ -11,7 +11,10 @@ import {
   resolveTerminalHistoryRuntimeConfig,
   type TerminalHistoryRuntimeConfig,
 } from "./config/server-runtime-config.js";
-import { registerAgentSessionRoutes } from "./routes/agent-sessions.js";
+import {
+  registerAgentSessionRoutes,
+  validatePtyResizeInput,
+} from "./routes/agent-sessions.js";
 import { registerFilesystemRoutes } from "./routes/filesystem.js";
 import { registerSshHostsRoutes } from "./routes/ssh-hosts.js";
 import { registerVsCodeWebProxyRoutes } from "./routes/vscode-web-proxy.js";
@@ -35,6 +38,91 @@ interface BuildServerOptions {
   sftpService?: SftpService;
   terminalHistoryConfig?: TerminalHistoryRuntimeConfig;
   vsCodeWebManager?: VsCodeWebManager;
+}
+
+function decodeTerminalBinaryFramePayload(data: unknown): string | null {
+  if (typeof data !== "string") {
+    return null;
+  }
+
+  if (
+    data.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      data,
+    )
+  ) {
+    return null;
+  }
+
+  return Buffer.from(data, "base64").toString("latin1");
+}
+
+export function parseTerminalResizeFrame(
+  text: string,
+): { cols: number; rows: number } | null {
+  try {
+    const parsed = JSON.parse(text) as {
+      type?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+    };
+
+    if (parsed.type !== "resize") {
+      return null;
+    }
+
+    return validatePtyResizeInput(parsed as { cols: number; rows: number });
+  } catch {
+    return null;
+  }
+}
+
+export type TerminalClientControlFrame =
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "binary"; payload: string }
+  | { type: "ignore" };
+
+export function parseTerminalClientControlFrame(
+  text: string,
+): TerminalClientControlFrame | null {
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+
+  let parsed: { type?: unknown; data?: unknown; cols?: unknown; rows?: unknown };
+  try {
+    parsed = JSON.parse(text) as {
+      type?: unknown;
+      data?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+    };
+  } catch {
+    return null;
+  }
+
+  if (parsed.type === "resize") {
+    try {
+      const resize = validatePtyResizeInput(
+        parsed as { cols: number; rows: number },
+      );
+      return { type: "resize", ...resize };
+    } catch {
+      return { type: "ignore" };
+    }
+  }
+
+  if (parsed.type === "binary") {
+    const payload = decodeTerminalBinaryFramePayload(parsed.data);
+    return payload === null ? { type: "ignore" } : { type: "binary", payload };
+  }
+
+  if (typeof parsed.type === "string") {
+    return { type: "ignore" };
+  }
+
+  return null;
 }
 
 export function buildServer(): {
@@ -243,37 +331,16 @@ export function buildServer(options: BuildServerOptions = {}): {
           const text =
             typeof message === "string" ? message : message.toString("utf8");
 
-          if (text.startsWith('{"type":"resize"')) {
-            try {
-              const parsed = JSON.parse(text) as {
-                type: string;
-                cols: number;
-                rows: number;
-              };
-
-              ptyRuntimeManager.resize(id, parsed.cols, parsed.rows);
-            } catch {
-              /* ignore malformed resize */
-            }
-
+          const controlFrame = parseTerminalClientControlFrame(text);
+          if (controlFrame?.type === "resize") {
+            ptyRuntimeManager.resize(id, controlFrame.cols, controlFrame.rows);
             return;
           }
-
-          if (text.startsWith('{"type":"binary"')) {
-            try {
-              const parsed = JSON.parse(text) as {
-                type: string;
-                data: string;
-              };
-
-              const payload = Buffer.from(parsed.data, "base64").toString(
-                "latin1",
-              );
-              writeToRuntime(payload);
-            } catch {
-              /* ignore malformed binary frame */
-            }
-
+          if (controlFrame?.type === "binary") {
+            writeToRuntime(controlFrame.payload);
+            return;
+          }
+          if (controlFrame?.type === "ignore") {
             return;
           }
 

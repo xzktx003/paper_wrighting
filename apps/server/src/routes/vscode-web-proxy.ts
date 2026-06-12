@@ -311,9 +311,6 @@ function buildProxyRequestHeaders(
   if (requestHost) {
     headers.host = requestHost;
     headers["x-forwarded-host"] = requestHost;
-  } else if (request.headers.host) {
-    headers.host = request.headers.host;
-    headers["x-forwarded-host"] = request.headers.host;
   }
 
   headers["x-forwarded-proto"] = requestProtocol;

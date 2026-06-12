@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildServer } from "../app.js";
+import {
+  buildServer,
+  parseTerminalClientControlFrame,
+  parseTerminalResizeFrame,
+} from "../app.js";
 import { resolveTmuxBinary } from "../services/runtime-compat.js";
 
 const TMUX_BINARY = resolveTmuxBinary();
@@ -109,6 +113,57 @@ async function openTerminal(
   };
 }
 
+test("terminal websocket resize parser rejects malformed dimensions", () => {
+  assert.deepEqual(
+    parseTerminalResizeFrame('{"type":"resize","cols":120,"rows":30}'),
+    { cols: 120, rows: 30 },
+  );
+
+  assert.equal(
+    parseTerminalResizeFrame('{"type":"resize","cols":"120","rows":30}'),
+    null,
+  );
+  assert.equal(
+    parseTerminalResizeFrame('{"type":"resize","cols":120,"rows":0}'),
+    null,
+  );
+  assert.equal(
+    parseTerminalResizeFrame(
+      `{"type":"resize","cols":${Number.MAX_SAFE_INTEGER + 1},"rows":30}`,
+    ),
+    null,
+  );
+  assert.equal(
+    parseTerminalResizeFrame('{"type":"binary","cols":120,"rows":30}'),
+    null,
+  );
+  assert.equal(parseTerminalResizeFrame('{"type":"resize"'), null);
+});
+
+test("terminal websocket control parser accepts resize frames regardless of JSON key order", () => {
+  assert.deepEqual(
+    parseTerminalClientControlFrame('{"cols":120,"rows":30,"type":"resize"}'),
+    {
+      type: "resize",
+      cols: 120,
+      rows: 30,
+    },
+  );
+});
+
+test("terminal websocket control parser ignores unknown typed control frames", () => {
+  assert.deepEqual(parseTerminalClientControlFrame('{"type":"ping"}'), {
+    type: "ignore",
+  });
+  assert.deepEqual(
+    parseTerminalClientControlFrame('{"type":"resize-preview","cols":120}'),
+    {
+      type: "ignore",
+    },
+  );
+  assert.equal(parseTerminalClientControlFrame('{"payload":"not-control"}'), null);
+});
+
 test("terminal websocket forwards primary device-attribute replies so TUIs can finish their capability handshake", async () => {
   const { app } = buildServer();
   let agentSessionId: string | undefined;
@@ -153,6 +208,75 @@ test("terminal websocket forwards primary device-attribute replies so TUIs can f
     const output = terminal.getBuffer();
     assert.match(output, /__FILTER_OK__/);
     assert.match(output, /\?1;2c/);
+  } finally {
+    terminal?.close();
+
+    if (agentSessionId) {
+      await fetch(`${baseUrl}/api/agent-sessions/${agentSessionId}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+
+    await app.close();
+  }
+});
+
+test("terminal websocket ignores malformed binary frames instead of forwarding partial base64", async () => {
+  const { app } = buildServer();
+  const badMarker = `__BAD_BINARY_${Date.now()}__`;
+  const goodMarker = `__GOOD_BINARY_${Date.now()}__`;
+  let agentSessionId: string | undefined;
+  let terminal: WaitForTerminalTextResult | undefined;
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+
+  assert.ok(address && typeof address === "object");
+
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const terminalBaseUrl = `ws://127.0.0.1:${address.port}`;
+
+  try {
+    const createRes = await fetch(`${baseUrl}/api/agent-launch/pty`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "default",
+        displayName: "terminal-binary-frame-filter",
+        agentKind: "shell",
+        workingDirectory: process.cwd(),
+        command: "printf '__READY__\\n'",
+      }),
+    });
+
+    assert.equal(createRes.status, 201);
+
+    const payload = (await createRes.json()) as { id: string };
+    agentSessionId = payload.id;
+
+    terminal = await openTerminal(
+      `${terminalBaseUrl}/ws/agent-sessions/${agentSessionId}/terminal`,
+    );
+    await terminal.waitFor("__READY__");
+
+    const encodedBadCommand = Buffer.from(
+      `printf '${badMarker}\\n'\n`,
+      "latin1",
+    ).toString("base64");
+    terminal.send(
+      JSON.stringify({
+        type: "binary",
+        data: `${encodedBadCommand}!`,
+      }),
+    );
+
+    await assert.rejects(() => terminal!.waitFor(badMarker, 500));
+
+    terminal.send(`printf '${goodMarker}\\n'\n`);
+    await terminal.waitFor(goodMarker);
+    assert.doesNotMatch(terminal.getBuffer(), new RegExp(badMarker));
   } finally {
     terminal?.close();
 

@@ -18,6 +18,7 @@ import {
   guessMimeType,
   isBinaryBuffer,
   joinRemotePath,
+  normalizePreviewByteLimit,
   validateChmodMode,
 } from "./file-system-utils.js";
 
@@ -398,10 +399,22 @@ export class SftpService {
     return this.withConnection(target, async (client) =>
       withSftp(client, async (sftp) => {
         const fileStats = await sftpStat(sftp, remotePath);
+        const bytesToRead = normalizePreviewByteLimit(maxBytes);
+        if (bytesToRead <= 0) {
+          return {
+            path: remotePath,
+            content: "",
+            encoding: "utf8",
+            truncated: (fileStats.size ?? 0) > 0,
+            size: fileStats.size ?? 0,
+            mimeType: guessMimeType(remotePath),
+          };
+        }
+
         const chunks: Buffer[] = [];
         const stream = sftp.createReadStream(remotePath, {
           start: 0,
-          end: Math.max(0, maxBytes - 1),
+          end: bytesToRead - 1,
         });
 
         const buffer = await new Promise<Buffer>((resolve, reject) => {
@@ -496,6 +509,10 @@ export class SftpService {
 
     const children = await sftpReaddir(sftp, remotePath);
     for (const child of children) {
+      if (child.filename === "." || child.filename === "..") {
+        continue;
+      }
+
       await this.removePathRecursive(
         sftp,
         joinRemotePath(remotePath, child.filename),

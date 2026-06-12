@@ -7,6 +7,7 @@ import test from "node:test";
 import { AgentSessionRegistry } from "./agent-session-registry.js";
 import {
   appendPtyScrollback,
+  buildTerminalCapabilityResponse,
   buildRemoteTmuxCaptureCommand,
   PtyRuntimeManager,
   sanitizeReplayForTerminal,
@@ -186,6 +187,14 @@ test("buildRemoteTmuxCaptureCommand sets history limit before capturing pane his
   assert.match(command, /tmux capture-pane -p -t '%5' -S -20000/);
 });
 
+test("buildTerminalCapabilityResponse answers DA and DSR terminal queries", () => {
+  assert.equal(
+    buildTerminalCapabilityResponse("boot\u001b[c\u001b[6n"),
+    "\u001b[?1;2c\u001b[1;1R",
+  );
+  assert.equal(buildTerminalCapabilityResponse("plain output"), "");
+});
+
 test("stripAlternateScreenSwitches keeps tmux attach output in the normal scrollback buffer", () => {
   const output =
     "before\u001b[?1049hfullscreen\u001b[?1048hcursor\u001b[?1047lafter";
@@ -351,7 +360,11 @@ test("launch seeds tmux attach replay with pane history outside the visible scre
     },
   );
 
-  await waitForTmuxCaptureMatch(sessionName, new RegExp(`${marker}_080`));
+  await waitForTmuxCaptureMatch(
+    sessionName,
+    new RegExp(`${marker}_080`),
+    15000,
+  );
 
   const session = runtimeManager.launch({
     workspaceId: "default",
