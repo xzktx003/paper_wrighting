@@ -9,7 +9,6 @@
   - Paper Writer focus for this design pass: RAG, PDF ingestion, skill selection, Chat/Agent/Tools mode clarity.
 - Evidence reviewed:
   - `README.md`
-  - `docs/project-overview.md`
   - `docs/func_list.md`
   - `app/apps/backend/src/routes/paperRag.js`
   - `app/apps/backend/src/services/paperRagService.js`
