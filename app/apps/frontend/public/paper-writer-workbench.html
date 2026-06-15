@@ -1150,6 +1150,7 @@
     let currentAnswerReview = null;
     let currentAnswerReviewText = '';
     let currentAiReplyEvidencePackFingerprint = '';
+    let currentConversationId = null;
     let currentClaimEvidencePackFingerprint = '';
     let currentAnswerAdoptionPackage = null;
     let currentWorkbenchInputSignature = '';
@@ -7864,20 +7865,28 @@ ${escapeHtml(ref.snippet || '')}</div>
       els.aiReply.textContent = pendingReplyText;
       currentAiReplyEvidencePackFingerprint = '';
       try {
-        const conversationResponse = await fetch(apiUrl(`/api/conversations/${encodeURIComponent(projectId)}`), {
-          method: 'POST',
-          headers: authHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({
-            ...(draftRequest.conversation || {}),
-            name: draftRequest.conversation?.name || `Workbench · ${new Date().toLocaleTimeString()}`,
-            context_scope: draftRequest.conversation?.context_scope || { type: 'free' },
-            active_skills: draftRequest.active_skills || (primarySkill?.name ? [primarySkill.name] : []),
-            mode
-          })
-        });
-        const conversation = await conversationResponse.json();
-        if (!conversationResponse.ok || conversation.error) {
-          throw new Error(friendlyError(conversationResponse, conversation));
+        let conversation;
+        if (currentConversationId) {
+          // Reuse existing conversation
+          conversation = { id: currentConversationId };
+        } else {
+          // Create new conversation only once
+          const conversationResponse = await fetch(apiUrl(`/api/conversations/${encodeURIComponent(projectId)}`), {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+              ...(draftRequest.conversation || {}),
+              name: draftRequest.conversation?.name || `Workbench · ${new Date().toLocaleTimeString()}`,
+              context_scope: draftRequest.conversation?.context_scope || { type: 'free' },
+              active_skills: draftRequest.active_skills || (primarySkill?.name ? [primarySkill.name] : []),
+              mode
+            })
+          });
+          conversation = await conversationResponse.json();
+          if (!conversationResponse.ok || conversation.error) {
+            throw new Error(friendlyError(conversationResponse, conversation));
+          }
+          currentConversationId = conversation.id;
         }
 
         const aiResponse = await fetch(apiUrl('/api/ai/send'), {
@@ -7969,6 +7978,7 @@ ${escapeHtml(ref.snippet || '')}</div>
     els.projectSelect.addEventListener('change', () => {
       if (els.projectSelect.value) {
         els.projectId.value = els.projectSelect.value;
+        currentConversationId = null;
         markWorkbenchInputsStale('项目已切换');
         els.status.textContent = `已选择项目：${els.projectSelect.options[els.projectSelect.selectedIndex].textContent}。旧分析已失效，请重新点击“分析任务”。`;
       }
