@@ -14,6 +14,7 @@ const USER_HOME = process.env.HOME || '/data01/home/xuzk';
 const EXTRA_PATHS = [`${USER_HOME}/bin`, '/usr/local/bin'].filter(Boolean).join(':');
 const EXTRA_LD_PATH = [
   `${USER_HOME}/anaconda3/lib`,
+  `${USER_HOME}/bin/tectonic-libs`,
   '/data01/home/chenzx/anaconda3/lib',
 ].join(':');
  

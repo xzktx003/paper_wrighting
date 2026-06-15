@@ -465,7 +465,158 @@
         grid-template-columns: 1fr;
       }
     }
+
+
+    /* ── Compile & PDF/Source Sync Panel ── */
+    .compile-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .view-mode-tabs {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .view-tab {
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border: none;
+      background: var(--panel);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      border-right: 1px solid var(--border);
+    }
+    .view-tab:last-child { border-right: none; }
+    .view-tab:hover { background: var(--bg); }
+    .view-tab.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .auto-compile-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .auto-compile-toggle input { margin: 0; }
+    .editor-container {
+      display: flex;
+      gap: 0;
+      height: 600px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .editor-container.view-source .pdf-pane { display: none; }
+    .editor-container.view-source .source-pane { flex: 1; }
+    .editor-container.view-rendered .source-pane { display: none; }
+    .editor-container.view-rendered .pdf-pane { flex: 1; }
+    .editor-container.view-split .source-pane { flex: 1; }
+    .editor-container.view-split .pdf-pane { flex: 1; }
+    .editor-pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .source-pane { border-right: 1px solid var(--border); }
+    .pane-header {
+      padding: 6px 10px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .source-editor-wrap {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      background: #fafbfc;
+    }
+    .source-line {
+      display: flex;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      cursor: pointer;
+    }
+    .source-line:hover { background: var(--accent-soft); }
+    .source-line.highlighted {
+      background: #fff3cd;
+      animation: synctex-flash 1.5s ease-out;
+    }
+    @keyframes synctex-flash {
+      0% { background: #ffd54f; }
+      100% { background: #fff3cd; }
+    }
+    .line-number {
+      width: 48px;
+      min-width: 48px;
+      text-align: right;
+      padding: 0 8px 0 4px;
+      color: var(--muted);
+      user-select: none;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .line-content {
+      flex: 1;
+      padding: 0 8px;
+      white-space: pre;
+      overflow-x: auto;
+    }
+    .pdf-viewer-wrap {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      background: #525659;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    #pdfCanvas { cursor: crosshair; }
+    .pdf-highlight-overlay {
+      position: absolute;
+      border: 2px solid var(--accent);
+      background: rgba(15, 118, 110, 0.15);
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .compile-log-area {
+      max-height: 150px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      padding: 8px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    @media (max-width: 900px) {
+      .editor-container { flex-direction: column; height: auto; }
+      .editor-container.view-split { height: 900px; }
+      .source-pane { border-right: none; border-bottom: 1px solid var(--border); }
+    }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
   <main class="shell">
@@ -923,6 +1074,60 @@
           <div class="panel-body">
             <div id="documentDeleteConfirm"></div>
             <div id="documents"></div>
+          </div>
+        </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" id="compileSyncPanel">
+          <div class="panel-header">
+            <h2 class="panel-title">编译 & PDF 源码同步</h2>
+            <div class="button-row">
+              <span id="compileSyncStatus" class="pill">未编译</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="compile-controls">
+              <div class="view-mode-tabs" id="viewModeTabs">
+                <button class="view-tab active" data-mode="source">Source</button>
+                <button class="view-tab" data-mode="split">Split</button>
+                <button class="view-tab" data-mode="rendered">Rendered</button>
+              </div>
+              <label class="auto-compile-toggle">
+                <input type="checkbox" id="autoCompileToggle" checked>
+                <span>自动编译</span>
+              </label>
+              <button id="compileNowBtn" class="btn" type="button">立即编译</button>
+            </div>
+            <div id="compileLog" class="compile-log-area" style="display:none;"></div>
+            <div id="editorContainer" class="editor-container view-source">
+              <div id="sourcePane" class="editor-pane source-pane">
+                <div class="pane-header">
+                  <span id="sourceEditorTitle">源码</span>
+                  <select id="sourceFileSelect" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;max-width:200px;">
+                    <option value="">选择文件…</option>
+                  </select>
+                </div>
+                <div class="source-editor-wrap" id="sourceEditorWrap">
+                  <div id="sourceEditorEmpty" style="padding:40px;color:var(--muted);text-align:center;">加载项目后选择 .tex 或 .md 文件开始编辑</div>
+                </div>
+              </div>
+              <div id="pdfPane" class="editor-pane pdf-pane">
+                <div class="pane-header">
+                  <span>PDF 预览 — 点击文字跳转源码</span>
+                  <span style="display:flex;align-items:center;gap:6px;">
+                    <button id="pdfPrevPage" class="mini-btn" type="button">◀</button>
+                    <span id="pdfPageInfo" style="font-size:11px;min-width:50px;text-align:center;">0/0</span>
+                    <button id="pdfNextPage" class="mini-btn" type="button">▶</button>
+                  </span>
+                </div>
+                <div class="pdf-viewer-wrap" id="pdfViewerWrap">
+                  <div id="pdfPlaceholder" style="padding:40px;color:#aaa;text-align:center;">编译后在此显示 PDF，点击文字可跳转源码</div>
+                  <canvas id="pdfCanvas" style="display:none;"></canvas>
+                  <div id="pdfHighlight" class="pdf-highlight-overlay" style="display:none;"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -8183,6 +8388,422 @@ ${escapeHtml(ref.snippet || '')}</div>
         cancelRagDocumentDelete();
       }
     });
+
+    // ═══════════════════════════════════════════════════════
+    // Compile & PDF/Source Sync — Source | Split | Rendered
+    // ═══════════════════════════════════════════════════════
+    (function initCompileSync() {
+      const synctexState = {
+        viewMode: 'source',       // source | split | rendered
+        autoCompile: true,
+        pdfDoc: null,
+        currentPage: 1,
+        totalPages: 0,
+        scale: 1.2,
+        currentFile: '',
+        currentContent: '',
+        compiling: false,
+        debounceTimer: null,
+        lastPdfUrl: '',
+      };
+
+      // ── DOM refs ──
+      const $ = (sel) => document.querySelector(sel);
+      const $container = $('#editorContainer');
+      const $viewTabs = $('#viewModeTabs');
+      const $autoToggle = $('#autoCompileToggle');
+      const $compileBtn = $('#compileNowBtn');
+      const $compileLog = $('#compileLog');
+      const $status = $('#compileSyncStatus');
+      const $fileSelect = $('#sourceFileSelect');
+      const $sourceWrap = $('#sourceEditorWrap');
+      const $sourceEmpty = $('#sourceEditorEmpty');
+      const $sourceTitle = $('#sourceEditorTitle');
+      const $canvas = $('#pdfCanvas');
+      const $pdfPlaceholder = $('#pdfPlaceholder');
+      const $pdfHighlight = $('#pdfHighlight');
+      const $pdfInfo = $('#pdfPageInfo');
+      const $prevPage = $('#pdfPrevPage');
+      const $nextPage = $('#pdfNextPage');
+
+      if (!$container) return; // panel not loaded
+
+      const ctx = $canvas.getContext('2d');
+
+      // ── PDF.js setup ──
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+
+      // ── View mode toggle ──
+      $viewTabs.addEventListener('click', (e) => {
+        const tab = e.target.closest('.view-tab');
+        if (!tab) return;
+        const mode = tab.dataset.mode;
+        synctexState.viewMode = mode;
+        $viewTabs.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+        $container.className = 'editor-container view-' + mode;
+        if ((mode === 'split' || mode === 'rendered') && synctexState.pdfDoc) {
+          renderCurrentPage();
+        }
+      });
+
+      // ── Auto-compile toggle ──
+      $autoToggle.addEventListener('change', () => {
+        synctexState.autoCompile = $autoToggle.checked;
+      });
+
+      // ── Compile button ──
+      $compileBtn.addEventListener('click', () => doCompile());
+
+      // ── Page navigation ──
+      $prevPage.addEventListener('click', () => {
+        if (synctexState.currentPage > 1) {
+          synctexState.currentPage--;
+          renderCurrentPage();
+        }
+      });
+      $nextPage.addEventListener('click', () => {
+        if (synctexState.currentPage < synctexState.totalPages) {
+          synctexState.currentPage++;
+          renderCurrentPage();
+        }
+      });
+
+      // ── File selector ──
+      $fileSelect.addEventListener('change', () => {
+        const filePath = $fileSelect.value;
+        if (filePath) loadSourceFile(filePath);
+      });
+
+      // ── Load project files into selector ──
+      async function loadProjectFiles() {
+        const projectId = getProjectId();
+        if (!projectId) return;
+        try {
+          const resp = await fetch(apiUrl(`/api/projects/${encodeURIComponent(projectId)}/tree`), {
+            headers: authHeaders(),
+          });
+          const data = await resp.json();
+          const files = (data.items || data.files || []).filter(f => {
+            if (f.type === 'dir') return false;
+            const ext = (f.path || f.name || '').toLowerCase();
+            return ext.endsWith('.tex') || ext.endsWith('.md') || ext.endsWith('.markdown');
+          });
+          $fileSelect.innerHTML = '<option value="">选择文件…</option>';
+          for (const f of files) {
+            const opt = document.createElement('option');
+            opt.value = f.path || f.name;
+            opt.textContent = f.path || f.name;
+            $fileSelect.appendChild(opt);
+          }
+          // Auto-select main.tex or first .tex file
+          const main = files.find(f => (f.path || f.name) === 'main.tex') || files[0];
+          if (main) {
+            $fileSelect.value = main.path || main.name;
+            loadSourceFile(main.path || main.name);
+          }
+        } catch (err) {
+          console.warn('Failed to load project files:', err);
+        }
+      }
+
+      // ── Load source file content ──
+      async function loadSourceFile(filePath) {
+        const projectId = getProjectId();
+        if (!projectId || !filePath) return;
+        synctexState.currentFile = filePath;
+        $sourceTitle.textContent = '源码 — ' + filePath;
+        try {
+          const resp = await fetch(
+            apiUrl(`/api/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(filePath)}`),
+            { headers: authHeaders() }
+          );
+          const data = await resp.json();
+          synctexState.currentContent = data.content || '';
+          renderSourceEditor(synctexState.currentContent);
+
+          // Trigger auto-compile if enabled
+          if (synctexState.autoCompile && synctexState.currentContent.trim()) {
+            scheduleCompile();
+          }
+        } catch (err) {
+          $sourceWrap.innerHTML = `<div style="padding:20px;color:var(--danger);">加载失败: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+
+      // ── Render source editor with line numbers ──
+      function renderSourceEditor(content) {
+        const lines = content.split('\n');
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < lines.length; i++) {
+          const lineDiv = document.createElement('div');
+          lineDiv.className = 'source-line';
+          lineDiv.dataset.line = i + 1;
+
+          const numDiv = document.createElement('div');
+          numDiv.className = 'line-number';
+          numDiv.textContent = i + 1;
+          numDiv.addEventListener('click', () => sourceToPdf(i + 1));
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'line-content';
+          contentDiv.textContent = lines[i];
+
+          lineDiv.appendChild(numDiv);
+          lineDiv.appendChild(contentDiv);
+          frag.appendChild(lineDiv);
+        }
+        $sourceWrap.innerHTML = '';
+        $sourceWrap.appendChild(frag);
+        if ($sourceEmpty) $sourceEmpty.style.display = 'none';
+      }
+
+      // ── Highlight a source line ──
+      function highlightSourceLine(lineNum) {
+        $sourceWrap.querySelectorAll('.source-line.highlighted').forEach(el => el.classList.remove('highlighted'));
+        const target = $sourceWrap.querySelector(`.source-line[data-line="${lineNum}"]`);
+        if (target) {
+          target.classList.add('highlighted');
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+      }
+
+      // ── Debounced auto-compile ──
+      function scheduleCompile() {
+        clearTimeout(synctexState.debounceTimer);
+        synctexState.debounceTimer = setTimeout(() => doCompile(), 1500);
+      }
+
+      // ── Compile ──
+      async function doCompile() {
+        if (synctexState.compiling) return;
+        const projectId = getProjectId();
+        if (!projectId) {
+          $compileLog.style.display = 'block';
+          $compileLog.textContent = '请先填写项目 ID';
+          return;
+        }
+
+        const filePath = synctexState.currentFile || $fileSelect.value || '';
+        synctexState.compiling = true;
+        $status.textContent = '编译中…';
+        $status.className = 'pill warning';
+        $compileLog.style.display = 'block';
+        $compileLog.textContent = '正在编译…\n';
+
+        try {
+          const isMarkdown = filePath.endsWith('.md') || filePath.endsWith('.markdown');
+          const endpoint = isMarkdown ? '/api/compile/markdown' : '/api/compile';
+          const body = isMarkdown
+            ? { projectId, mainFile: filePath }
+            : { projectId, mainFile: filePath || 'main.tex', engine: 'auto' };
+
+          const resp = await fetch(apiUrl(endpoint), {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(body),
+          });
+          const data = await resp.json();
+
+          if (data.log) {
+            $compileLog.textContent = data.log;
+          }
+
+          if (data.ok && data.pdf) {
+            $status.textContent = '编译成功';
+            $status.className = 'pill success';
+            synctexState.lastPdfUrl = data.pdfUrl || '';
+            await loadPdfFromBase64(data.pdf);
+
+            // Switch to split view if in source-only mode
+            if (synctexState.viewMode === 'source') {
+              const splitTab = $viewTabs.querySelector('[data-mode="split"]');
+              if (splitTab) splitTab.click();
+            }
+          } else {
+            $status.textContent = '编译失败';
+            $status.className = 'pill danger';
+            if (!$compileLog.textContent.includes(data.error)) {
+              $compileLog.textContent += '\n' + (data.error || 'Unknown error');
+            }
+          }
+        } catch (err) {
+          $status.textContent = '编译失败';
+          $status.className = 'pill danger';
+          $compileLog.textContent += '\n' + err.message;
+        } finally {
+          synctexState.compiling = false;
+        }
+      }
+
+      // ── Load PDF from base64 ──
+      async function loadPdfFromBase64(base64) {
+        if (typeof pdfjsLib === 'undefined') {
+          $pdfPlaceholder.textContent = 'PDF.js 未加载，无法显示 PDF';
+          return;
+        }
+        try {
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+          synctexState.pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+          synctexState.totalPages = synctexState.pdfDoc.numPages;
+          synctexState.currentPage = 1;
+
+          $canvas.style.display = 'block';
+          $pdfPlaceholder.style.display = 'none';
+
+          renderCurrentPage();
+        } catch (err) {
+          $pdfPlaceholder.textContent = 'PDF 加载失败: ' + err.message;
+          $pdfPlaceholder.style.display = 'block';
+          $canvas.style.display = 'none';
+        }
+      }
+
+      // ── Render current PDF page ──
+      async function renderCurrentPage() {
+        if (!synctexState.pdfDoc) return;
+        const page = await synctexState.pdfDoc.getPage(synctexState.currentPage);
+        const viewport = page.getViewport({ scale: synctexState.scale });
+
+        $canvas.width = viewport.width;
+        $canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        $pdfInfo.textContent = `${synctexState.currentPage} / ${synctexState.totalPages}`;
+        $pdfHighlight.style.display = 'none';
+      }
+
+      // ── PDF click → source sync ──
+      $canvas.addEventListener('click', async (e) => {
+        if (!synctexState.pdfDoc || !synctexState.currentFile) return;
+
+        const rect = $canvas.getBoundingClientRect();
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+
+        // Convert canvas coords to PDF coords
+        // Canvas: origin top-left, PDF: origin bottom-left
+        const pdfX = canvasX / synctexState.scale;
+        const pdfY = ($canvas.height - canvasY) / synctexState.scale;
+
+        const projectId = getProjectId();
+        if (!projectId) return;
+
+        try {
+          const resp = await fetch(
+            apiUrl(`/api/projects/${encodeURIComponent(projectId)}/synctex/pdf-to-source`),
+            {
+              method: 'POST',
+              headers: authHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({ page: synctexState.currentPage, x: pdfX, y: pdfY }),
+            }
+          );
+          const data = await resp.json();
+
+          if (data.ok && data.file && data.line) {
+            // Load the source file if different
+            const targetFile = data.file;
+            if (targetFile !== synctexState.currentFile) {
+              // Try to find and select the file
+              const opts = Array.from($fileSelect.options);
+              const match = opts.find(o => o.value === targetFile || o.value.endsWith('/' + targetFile));
+              if (match) {
+                $fileSelect.value = match.value;
+                await loadSourceFile(match.value);
+              }
+            }
+            highlightSourceLine(data.line);
+
+            // Show highlight overlay on PDF
+            if (data.x !== undefined && data.y !== undefined) {
+              const hlX = data.x * synctexState.scale;
+              const hlY = ($canvas.height / synctexState.scale - data.y - (data.height || 10)) * synctexState.scale;
+              const hlW = (data.width || 100) * synctexState.scale;
+              const hlH = Math.max((data.height || 10) * synctexState.scale, 8);
+              $pdfHighlight.style.display = 'block';
+              $pdfHighlight.style.left = hlX + 'px';
+              $pdfHighlight.style.top = hlY + 'px';
+              $pdfHighlight.style.width = hlW + 'px';
+              $pdfHighlight.style.height = hlH + 'px';
+              setTimeout(() => { $pdfHighlight.style.display = 'none'; }, 2000);
+            }
+          }
+        } catch (err) {
+          console.warn('SyncTeX pdf-to-source failed:', err);
+        }
+      });
+
+      // ── Source line → PDF sync ──
+      async function sourceToPdf(lineNum) {
+        const projectId = getProjectId();
+        if (!projectId || !synctexState.currentFile || !synctexState.pdfDoc) return;
+
+        try {
+          const resp = await fetch(
+            apiUrl(`/api/projects/${encodeURIComponent(projectId)}/synctex/source-to-pdf`),
+            {
+              method: 'POST',
+              headers: authHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({ file: synctexState.currentFile, line: lineNum }),
+            }
+          );
+          const data = await resp.json();
+
+          if (data.ok && data.page) {
+            synctexState.currentPage = data.page;
+            await renderCurrentPage();
+
+            // Highlight the region on PDF
+            if (data.x !== undefined && data.y !== undefined) {
+              const hlX = data.x * synctexState.scale;
+              const hlY = ($canvas.height / synctexState.scale - data.y - (data.height || 10)) * synctexState.scale;
+              const hlW = (data.width || 100) * synctexState.scale;
+              const hlH = Math.max((data.height || 10) * synctexState.scale, 8);
+              $pdfHighlight.style.display = 'block';
+              $pdfHighlight.style.left = hlX + 'px';
+              $pdfHighlight.style.top = hlY + 'px';
+              $pdfHighlight.style.width = hlW + 'px';
+              $pdfHighlight.style.height = hlH + 'px';
+              setTimeout(() => { $pdfHighlight.style.display = 'none'; }, 2000);
+            }
+          }
+        } catch (err) {
+          console.warn('SyncTeX source-to-pdf failed:', err);
+        }
+      }
+
+      // ── Expose for external use ──
+      window.__compileSync = {
+        doCompile,
+        loadSourceFile,
+        setViewMode: (mode) => {
+          const tab = $viewTabs.querySelector(`[data-mode="${mode}"]`);
+          if (tab) tab.click();
+        },
+        refresh: loadProjectFiles,
+      };
+
+      // ── Auto-load files when project changes ──
+      const loadBtn = document.querySelector('#loadProjectsBtn');
+      if (loadBtn) {
+        loadBtn.addEventListener('click', () => setTimeout(loadProjectFiles, 500));
+      }
+
+      // Also hook into the project select change
+      const projectSel = document.querySelector('#projectSelect');
+      if (projectSel) {
+        projectSel.addEventListener('change', () => setTimeout(loadProjectFiles, 300));
+      }
+
+      // Initial load attempt
+      setTimeout(loadProjectFiles, 1000);
+    })();
   </script>
 </body>
 </html>
