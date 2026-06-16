@@ -1,12 +1,8 @@
 """
-AdaCode: Distribution-Adaptive Codebook Learning for 1D Vector Quantization of LLM Weights
+AdaCode: Distribution-Adaptive Codebook Learning for LLM Weight Quantization
 
-This module implements adaptive quantization techniques for LLM weights, including:
-- AdaCode: GGD-based adaptive codebook
-- CFHQ: Closed-form Hessian quantization
-- Dynamic Codebook: Activation-conditioned quantization (B1)
-- Hierarchical Quantization: Structure-aware layered quantization (B2)
-- Unified Quantizer: Combined B1 + B2 approach
+Core method: Dynamic Codebook (B1) — activation-conditioned quantization
+Theory: PAC-Bayes optimal codebook modulation via activation sparsity
 """
 
 from .codebook import AdaCodebook, compute_optimal_codebook
@@ -24,7 +20,7 @@ from .method2_actadacode import (
 )
 from .ggd import estimate_ggd_params, ggd_pdf, ggd_cdf
 
-# Existing innovation direction modules
+# RobustCode
 from .robustcode import (
     RobustCodeQuantizer,
     compute_dro_beta,
@@ -33,37 +29,12 @@ from .robustcode import (
     dro_gamma_from_epsilon,
     quantize_model_robustcode,
 )
-from .hessian_codebook import (
-    HessianCodebookQuantizer,
-    importance_weighted_ggd_params,
-    compute_activation_importance_weights,
-)
-from .rdp_tradeoff import (
-    RDPQuantizer,
-    compute_rdp_gap,
-)
 
-# B1: Dynamic Codebook (Activation-Conditioned)
+# B1: Dynamic Codebook (Activation-Conditioned Quantization)
 from .dynamic_codebook import (
     DynamicCodebookMixer,
     ActivationStatisticsCollector,
     CodebookConfig,
-    create_dynamic_codebook_quantizer,
 )
 
-# B2: Hierarchical Quantization (Structure-Aware)
-from .hierarchical_quantizer import (
-    HierarchicalQuantizer,
-    AdaptiveHierarchicalQuantizer,
-    HierarchicalQuantConfig,
-    VarianceEstimator,
-)
-
-# Unified Quantizer (B1 + B2)
-from .unified_quantizer import (
-    UnifiedAdaptiveQuantizer,
-    UnifiedQuantizerConfig,
-    create_unified_quantizer,
-)
-
-__version__ = "0.3.0"
+__version__ = "0.4.0"
