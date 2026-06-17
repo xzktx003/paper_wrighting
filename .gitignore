@@ -31,3 +31,4 @@ apps/server/.codex
 apps/server/.codex/
 .omx/
 .worktrees/
+.papers/
