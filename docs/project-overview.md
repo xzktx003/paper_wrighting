@@ -1,0 +1,25 @@
+# Project Overview
+
+**Paper Agent** is a local-first AI-powered academic writing tool. It manages each paper as a filesystem-backed project under `papers/`.
+
+The frontend includes a theme selector for both project management and editor screens. Basic Light and Basic Dark remain available as conservative defaults, while GitHub Dark, Catppuccin, Tokyo Night, and Dracula-inspired themes provide higher-contrast editor-style alternatives.
+
+Each project contains the source paper files plus metadata in `project.json`. When a new paper folder is copied or uploaded under `papers/`, the project listing endpoint automatically creates missing metadata if it finds recognizable paper files and no `project.json` exists yet. Existing paper folders can also be made visible manually by running `scripts/generate-paper-project-json.mjs` against `papers/`; the script creates missing metadata without overwriting valid existing projects by default. Projects may use LaTeX templates and structured paper assets, but the workspace is not limited to final manuscript files. Every project now also has a root-level `docs/` folder intended for supporting material such as research ideas, outlines, meeting notes, scratch drafts, and other free-form planning documents.
+
+The preview layer resolves Markdown image links and LaTeX `\includegraphics{...}` references through the project blob API, so user-created folders such as `fig/`, `figures/`, `images/`, or `img/` can display inside the editor preview instead of resolving relative to the browser page URL. These image folders are supported when present, but `fig/` is no longer created automatically.
+
+The backend exposes file-tree and file-editing APIs over the project root, so files placed under `docs/` and other user-created folders are handled by the same browse, create, upload, copy, move, rename, and delete flows as other project files. Text-like files in `docs/` can be edited directly; images in `fig/` can be selected for preview. In the editor file tree, users can right-click blank/root space or a folder to create new files/folders, and can right-click files or folders for copy paths, copy, cut, paste, and delete actions, or drag files and folders into another folder or the explicit project-root drop target to move them.
+
+
+
+The integrated terminal is backed by tmux. Each project/cwd maps to a stable tmux session name, so reopening the terminal or refreshing the page reattaches to the same shell state; if that tmux session has been killed, the next connection creates it again.
+
+Runtime LLM configuration is owned by the repository-root `.env` file. The backend loads provider, API key, base URL, and model values from `.env`, writes settings changes back to `.env`, and exposes only masked key status through `/api/config`, so the frontend can update settings without displaying or caching real API keys.
+
+Chapter text editing now has Source, Split, and Rendered modes. Rendered mode switches from CodeMirror source editing to an Obsidian-like editable preview surface: valid Markdown/LaTeX blocks are compiled into normal document preview text, math, lists, and images, and edits to rendered text blocks are written back to the source. Syntax that cannot be rendered stays visible as editable source fallback so malformed sections do not block editing the rest of the document.
+
+The AI assistant is organized around three conversation modes: Chat for read-only discussion, Agent for reviewable paper-edit proposals, and Tools for multi-step tool execution. Code-related AI operations are no longer exposed as a separate conversation scope; when needed, they are handled as controlled `code/` directory tools inside Tools mode.
+
+The right panel now features five tabs: Chat (conversational AI), Skills (43+ writing/research/review skill plugins), Review (structured peer review with score rings and revision checklists), Anti-AI (writing pattern detection with flagged terms, sentence analysis, and actionable suggestions), and Pipeline (multi-stage automated workflows). AI chat uses SSE streaming for real-time token delivery, and new conversations automatically inject relevant context (chapter content, paper structure, references) based on the selected scope.
+
+Pipeline 2.0 introduces a composable Stage system with five typed executors: AI (LLM-powered skill stages), Compute (shell command execution with timeout), Human (interactive checkpoints with approve/reject/skip/edit actions), Citation (verify/format/deduplicate/discover references), and Compile (LaTeX compilation via pdflatex/xelatex/lualatex/latexmk). Five preset pipeline templates are available: Writing Flow (Outline → Draft → Polish → Review with human checkpoints), Paper Pipeline (Polish → Review → Revise → Citation Check → Compile), Quick Review (Review → Revise), Citation Pipeline (Verify → Deduplicate → Discover), and Executable Paper (Run Code → Generate Figures → Compile). Pipelines support pause/resume, retry with feedback, stage skipping, and abort signal propagation. The V2 API is mounted at `/api/v2/pipeline/*` while the legacy V1 routes remain for backward compatibility.
