@@ -13,10 +13,13 @@ import { PendingEdit } from '../hooks/useConversations';
 
 type TabType = 'chat' | 'skills' | 'rag' | 'review' | 'anti-ai' | 'pipeline' | 'citations';
 
-interface AttachedImage {
+interface AttachedFile {
   id: string;
   dataUrl: string;
   name: string;
+  type: string;
+  isImage: boolean;
+  size: number;
 }
 
 interface Props {
@@ -29,7 +32,7 @@ interface Props {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onCreate: (data: any) => void;
-  onSend: (message: string, images?: AttachedImage[]) => void;
+  onSend: (message: string, files?: AttachedFile[]) => void;
   onRename?: (id: string, newName: string) => void;
   globalSkills?: string[];
   chapterSkills?: string[];
@@ -55,8 +58,10 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   const [gptzeroLoading, setGptzeroLoading] = useState(false);
   const [citationReport, setCitationReport] = useState<any>(null);
   const [citationLoading, setCitationLoading] = useState(false);
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleRunReview = useCallback(async () => {
     if (!projectPath) return;
@@ -101,10 +106,10 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   }, [projectPath, activeFile]);
 
   const handleSend = () => {
-    if (!inputValue.trim() && attachedImages.length === 0) return;
-    onSend(inputValue.trim(), attachedImages.length > 0 ? attachedImages : undefined);
+    if (!inputValue.trim() && attachedFiles.length === 0) return;
+    onSend(inputValue.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
     setInputValue('');
-    setAttachedImages([]);
+    setAttachedFiles([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -126,10 +131,13 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
         if (!file) continue;
         const reader = new FileReader();
         reader.onload = () => {
-          setAttachedImages(prev => [...prev, {
-            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          setAttachedFiles(prev => [...prev, {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             dataUrl: reader.result as string,
-            name: `paste-${Date.now()}.png`,
+            name: file.name || `paste-${Date.now()}.png`,
+            type: file.type || 'image/png',
+            isImage: true,
+            size: file.size,
           }]);
         };
         reader.readAsDataURL(file);
@@ -140,24 +148,72 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAttachedImages(prev => [...prev, {
-          id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          dataUrl: reader.result as string,
-          name: file.name,
-        }]);
-      };
-      reader.readAsDataURL(file);
-    }
+    addFilesToList(Array.from(files));
     // Reset input so same file can be re-selected
     if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
-  const removeImage = (id: string) => {
-    setAttachedImages(prev => prev.filter(img => img.id !== id));
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    addFilesToList(Array.from(files));
+    // Reset input so same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  /** Add files to the attached files list */
+  const addFilesToList = (files: File[]) => {
+    for (const file of files) {
+      const isImage = file.type.startsWith('image/');
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachedFiles(prev => [...prev, {
+          id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          dataUrl: reader.result as string,
+          name: file.name,
+          type: file.type,
+          isImage,
+          size: file.size,
+        }]);
+      };
+      // For non-image files, we still read as data URL for transmission
+      // The backend will handle them differently based on type
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeFile = (id: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  /** Format file size for display */
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  /** Handle drag and drop */
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      addFilesToList(Array.from(files));
+    }
   };
 
   return (
@@ -206,7 +262,18 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
           {activeConv ? (
             <>
               <ChatView messages={activeConv.history} loading={loading} pendingEdits={pendingEdits} onAcceptEdit={onAcceptEdit} onRejectEdit={onRejectEdit} />
-              <div style={{ borderTop: '1px solid var(--border)', padding: '10px 12px', background: 'var(--panel-muted)' }}>
+              <div 
+                style={{ 
+                  borderTop: '1px solid var(--border)', 
+                  padding: '10px 12px', 
+                  background: 'var(--panel-muted)',
+                  transition: 'background-color 0.2s',
+                  ...(isDragOver ? { backgroundColor: 'var(--accent-soft)' } : {}),
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
                 <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', fontSize: '10px', fontWeight: 600 }}>
                     {activeConv.context_scope.type === 'chapter' ? `Ch: ${activeConv.context_scope.file}` :
@@ -215,15 +282,58 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                   <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--bg-secondary)', fontSize: '10px', fontWeight: 500 }}>
                     {activeConv.mode}
                   </span>
+                  {isDragOver && (
+                    <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--accent)', color: '#fff', fontSize: '10px', fontWeight: 600 }}>
+                      拖放文件到此处
+                    </span>
+                  )}
                 </div>
-                {/* Image previews */}
-                {attachedImages.length > 0 && (
+                {/* File previews */}
+                {attachedFiles.length > 0 && (
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                    {attachedImages.map(img => (
-                      <div key={img.id} style={{ position: 'relative', width: 64, height: 64, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
-                        <img src={img.dataUrl} alt={img.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    {attachedFiles.map(file => (
+                      <div 
+                        key={file.id} 
+                        style={{ 
+                          position: 'relative', 
+                          width: file.isImage ? 64 : 80, 
+                          height: file.isImage ? 64 : 64, 
+                          borderRadius: 8, 
+                          overflow: 'hidden', 
+                          border: '1px solid var(--border)', 
+                          flexShrink: 0,
+                          background: file.isImage ? undefined : 'var(--bg-secondary)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '4px',
+                        }}
+                      >
+                        {file.isImage ? (
+                          <img src={file.dataUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ fontSize: '20px', marginBottom: '2px' }}>
+                            {file.type.includes('pdf') ? '📄' : 
+                             file.type.includes('word') || file.type.includes('document') ? '📝' :
+                             file.type.includes('text') ? '📃' :
+                             file.type.includes('spreadsheet') || file.type.includes('excel') ? '📊' :
+                             file.type.includes('presentation') || file.type.includes('powerpoint') ? '📽️' :
+                             '📎'}
+                          </div>
+                        )}
+                        {!file.isImage && (
+                          <div style={{ fontSize: '9px', color: 'var(--muted)', textAlign: 'center', wordBreak: 'break-all', lineHeight: 1.2 }}>
+                            {file.name.length > 12 ? file.name.slice(0, 10) + '…' : file.name}
+                          </div>
+                        )}
+                        {!file.isImage && (
+                          <div style={{ fontSize: '8px', color: 'var(--muted)', opacity: 0.7 }}>
+                            {formatFileSize(file.size)}
+                          </div>
+                        )}
                         <button
-                          onClick={() => removeImage(img.id)}
+                          onClick={() => removeFile(file.id)}
                           style={{
                             position: 'absolute', top: 2, right: 2,
                             width: 18, height: 18, borderRadius: '50%',
@@ -231,7 +341,7 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                             fontSize: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                             lineHeight: 1,
                           }}
-                          title="Remove image"
+                          title="Remove file"
                         >×</button>
                       </div>
                     ))}
@@ -243,12 +353,12 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
-                    placeholder="Type a message... (Enter to send, Ctrl+V to paste image)"
+                    placeholder="输入消息... (Enter 发送，Ctrl+V 粘贴图片，或拖拽文件)"
                     style={{
                       width: '100%',
                       minHeight: '56px',
                       resize: 'vertical',
-                      border: '1px solid var(--border)',
+                      border: isDragOver ? '2px dashed var(--accent)' : '1px solid var(--border)',
                       borderRadius: '10px',
                       padding: '10px 48px 10px 12px',
                       fontSize: '13px',
@@ -260,9 +370,37 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                       outline: 'none',
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = isDragOver ? 'var(--accent)' : 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
                   />
                   <div style={{ position: 'absolute', right: '8px', bottom: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    {/* File upload button - left of image button */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={handleFileUpload}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Attach file (PDF, DOC, TXT, etc.)"
+                      style={{
+                        border: 'none',
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--muted)',
+                        borderRadius: '8px',
+                        padding: '5px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-secondary)'; e.currentTarget.style.color = 'var(--muted)'; }}
+                    >
+                      📎
+                    </button>
+                    {/* Image upload button */}
                     <input
                       ref={imageInputRef}
                       type="file"
@@ -292,16 +430,16 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                     </button>
                     <button
                       onClick={handleSend}
-                      disabled={!inputValue.trim() && attachedImages.length === 0}
+                      disabled={!inputValue.trim() && attachedFiles.length === 0}
                       style={{
                         border: 'none',
-                        background: (inputValue.trim() || attachedImages.length > 0) ? 'var(--accent)' : 'var(--bg-secondary)',
-                        color: (inputValue.trim() || attachedImages.length > 0) ? '#fff' : 'var(--muted)',
+                        background: (inputValue.trim() || attachedFiles.length > 0) ? 'var(--accent)' : 'var(--bg-secondary)',
+                        color: (inputValue.trim() || attachedFiles.length > 0) ? '#fff' : 'var(--muted)',
                         borderRadius: '8px',
                         padding: '5px 12px',
                         fontSize: '11px',
                         fontWeight: 600,
-                        cursor: (inputValue.trim() || attachedImages.length > 0) ? 'pointer' : 'default',
+                        cursor: (inputValue.trim() || attachedFiles.length > 0) ? 'pointer' : 'default',
                         transition: 'all 0.2s',
                       }}
                     >

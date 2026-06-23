@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   listConversations, getConversation, createConversation,
   deleteConversation, updateConversation, sendMessage, sendMessageStream,
-  Conversation, ConversationSummary
+  Conversation, ConversationSummary, AttachedFileData
 } from '../api/conversationApi';
 
 export interface PendingEdit {
@@ -18,6 +18,16 @@ export interface AttachedImage {
   id: string;
   dataUrl: string;
   name: string;
+}
+
+/** 支持图片和通用文件上传 */
+export interface AttachedFile {
+  id: string;
+  dataUrl: string;
+  name: string;
+  type: string;      // MIME type, e.g. 'image/png', 'application/pdf'
+  isImage: boolean;  // 是否是图片
+  size: number;      // 文件大小（字节）
 }
 
 export function useConversations(projectId: string | null) {
@@ -65,14 +75,14 @@ export function useConversations(projectId: string | null) {
   }, [projectId, activeConv, refresh]);
 
   /** Non-streaming send (fallback) */
-  const sendRaw = useCallback(async (message: string, projectPath: string, projectConfig: any, images?: AttachedImage[]) => {
+  const sendRaw = useCallback(async (message: string, projectPath: string, projectConfig: any, files?: AttachedFileData[]) => {
     if (!projectId || !activeConv) return;
     setActiveConv(prev => prev ? {
       ...prev,
       history: [...prev.history, { role: 'user', content: message }],
     } : null);
     setLoading(true);
-    const result = await sendMessage(projectId, activeConv.id, projectPath, message, projectConfig, images);
+    const result = await sendMessage(projectId, activeConv.id, projectPath, message, projectConfig, files);
     setActiveConv(prev => prev ? {
       ...prev,
       history: [...prev.history, { role: 'assistant', content: result.reply }],
@@ -82,7 +92,7 @@ export function useConversations(projectId: string | null) {
   }, [projectId, activeConv]);
 
   /** Streaming send with token-by-token updates */
-  const send = useCallback(async (message: string, projectPath: string, projectConfig: any, images?: AttachedImage[]) => {
+  const send = useCallback(async (message: string, projectPath: string, projectConfig: any, files?: AttachedFileData[]) => {
     if (!projectId || !activeConv) return;
 
     // Optimistic: add user message immediately
@@ -97,7 +107,7 @@ export function useConversations(projectId: string | null) {
     const toolEvents: Array<{ type: string; name: string; detail: string }> = [];
 
     try {
-      await sendMessageStream(projectId, activeConv.id, projectPath, message, projectConfig, images, {
+      await sendMessageStream(projectId, activeConv.id, projectPath, message, projectConfig, files, {
         onToken: (text) => {
           assistantContent += text;
           setActiveConv(prev => prev ? {
@@ -147,7 +157,7 @@ export function useConversations(projectId: string | null) {
       });
     } catch {
       // Fallback to non-streaming if SSE fails
-      await sendRaw(message, projectPath, projectConfig, images);
+      await sendRaw(message, projectPath, projectConfig, files);
     }
   }, [projectId, activeConv, sendRaw]);
 

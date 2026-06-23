@@ -25,7 +25,7 @@ interface AppState {
   createConversation: (data: any) => Promise<unknown>;
   removeConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, newName: string) => Promise<void>;
-  sendMessage: (message: string, images?: { id: string; dataUrl: string; name: string }[]) => Promise<void>;
+  sendMessage: (message: string, files?: { id: string; dataUrl: string; name: string; type: string; isImage: boolean; size: number }[]) => Promise<void>;
   pendingEdits: any[];
   acceptEdit: (editId: string) => void;
   rejectEdit: (editId: string) => void;
@@ -187,9 +187,9 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     });
   }, [project.config, setProject]);
 
-  const sendMessage = useCallback(async (message: string, images?: { id: string; dataUrl: string; name: string }[]) => {
+  const sendMessage = useCallback(async (message: string, files?: { id: string; dataUrl: string; name: string; type: string; isImage: boolean; size: number }[]) => {
     if (!project.path || !project.config) return;
-    await convHook.send(message, project.path, project.config, images);
+    await convHook.send(message, project.path, project.config, files);
   }, [project.path, project.config, convHook]);
 
   const acceptEdit = useCallback((editId: string) => convHook.acceptEdit(editId, project.path || ''), [convHook, project.path]);

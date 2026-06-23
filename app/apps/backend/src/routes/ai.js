@@ -20,36 +20,60 @@ export async function resolveProjectPath(projectPath) {
 }
  
 /**
- * Build user message content, optionally including image attachments
- * as base64 vision content blocks for multimodal LLMs.
+ * Build user message content, optionally including file attachments
+ * as base64 vision content blocks for multimodal LLMs (images) or
+ * as text content for other file types.
  */
-function buildUserMessageContent(userMessage, images) {
-  if (!images || images.length === 0) return userMessage;
- 
+function buildUserMessageContent(userMessage, files) {
+  if (!files || files.length === 0) return userMessage;
+
   const content = [];
   // Text part
   if (userMessage && userMessage.trim()) {
     content.push({ type: 'text', text: userMessage });
   }
-  // Image parts
-  for (const img of images) {
-    const dataUrl = img.dataUrl || '';
-    // Extract base64 and mime type from data URL (data:image/png;base64,...)
-    const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)/);
-    if (match) {
+  
+  // Process files
+  for (const file of files) {
+    const dataUrl = file.dataUrl || '';
+    // Extract base64 and mime type from data URL
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)/);
+    if (!match) continue;
+    
+    const mimeType = match[1];
+    const base64Data = match[2];
+    
+    if (file.isImage || mimeType.startsWith('image/')) {
+      // Image: send as vision content block
       content.push({
         type: 'image',
         source: {
           type: 'base64',
-          media_type: match[1],
-          data: match[2],
+          media_type: mimeType,
+          data: base64Data,
         },
       });
+    } else {
+      // Non-image file: include as text with filename and type info
+      let fileDescription = `[Attached file: ${file.name}]`;
+      if (mimeType.includes('pdf')) {
+        fileDescription += ' (PDF document)';
+      } else if (mimeType.includes('text') || mimeType.includes('plain')) {
+        fileDescription += ' (Text file)';
+      } else if (mimeType.includes('json')) {
+        fileDescription += ' (JSON file)';
+      } else if (mimeType.includes('csv')) {
+        fileDescription += ' (CSV/spreadsheet)';
+      } else {
+        fileDescription += ` (${mimeType})`;
+      }
+      content.push({ type: 'text', text: fileDescription });
     }
   }
+  
   // If no text but has images, add a default prompt
   if (!content.some(c => c.type === 'text')) {
-    content.unshift({ type: 'text', text: 'Please analyze this image.' });
+    content.unshift({ type: 'text', text: 'Please analyze the attached content.' });
   }
   return content;
 }
@@ -235,7 +259,7 @@ function classifyAIError(err) {
 export function registerAIRoutes(fastify) {
   // ── SSE Streaming endpoint ──────────────────────────────
   fastify.post('/api/ai/stream', async (request, reply) => {
-    const { projectId, convId, projectPath, userMessage, projectConfig, images, rag } = request.body;
+    const { projectId, convId, projectPath, userMessage, projectConfig, files, rag } = request.body;
  
     const resolvedPath = await resolveProjectPath(projectPath);
     const conv = await getConversation(projectId, convId);
@@ -254,12 +278,8 @@ export function registerAIRoutes(fastify) {
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
  
-    // Build user message with optional image attachments
-    const userContent = buildUserMessageContent(userMessage, images);
-    const messages = [...contextMessages, ...ragContext.messages, ...conv.history, { role: 'user', content: userContent }];
-    const modelOverride = conv.model || undefined;
- 
-    // Set SSE headers
+    // Build user message with optional file attachments
+    const userContent = buildUserMessageContent(userMessage, files);
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -316,12 +336,12 @@ export function registerAIRoutes(fastify) {
  
   // ── Legacy non-streaming endpoint ────────────────────────
   fastify.post('/api/ai/send', async (request) => {
-    const { projectId, convId, projectPath, userMessage, projectConfig, images, rag } = request.body;
- 
+    const { projectId, convId, projectPath, userMessage, projectConfig, files, rag } = request.body;
+
     const resolvedPath = await resolveProjectPath(projectPath);
     const conv = await getConversation(projectId, convId);
     await appendMessage(projectId, convId, { role: 'user', content: userMessage });
- 
+
     const globalSkills = projectConfig?.global_skills || [];
     let chapterSkills = [];
     if (conv.context_scope.type === 'chapter') {
@@ -329,17 +349,15 @@ export function registerAIRoutes(fastify) {
       chapterSkills = chapterConfig?.skills || [];
     }
     const manualSkill = conv.active_skills?.[0] || null;
- 
+
     const systemPrompt = appendModeGuidance(assemblePrompt({ globalSkills, chapterSkills, manualSkill }), conv.mode);
- 
+
     // Auto context injection
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
- 
-    // Build user message with optional image attachments
-    const userContent = buildUserMessageContent(userMessage, images);
-    const messages = [...contextMessages, ...ragContext.messages, ...conv.history, { role: 'user', content: userContent }];
-    const modelOverride = conv.model || undefined;
+
+    // Build user message with optional file attachments
+    const userContent = buildUserMessageContent(userMessage, files);
  
     try {
       if (conv.mode === 'chat') {

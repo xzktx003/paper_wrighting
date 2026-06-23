@@ -20,6 +20,14 @@ export interface Conversation {
   history: { role: string; content: string }[];
 }
 
+export interface AttachedFileData {
+  dataUrl: string;
+  name: string;
+  type: string;
+  isImage: boolean;
+  size: number;
+}
+
 export async function listConversations(projectId: string): Promise<ConversationSummary[]> {
   return apiFetch(`${BASE}/conversations/${projectId}`);
 }
@@ -46,17 +54,17 @@ export async function deleteConversation(projectId: string, convId: string) {
   await apiDelete(`${BASE}/conversations/${projectId}/${convId}`);
 }
 
-export async function sendMessage(projectId: string, convId: string, projectPath: string, userMessage: string, projectConfig: any, images?: { dataUrl: string; name: string }[]) {
+export async function sendMessage(projectId: string, convId: string, projectPath: string, userMessage: string, projectConfig: any, files?: AttachedFileData[]) {
   return apiPost(`${BASE}/ai/send`, {
     projectId, convId, projectPath, userMessage, projectConfig,
-    images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })),
+    files: files?.map(f => ({ dataUrl: f.dataUrl, name: f.name, type: f.type, isImage: f.isImage, size: f.size })),
   });
 }
 
 /** SSE streaming version of sendMessage */
 export async function sendMessageStream(
   projectId: string, convId: string, projectPath: string, userMessage: string, projectConfig: any,
-  images: { dataUrl: string; name: string }[] | undefined,
+  files: AttachedFileData[] | undefined,
   callbacks: {
     onToken: (text: string) => void;
     onToolUse?: (name: string, input: any) => void;
@@ -74,7 +82,7 @@ export async function sendMessageStream(
     headers,
     body: JSON.stringify({
       projectId, convId, projectPath, userMessage, projectConfig,
-      images: images?.map(img => ({ dataUrl: img.dataUrl, name: img.name })),
+      files: files?.map(f => ({ dataUrl: f.dataUrl, name: f.name, type: f.type, isImage: f.isImage, size: f.size })),
     }),
   });
 
