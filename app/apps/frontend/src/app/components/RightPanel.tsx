@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ConversationTabs } from './ConversationTabs';
 import { ChatView } from './ChatView';
 import { NewConversationDialog } from './NewConversationDialog';
 import { SkillPanel } from './SkillPanel';
+import { InlineSkillsSelector } from './SkillsSelector';
 import { ReviewReportPanel } from './ReviewReportPanel';
 import { AntiAiPanel } from './AntiAiPanel';
 import { PipelinePanelV2 } from './PipelinePanelV2';
@@ -12,7 +13,7 @@ import DrawPanel from './DrawPanel';
 import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero, verifyTexCitations, crossCheckCitations } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';
 
-type TabType = 'chat' | 'skills' | 'rag' | 'draw' | 'review' | 'anti-ai' | 'pipeline' | 'citations';
+type TabType = 'chat' | 'rag' | 'draw' | 'review' | 'anti-ai' | 'pipeline' | 'citations';
 
 interface AttachedFile {
   id: string;
@@ -61,8 +62,15 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   const [citationLoading, setCitationLoading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Clear selected skills when switching tabs
+  useEffect(() => {
+    setSelectedSkills([]);
+  }, [activeTab]);
 
   const handleRunReview = useCallback(async () => {
     if (!projectPath) return;
@@ -223,7 +231,6 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, overflow: 'auto' }}>
         {([
           { key: 'chat', label: '💬 Chat' },
-          { key: 'skills', label: '🧩 Skills' },
           { key: 'rag', label: '🔎 RAG' },
           { key: 'draw', label: '🖼️ Draw' },
           { key: 'review', label: '📋 Review' },
@@ -276,7 +283,7 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
               >
-                <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ padding: '2px 8px', borderRadius: '999px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', fontSize: '10px', fontWeight: 600 }}>
                     {activeConv.context_scope.type === 'chapter' ? `Ch: ${activeConv.context_scope.file}` :
                      activeConv.context_scope.type === 'global' ? 'Global' : 'Free'}
@@ -289,6 +296,13 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                       拖放文件到此处
                     </span>
                   )}
+                  {/* Skills selector with categories */}
+                  <InlineSkillsSelector
+                    skills={skills}
+                    selectedSkills={selectedSkills}
+                    onChange={setSelectedSkills}
+                    onOpenManagement={() => setShowSkillsModal(true)}
+                  />
                 </div>
                 {/* File previews */}
                 {attachedFiles.length > 0 && (
@@ -476,21 +490,13 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
             </div>
           )}
         </>
-      ) : activeTab === 'skills' ? (
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <SkillPanel
-            globalSkills={globalSkills}
-            chapterSkills={chapterSkills}
-            onActivateSkill={onActivateSkill}
-          />
-        </div>
       ) : activeTab === 'rag' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
           <PaperRagPanel projectPath={projectPath} />
         </div>
       ) : activeTab === 'draw' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <DrawPanel projectPath={projectPath} chapters={chapters} />
+          <DrawPanel projectPath={projectPath} chapters={chapters} skills={skills} />
         </div>
       ) : activeTab === 'review' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
@@ -519,6 +525,47 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
           onSubmit={(data) => { onCreate(data); setShowNewDialog(false); }}
           onCancel={() => setShowNewDialog(false)}
         />
+      )}
+
+      {/* Skills management modal */}
+      {showSkillsModal && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setShowSkillsModal(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--panel)', borderRadius: '12px',
+              padding: '20px', width: '80%', maxWidth: '600px',
+              maxHeight: '80vh', overflow: 'auto',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>🧩 管理 Skills</h3>
+              <button
+                onClick={() => setShowSkillsModal(false)}
+                style={{
+                  padding: '4px 10px', borderRadius: '6px',
+                  background: 'var(--bg-secondary)', border: 'none',
+                  color: 'var(--muted)', cursor: 'pointer', fontSize: '12px',
+                }}
+              >
+                关闭
+              </button>
+            </div>
+            <SkillPanel
+              globalSkills={globalSkills}
+              chapterSkills={chapterSkills}
+              onActivateSkill={onActivateSkill}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

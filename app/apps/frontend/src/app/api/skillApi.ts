@@ -11,6 +11,9 @@ export interface SkillInfo {
   source: string;
   kind?: string;
   tags?: string[];
+  // New fields for categorized display
+  categories?: string[];  // e.g. ['writing', 'research']
+  url?: string;           // GitHub or official URL
   package?: {
     references: string[];
     scripts: string[];

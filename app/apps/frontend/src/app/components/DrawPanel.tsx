@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { InlineSkillsSelector } from './SkillsSelector';
+import { SkillInfo } from '../api/skillApi';
 
 // Types
 interface ApiSettings {
@@ -27,17 +29,21 @@ interface DrawState {
 interface Props {
   projectPath?: string;
   chapters: { file: string; name?: string }[];
+  skills?: SkillInfo[];
   onFigureGenerated?: (imageUrl: string) => void;
 }
 
 const STORAGE_KEY = 'draw_panel_state';
 const SETTINGS_KEY = 'draw_saved_settings';
 
-export default function DrawPanel({ projectPath, chapters, onFigureGenerated }: Props) {
+export default function DrawPanel({ projectPath, chapters, skills = [], onFigureGenerated }: Props) {
   // Derive papers project path: __paper_agent__:projectName -> /papers/projectName
   const papersProjectPath = projectPath?.startsWith('__paper_agent__:') 
     ? `/data01/home/zhaozx/paper_wrighting/papers/${projectPath.replace('__paper_agent__:', '')}`
     : undefined;
+  
+  // Per-panel skills state
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
   // Load saved state from localStorage on mount
   const [state, setState] = useState<DrawState>(() => {
@@ -333,6 +339,24 @@ export default function DrawPanel({ projectPath, chapters, onFigureGenerated }: 
                   ))}
                 </div>
               </div>
+
+              {/* Skills selector for Draw */}
+              {skills.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    🧩 Skills
+                  </label>
+                  <div style={{ position: 'relative', zIndex: 100 }}>
+                    <InlineSkillsSelector
+                      skills={skills}
+                      selectedSkills={selectedSkills}
+                      onChange={setSelectedSkills}
+                      compact={false}
+                      position="below"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Paper content */}
               <div style={{ marginBottom: '16px' }}>
