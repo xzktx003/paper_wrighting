@@ -14,14 +14,20 @@ import {
   runOcrRecoveryJob,
   previewTextEvidenceImport,
   saveBinaryCorpusDocument,
+  listDocumentFigures,
+  extractFigureImage,
+  describeFigureWithVision,
+  modelSupportsVision,
+  testVisionSupport,
+  findFigurePage,
 } from '../services/paperRagService.js';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { safeJoin } from '../utils/pathSecurity.js';
 import { sanitizeUploadPath } from '../utils/pathSecurity.js';
- 
+
 const CORPUS_DIR = 'research_corpus';
- 
+
 export function registerPaperRagRoutes(fastify, options = {}) {
   const resolveProjectRoot = options.resolveProjectRoot || findProjectRoot;
   /* ── Documents ──────────────────────────────────────────────── */
@@ -46,21 +52,147 @@ export function registerPaperRagRoutes(fastify, options = {}) {
     return result;
   });
  
-  /* ── Index ──────────────────────────────────────────────────── */
- 
-  fastify.post('/api/projects/:id/rag/index', async (request) => {
+  /* ── Figures ────────────────────────────────────────────────── */
+
+  fastify.get('/api/projects/:id/rag/documents/:docPath/figures', async (request) => {
     const projectRoot = await resolveProjectRoot(request.params.id);
-    const index = await indexProjectCorpus(projectRoot);
-    return { ok: true, documents: index.documents.length, chunks: index.chunks.length, indexedAt: index.indexedAt };
+    const docPath = decodeURIComponent(request.params.docPath || '');
+    if (!docPath) return { figures: [], error: 'Document path is required' };
+    const figures = await listDocumentFigures(projectRoot, docPath);
+    return figures;
   });
- 
-  /* ── Search ─────────────────────────────────────────────────── */
- 
-  fastify.get('/api/projects/:id/rag/search', async (request) => {
+
+  // Extract and describe a specific figure using vision model
+  fastify.post('/api/projects/:id/rag/figure/describe', async (request, reply) => {
+    const { docPath, page, figureIndex, context, figureNum } = request.body || {};
+    
+    if (!docPath) {
+      return reply.code(400).send({ 
+        error: 'Missing required field: docPath' 
+      });
+    }
+    
     const projectRoot = await resolveProjectRoot(request.params.id);
-    const results = await searchCorpus(projectRoot, request.query.q || '', { limit: request.query.limit });
-    return { results };
+    
+    // Auto-find the page if figureNum is provided but page is not
+    let resolvedPage = page;
+    let resolvedFigureIndex = figureIndex;
+    
+    if (figureNum !== undefined && (page === undefined || page === null)) {
+      const findResult = await findFigurePage(projectRoot, docPath, figureNum);
+      if (findResult.error) {
+        return reply.code(404).send({ 
+          error: findResult.error,
+          suggestions: findResult.suggestions || [],
+          totalPages: findResult.totalPages
+        });
+      }
+      resolvedPage = findResult.page;
+      resolvedFigureIndex = findResult.figureIndex;
+    } else if (page === undefined || figureIndex === undefined) {
+      return reply.code(400).send({ 
+        error: 'Missing required fields: provide either (page + figureIndex) or figureNum',
+        hint: 'Use figureNum to auto-search, or provide both page and figureIndex'
+      });
+    }
+    
+    // Get LLM config from app config
+    const llmConfig = {
+      baseUrl: fastify.appConfig?.llm_base_url || process.env.OPENPRISM_LLM_BASE_URL,
+      apiKey: fastify.appConfig?.llm_api_key || process.env.OPENPRISM_LLM_API_KEY,
+      model: fastify.appConfig?.llm_model || process.env.OPENPRISM_LLM_MODEL,
+    };
+    
+    // Check if model supports vision
+    if (!modelSupportsVision(llmConfig.model)) {
+      return reply.code(400).send({ 
+        error: 'Current model does not support vision',
+        hint: 'This feature requires a vision-capable model like GPT-4o, Claude-3.5-Sonnet, or Gemini. Please switch to a multimodal model.',
+        model: llmConfig.model,
+        supported: false
+      });
+    }
+    
+    // Extract the figure image
+    const extractResult = await extractFigureImage(projectRoot, docPath, resolvedPage, resolvedFigureIndex);
+    if (extractResult.error) {
+      return reply.code(400).send({ 
+        error: `Failed to extract figure: ${extractResult.error}` 
+      });
+    }
+    
+    // Get the image description using vision model
+    const descResult = await describeFigureWithVision(llmConfig, extractResult.base64, context);
+    if (descResult.error) {
+      return reply.code(500).send({ 
+        error: descResult.error,
+        hint: descResult.hint 
+      });
+    }
+    
+    return {
+      success: true,
+      foundPage: resolvedPage,
+      image: {
+        width: extractResult.width,
+        height: extractResult.height,
+        format: extractResult.format,
+        size: extractResult.size,
+      },
+      description: descResult.description
+    };
   });
+
+  // Check if current model supports vision - actually tests the model
+  fastify.get('/api/llm/vision-capable', async (request, reply) => {
+    const model = request.query.model || 
+      fastify.appConfig?.llm_model || 
+      process.env.OPENPRISM_LLM_MODEL ||
+      '';
+    
+    const llmConfig = {
+      baseUrl: fastify.appConfig?.llm_base_url || process.env.OPENPRISM_LLM_BASE_URL,
+      apiKey: fastify.appConfig?.llm_api_key || process.env.OPENPRISM_LLM_API_KEY,
+      model: model,
+    };
+    
+    // Check if model name suggests vision capability (as hint)
+    const nameSuggestsVision = modelSupportsVision(model);
+    
+    // Actually test the model with a vision request (always test, don't rely on name alone)
+    try {
+      const result = await testVisionSupport(llmConfig);
+      
+      return {
+        model,
+        supported: result.supported,
+        reason: result.reason,
+        tested: true,
+        nameSuggestsVision,
+        supportedModels: [
+          'GPT-4o / GPT-4o-mini',
+          'Claude-3.5-Sonnet / Claude-3.5-Haiku',
+          'Claude-3 Opus / Claude-3 Sonnet',
+          'Gemini-1.5-Pro / Gemini-1.5-Flash',
+        ]
+      };
+    } catch (error) {
+      return {
+        model,
+        supported: false,
+        reason: `Test failed: ${error.message}`,
+        tested: true,
+        nameSuggestsVision,
+        supportedModels: [
+          'GPT-4o / GPT-4o-mini',
+          'Claude-3.5-Sonnet / Claude-3.5-Haiku',
+          'Claude-3 Opus / Claude-3 Sonnet',
+          'Gemini-1.5-Pro / Gemini-1.5-Flash',
+        ]
+      };
+    }
+  });
+
  
   fastify.post('/api/projects/:id/rag/context', async (request) => {
     const projectRoot = await resolveProjectRoot(request.params.id);

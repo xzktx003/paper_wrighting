@@ -528,6 +528,39 @@ export function registerProjectRoutes(fastify) {
     } catch { /* ignore */ }
     return { ok: true, path: filePath, type: type === 'folder' ? 'dir' : type };
   });
+
+  // List file paths by pattern (e.g., *.tex, *.pdf)
+  fastify.get('/api/projects/:id/files/list', async (req) => {
+    const { id } = req.params;
+    const { pattern = '*' } = req.query;
+    const projectRoot = await getProjectRoot(id);
+    const items = await listFilesRecursive(projectRoot);
+    
+    console.log(`[files/list] Project: ${id}, Root: ${projectRoot}`);
+    console.log(`[files/list] Pattern: ${pattern}, Total items: ${items.length}`);
+    
+    // Convert glob pattern to regex
+    const regexPattern = new RegExp(
+      '^' + pattern
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.') + '$'
+    );
+    
+    // Debug: log first few items
+    if (items.length > 0) {
+      console.log(`[files/list] Sample paths:`, items.slice(0, 5).map(i => i.path));
+    }
+    
+    const files = items
+      .filter(item => item.type === 'file' && regexPattern.test(item.path))
+      .map(item => item.path)
+      .sort();
+    
+    console.log(`[files/list] Matched files: ${files.length}`);
+    
+    return { files };
+  });
  
   fastify.get('/api/projects/:id/files', async (req) => {
     const { id } = req.params;

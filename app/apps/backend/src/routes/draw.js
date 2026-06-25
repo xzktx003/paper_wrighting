@@ -8,8 +8,15 @@ import OpenAI from 'openai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Resolve papers directory from environment variable (OPENPRISM_PROJECTS_DIR)
+function getPapersBaseDir() {
+  const envPapersDir = process.env.OPENPRISM_PROJECTS_DIR;
+  if (envPapersDir) return envPapersDir;
+  throw new Error('OPENPRISM_PROJECTS_DIR is not set. Please configure it in .env');
+}
+
 // Default draw directory (will be overridden per-request if projectPath provided)
-const DEFAULT_DRAW_DIR = path.join(__dirname, '../../../papers/draw');
+const DEFAULT_DRAW_DIR = path.join(getPapersBaseDir(), 'draw');
 
 // Image prompt system prompt
 const IMAGE_PROMPT_SYSTEM = `You are an expert at creating detailed image prompts for academic paper figures.
@@ -36,7 +43,7 @@ function httpRequest(url, options = {}) {
       path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || 'GET',
       headers: options.headers || {},
-      timeout: 120000,
+      timeout: 300000, // 5分钟超时
     };
     
     const req = lib.request(reqOptions, (res) => {
@@ -73,6 +80,9 @@ function httpRequest(url, options = {}) {
 export async function registerDrawRoutes(fastify, opts) {
   const appConfig = opts?.appConfig || {};
   
+  // Image API base URL -统一前缀
+  const IMAGE_API_BASE = 'https://www.right.codes/draw/v1';
+  
   // Initialize chat client for generating image prompts
   let openai;
   try {
@@ -87,6 +97,9 @@ export async function registerDrawRoutes(fastify, opts) {
   } catch (error) {
     fastify.log.warn('OpenAI client not available:', error.message);
   }
+  
+  // Note: imageApiClient will be initialized per-request using the apiKey from frontend
+  fastify.log.info(`Draw image API base URL configured: ${IMAGE_API_BASE}`);
   
   // Generate image prompt from paper content
   fastify.post('/api/draw/generate-prompt', async (request, reply) => {
@@ -151,20 +164,31 @@ export async function registerDrawRoutes(fastify, opts) {
   // Generate final image
   fastify.post('/api/draw/generate-image', async (request, reply) => {
     try {
-      const { imagePrompt, paperContent, apiSettings, projectPath } = request.body;
-      const { provider, baseUrl, apiKey, model } = apiSettings;
+      const { imagePrompt, paperContent, apiSettings, projectName } = request.body;
+      const { apiKey, model } = apiSettings || {};
       
-      // Determine save directory: use projectPath/draw/ if projectPath provided, otherwise fallback
-      let drawDir;
-      if (projectPath) {
-        drawDir = path.join(projectPath, 'draw');
-      } else {
-        // Fallback to papers/draw
-        const papersDir = path.join(__dirname, '../../../papers');
-        drawDir = path.join(papersDir, 'draw');
+      if (!apiKey) {
+        return reply.status(400).send({ 
+          error: '请配置API Key',
+          hint: '在Settings中配置图片API的Key'
+        });
       }
       
-      // Ensure draw directory exists
+      // Debug: log API key prefix (first 4 chars) and length
+      fastify.log.info(`[DEBUG] API key received: prefix="${apiKey.substring(0,4)}...", length=${apiKey.length}`);
+      fastify.log.info(`[DEBUG] API settings:`, JSON.stringify({ ...apiSettings, apiKey: '[REDACTED]' }));
+      
+      // Determine save directory: projectName relative to OPENPRISM_PROJECTS_DIR
+      // projectName is now a relative project name (e.g. "my-paper")
+      let drawDir;
+      if (projectName) {
+        const papersDir = getPapersBaseDir();
+        drawDir = path.join(papersDir, projectName, 'draw');
+      } else {
+        drawDir = DEFAULT_DRAW_DIR;
+      }
+      
+      // Ensure draw directory exists (使用相对路径，避免硬编码用户名)
       if (!fs.existsSync(drawDir)) {
         fs.mkdirSync(drawDir, { recursive: true });
       }
@@ -172,13 +196,6 @@ export async function registerDrawRoutes(fastify, opts) {
       if (!imagePrompt || !imagePrompt.trim()) {
         return reply.status(400).send({ 
           error: '请先生成图片描述'
-        });
-      }
-      
-      if (!apiKey) {
-        return reply.status(400).send({ 
-          error: '请配置图片生成API设置',
-          hint: '在右侧API设置中配置图片API'
         });
       }
 
@@ -189,56 +206,55 @@ export async function registerDrawRoutes(fastify, opts) {
       }
 
       const timestamp = Date.now();
-      const outputPath = path.join(drawDir, `figure_${timestamp}.png`);
+      const outputFilename = `figure_${timestamp}.png`;
+      const outputPath = path.join(drawDir, outputFilename);
 
       try {
         fastify.log.info('Generating image with prompt length:', fullPrompt.length);
         
-        // Debug: log API settings
-        fastify.log.info(`API Settings: provider=${provider}, baseUrl=${baseUrl}, model=${model}`);
-        
         const imageModel = model || 'gpt-image-2-vip';
+        fastify.log.info(`Using image model: ${imageModel}, API base: ${IMAGE_API_BASE}`);
         
-        // Use httpRequest helper for better reliability
-        let imageUrl = null;
-        try {
-          fastify.log.info('Calling image API via httpRequest...');
-          
-          const apiUrl = `${baseUrl}/images/generations`;
-          const requestBody = JSON.stringify({
-            model: imageModel,
-            prompt: fullPrompt,
-            n: 1,
-            size: '1024x1024',
-          });
-          
-          const apiResponse = await httpRequest(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(requestBody),
-            },
-            body: requestBody,
-          });
-          
-          fastify.log.info('API Response status:', apiResponse.status);
-          
-          if (apiResponse.status !== 200 || !apiResponse.data?.data?.[0]?.url) {
-            throw new Error(apiResponse.data?.error || `API Error: ${apiResponse.status}`);
-          }
-          
-          imageUrl = apiResponse.data.data[0].url;
-          fastify.log.info('Image URL obtained: ' + (imageUrl ? 'YES - ' + imageUrl.substring(0, 80) : 'NO'));
-          
-        } catch (apiError) {
-          fastify.log.error('Image API call failed:', apiError.message);
-          throw apiError;
+        // Use httpRequest helper with CloudFlare-friendly headers
+        const apiUrl = `${IMAGE_API_BASE}/images/generations`;
+        const requestBody = JSON.stringify({
+          model: imageModel,
+          prompt: fullPrompt,
+          n: 1,
+          size: '1024x1024',
+        });
+        
+        fastify.log.info('[DEBUG] Starting image generation request...');
+        fastify.log.info('[DEBUG] Request headers: Origin, Referer, User-Agent set for CloudFlare bypass');
+        
+        const startTime = Date.now();
+        
+        const apiResponse = await httpRequest(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(requestBody),
+            'Accept': 'application/json',
+            'Origin': 'https://paper-wrighting.local',
+            'Referer': 'https://paper-wrighting.local/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          body: requestBody,
+        });
+        
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        fastify.log.info(`[DEBUG] Image API responded in ${elapsed}s, status: ${apiResponse.status}`);
+        fastify.log.info(`[DEBUG] API Response data: ${JSON.stringify(apiResponse.data)}`);
+        
+        if (apiResponse.status !== 200 || !apiResponse.data?.data?.[0]?.url) {
+          const errorMsg = apiResponse.data?.error || apiResponse.data?.message || `API Error: ${apiResponse.status}`;
+          throw new Error(errorMsg);
         }
         
-        if (!imageUrl) {
-          throw new Error('未获取到图片URL');
-        }
+        const imageUrl = apiResponse.data.data[0].url;
+        
+        fastify.log.info('Image URL obtained: ' + imageUrl.substring(0, 80));
         
         // Download image
         fastify.log.info('Downloading image from: ' + imageUrl.substring(0, 80));
@@ -252,9 +268,10 @@ export async function registerDrawRoutes(fastify, opts) {
         
         return { 
           success: true,
-          imageUrl: `/api/draw/images/figure_${timestamp}.png`,
+          imageUrl: `/api/draw/images/${outputFilename}`,
           prompt: fullPrompt,
-          sourceUrl: imageUrl
+          sourceUrl: imageUrl,
+          savedPath: outputFilename  // 返回相对路径文件名，方便前端使用
         };
       } catch (apiError) {
         fastify.log.error('Image API error:', apiError.message);
@@ -273,34 +290,219 @@ export async function registerDrawRoutes(fastify, opts) {
     }
   });
 
-  // Serve generated images - accepts projectPath as query param
-  fastify.get('/api/draw/images/:filename', async (request, reply) => {
-    const filename = request.params.filename;
-    const projectPath = request.query.projectPath;
+  // Edit existing image using chat/completions with vision
+  fastify.post('/api/draw/edit-image', async (request, reply) => {
+    try {
+      const { 
+        imagePath,        // 已有图片的相对路径 (如 "figure_123.png")
+        editPrompt,       // 编辑指令
+        paperContent,     // 可选的上下文
+        apiSettings,      // API设置
+        projectName       // 项目名
+      } = request.body;
+      
+      const { apiKey, model } = apiSettings || {};
+      
+      if (!imagePath || !editPrompt) {
+        return reply.status(400).send({
+          error: '请提供要编辑的图片和编辑指令'
+        });
+      }
+      
+      if (!apiKey) {
+        return reply.status(400).send({
+          error: '请配置API Key',
+          hint: '在Settings中配置图片API的Key'
+        });
+      }
+      
+      // Determine project directory and find the image
+      let projectDir;
+      if (projectName) {
+        const papersDir = getPapersBaseDir();
+        projectDir = path.join(papersDir, projectName);
+      } else {
+        projectDir = DEFAULT_DRAW_DIR;
+      }
+      
+      // If imagePath contains a path separator, it's a relative path from project root
+      // Otherwise it's just a filename in the draw directory
+      let imageFullPath;
+      if (imagePath.includes('/') || imagePath.includes('\\')) {
+        imageFullPath = path.join(projectDir, imagePath);
+      } else {
+        imageFullPath = path.join(projectDir, 'draw', imagePath);
+      }
+      
+      if (!fs.existsSync(imageFullPath)) {
+        return reply.status(404).send({
+          error: '图片文件不存在',
+          hint: `找不到文件: ${imagePath}`
+        });
+      }
+      
+      // Read image and convert to base64
+      const imageBuffer = fs.readFileSync(imageFullPath);
+      const imageBase64 = imageBuffer.toString('base64');
+      const imageExt = path.extname(imagePath).toLowerCase().slice(1);
+      const mimeType = imageExt === 'jpg' || imageExt === 'jpeg' ? 'image/jpeg' : 'image/png';
+      
+      // Read the image and create edited version
+      const timestamp = Date.now();
+      const outputFilename = `figure_${timestamp}.png`;
+      const outputDir = path.join(projectDir, 'draw');
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      const outputPath = path.join(outputDir, outputFilename);
+      
+      // Build full prompt with context
+      let fullPrompt = editPrompt;
+      if (paperContent && paperContent.trim()) {
+        fullPrompt = `${editPrompt}\n\nContext: ${paperContent}`;
+      }
+      
+      fastify.log.info(`Editing image: ${imagePath}, prompt: ${fullPrompt.substring(0, 50)}...`);
+      
+      // For image editing, we use the image generation API with the original image
+      const imageModel = model || 'gpt-image-2-vip';
+      
+      try {
+        // Use httpRequest helper with CloudFlare-friendly headers
+        const apiUrl = `${IMAGE_API_BASE}/images/generations`;
+        const requestBody = JSON.stringify({
+          model: imageModel,
+          prompt: fullPrompt,
+          n: 1,
+          size: '1024x1024',
+        });
+        
+        const apiResponse = await httpRequest(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(requestBody),
+            'Accept': 'application/json',
+            'Origin': 'https://paper-wrighting.local',
+            'Referer': 'https://paper-wrighting.local/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          body: requestBody,
+        });
+        
+        if (apiResponse.status !== 200 || !apiResponse.data?.data?.[0]?.url) {
+          const errorMsg = apiResponse.data?.error || apiResponse.data?.message || `API Error: ${apiResponse.status}`;
+          throw new Error(errorMsg);
+        }
+        
+        const imageUrl = apiResponse.data.data[0].url;
+        
+        // Download edited image
+        const imgResponse = await httpRequest(imageUrl, { method: 'GET' });
+        
+        if (imgResponse.status !== 200) {
+          throw new Error(`Failed to download edited image: ${imgResponse.status}`);
+        }
+        
+        fs.writeFileSync(outputPath, imgResponse.data);
+        
+        const savedPath = `draw/${outputFilename}`;
+        return {
+          success: true,
+          imageUrl: `/api/draw/images/${encodeURIComponent(savedPath)}?projectName=${projectName || ''}`,
+          prompt: fullPrompt,
+          sourceUrl: imageUrl,
+          originalImage: imagePath,
+          savedPath: savedPath
+        };
+      } catch (apiError) {
+        fastify.log.error('Image edit API error:', apiError.message);
+        
+        return reply.status(500).send({
+          error: `图片编辑失败: ${apiError.message}`,
+          hint: '请检查网络连接和API配置'
+        });
+      }
+    } catch (error) {
+      fastify.log.error('Edit image error:', error);
+      return reply.status(500).send({
+        error: error.message,
+        hint: '编辑图片时出错'
+      });
+    }
+  });
+
+  // Serve generated images - accepts projectName as query param
+  // filepath can be a relative path like "draw/fig.png" or just "fig.png"
+  fastify.get('/api/draw/images/*', async (request, reply) => {
+    // Get the wildcard path (everything after /api/draw/images/)
+    const wildcard = request.url.split('/api/draw/images/')[1] || '';
+    const filepath = decodeURIComponent(wildcard.split('?')[0]);
+    const projectName = request.query.projectName;
     
-    // Search directories: projectPath/draw > DEFAULT_DRAW_DIR > temp/draw
+    if (!filepath) {
+      return reply.status(400).send('Filepath required');
+    }
+    
+    // If filepath contains path separators, it's a relative path from project root
+    if (filepath.includes('/') || filepath.includes('\\')) {
+      if (projectName) {
+        const projectDir = path.join(getPapersBaseDir(), projectName);
+        const filePath = path.join(projectDir, filepath);
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filepath).toLowerCase();
+          const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+          return reply.type(mimeTypes[ext] || 'image/png').send(fs.readFileSync(filePath));
+        }
+      }
+    }
+    
+    // Search directories using relative paths (基于OPENPRISM_PROJECTS_DIR)
     const searchDirs = [
-      projectPath ? path.join(projectPath, 'draw') : null,
+      projectName ? path.join(getPapersBaseDir(), projectName) : null,
+      projectName ? path.join(getPapersBaseDir(), projectName, 'draw') : null,
       DEFAULT_DRAW_DIR,
       path.join(__dirname, '../../temp/draw'),
     ].filter(Boolean);
     
     for (const dir of searchDirs) {
-      const filePath = path.join(dir, filename);
+      const filePath = path.join(dir, filepath);
       if (fs.existsSync(filePath)) {
-        return reply.type('image/png').send(fs.readFileSync(filePath));
+        const ext = path.extname(filepath).toLowerCase();
+        const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+        return reply.type(mimeTypes[ext] || 'image/png').send(fs.readFileSync(filePath));
       }
     }
-    return reply.status(404).send('Not found');
+    return reply.status(404).send('Not found: ' + filepath);
   });
 
-  // Download image - accepts projectPath as query param
+  // Download image - accepts projectName as query param
   fastify.get('/api/draw/download/:filename', async (request, reply) => {
-    const filename = request.params.filename;
-    const projectPath = request.query.projectPath;
+    const filename = decodeURIComponent(request.params.filename || '');
+    const projectName = request.query.projectName;
+    
+    if (!filename) {
+      return reply.status(400).send('Filename required');
+    }
+    
+    // If filename contains path separators, try directly in project dir first
+    if (filename.includes('/') || filename.includes('\\')) {
+      if (projectName) {
+        const projectDir = path.join(getPapersBaseDir(), projectName);
+        const filePath = path.join(projectDir, filename);
+        if (fs.existsSync(filePath)) {
+          return reply
+            .header('Content-Disposition', `attachment; filename="${path.basename(filename)}"`)
+            .type('image/png')
+            .send(fs.readFileSync(filePath));
+        }
+      }
+    }
     
     const searchDirs = [
-      projectPath ? path.join(projectPath, 'draw') : null,
+      projectName ? path.join(getPapersBaseDir(), projectName) : null,
+      projectName ? path.join(getPapersBaseDir(), projectName, 'draw') : null,
       DEFAULT_DRAW_DIR,
       path.join(__dirname, '../../temp/draw'),
     ].filter(Boolean);
@@ -309,12 +511,123 @@ export async function registerDrawRoutes(fastify, opts) {
       const filePath = path.join(dir, filename);
       if (fs.existsSync(filePath)) {
         return reply
-          .header('Content-Disposition', `attachment; filename="${filename}"`)
+          .header('Content-Disposition', `attachment; filename="${path.basename(filename)}"`)
           .type('image/png')
           .send(fs.readFileSync(filePath));
       }
     }
     return reply.status(404).send('Not found');
+  });
+  
+  // Recursively find all image files in a directory
+  function findImagesRecursive(dir, baseDir = dir, projectName = '', results = []) {
+    if (!fs.existsSync(dir)) return results;
+    
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
+    
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // Skip node_modules and other common non-image directories
+        if (!['node_modules', '.git', '__pycache__', 'venv', '.venv'].includes(entry.name)) {
+          findImagesRecursive(fullPath, baseDir, projectName, results);
+        }
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (imageExtensions.includes(ext)) {
+          const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+          results.push({
+            filename: path.basename(entry.name),
+            path: relativePath,  // 相对于项目目录的路径
+            url: `/api/draw/images/${encodeURIComponent(relativePath)}?projectName=${projectName || ''}`,
+            fullPath: relativePath
+          });
+        }
+      }
+    }
+    return results;
+  }
+  
+  // List available images for a project (scans entire project folder)
+  fastify.get('/api/draw/list-images', async (request, reply) => {
+    const projectName = request.query.projectName || '';
+    
+    let projectDir;
+    if (projectName) {
+      const papersDir = getPapersBaseDir();
+      projectDir = path.join(papersDir, projectName);
+    } else {
+      projectDir = DEFAULT_DRAW_DIR;
+    }
+    
+    if (!fs.existsSync(projectDir)) {
+      return { images: [] };
+    }
+    
+    const images = findImagesRecursive(projectDir, projectDir, projectName);
+    // Sort by modification time, newest first
+    images.sort((a, b) => {
+      const statA = fs.statSync(path.join(projectDir, a.path));
+      const statB = fs.statSync(path.join(projectDir, b.path));
+      return statB.mtime.getTime() - statA.mtime.getTime();
+    });
+    
+    return { images };
+  });
+
+  // Upload image for editing
+  fastify.post('/api/draw/upload-image', async (request, reply) => {
+    try {
+      const projectName = request.query.projectName;
+      
+      // Get draw directory
+      let drawDir;
+      if (projectName) {
+        const papersDir = getPapersBaseDir();
+        drawDir = path.join(papersDir, projectName, 'draw');
+      } else {
+        drawDir = DEFAULT_DRAW_DIR;
+      }
+      
+      if (!fs.existsSync(drawDir)) {
+        fs.mkdirSync(drawDir, { recursive: true });
+      }
+      
+      // Handle multipart form data with multer-like parsing
+      // Since we're using Fastify, let's use its built-in multipart support
+      const data = await request.file();
+      
+      if (!data) {
+        return reply.status(400).send({ error: '请上传图片文件' });
+      }
+      
+      const ext = path.extname(data.filename).toLowerCase();
+      if (!['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].includes(ext)) {
+        return reply.status(400).send({ error: '不支持的图片格式，仅支持: png, jpg, gif, webp, bmp' });
+      }
+      
+      const timestamp = Date.now();
+      const filename = `upload_${timestamp}${ext}`;
+      const filepath = path.join(drawDir, filename);
+      
+      // Write file
+      const buffer = await data.toBuffer();
+      fs.writeFileSync(filepath, buffer);
+      
+      return {
+        success: true,
+        filename: filename,
+        url: `/api/draw/images/${filename}?projectName=${projectName || ''}`,
+        path: filename
+      };
+    } catch (error) {
+      fastify.log.error('Upload image error:', error);
+      return reply.status(500).send({
+        error: error.message,
+        hint: '上传图片时出错'
+      });
+    }
   });
 }
 

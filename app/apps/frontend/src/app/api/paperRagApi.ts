@@ -89,3 +89,58 @@ export async function uploadRagDocument(projectId: string, file: File): Promise<
   }
   return res.json();
 }
+
+/* ── Figures ────────────────────────────────────────────────── */
+
+export interface DocumentFigure {
+  id: string;
+  page: number;
+  index: number;
+  width: number;
+  height: number;
+  format: string;
+  size: number;
+}
+
+export async function listDocumentFigures(projectId: string, docPath: string): Promise<{ figures: DocumentFigure[]; error?: string }> {
+  const encodedPath = encodeURIComponent(docPath);
+  return apiFetch(`${BASE}/${projectId}/rag/documents/${encodedPath}/figures`);
+}
+
+/* ── Vision Figure Description ───────────────────────────────── */
+
+export interface FigureDescription {
+  success: boolean;
+  foundPage?: number;  // auto-detected page number in PDF
+  image?: {
+    width: number;
+    height: number;
+    format: string;
+    size: number;
+  };
+  description: string;
+  error?: string;
+  hint?: string;
+  suggestions?: number[];  // suggested page numbers if figure not found
+  model?: string;
+  supported?: boolean;
+}
+
+export async function checkVisionCapability(model?: string): Promise<{ model: string; supported: boolean; supportedModels: string[] }> {
+  const params = model ? `?model=${encodeURIComponent(model)}` : '';
+  return apiFetch(`/api/llm/vision-capable${params}`);
+}
+
+export async function describeFigure(
+  projectId: string, 
+  docPath: string, 
+  figureNum: number,
+  context?: string
+): Promise<FigureDescription> {
+  const encodedPath = encodeURIComponent(docPath);
+  return apiPost(`${BASE}/${projectId}/rag/figure/describe`, {
+    docPath: encodedPath,
+    figureNum,
+    context,
+  });
+}

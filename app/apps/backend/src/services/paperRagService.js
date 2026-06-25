@@ -314,7 +314,102 @@ export async function listCorpusDocuments(projectRoot) {
   const index = await ensureIndex(projectRoot);
   return index.documents;
 }
- 
+
+/**
+ * List figures/images from a specific document (PDF)
+ * Returns array of figure info with page number and position
+ */
+export async function listDocumentFigures(projectRoot, docPath) {
+  const absolutePath = safeJoin(projectRoot, docPath);
+  const ext = path.extname(docPath).toLowerCase();
+  
+  if (ext !== '.pdf') {
+    return { figures: [], message: 'Only PDF documents support figure extraction' };
+  }
+
+  // Try to extract images using Python/PyMuPDF
+  const script = `
+import json
+import sys
+import os
+
+def extract_figures(pdf_path):
+    """Extract images/figures from PDF using PyMuPDF"""
+    try:
+        import fitz
+    except ImportError:
+        return {"figures": [], "error": "PyMuPDF not installed"}
+    
+    figures = []
+    doc = fitz.open(pdf_path)
+    
+    for page_num, page in enumerate(doc):
+        # Get images from the page
+        image_list = page.get_images(full=True)
+        
+        for img_idx, img in enumerate(image_list):
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            image_ext = base_image["ext"]
+            image_size = len(image_bytes)
+            
+            # Get image dimensions
+            pix = fitz.Pixmap(doc, xref)
+            width = pix.width
+            height = pix.height
+            
+            # Skip very small images (likely icons/logos)
+            if width < 100 or height < 100:
+                continue
+            
+            figures.append({
+                "id": f"{doc_path}#fig_{page_num + 1}_{img_idx + 1}",
+                "page": page_num + 1,
+                "index": img_idx + 1,
+                "width": width,
+                "height": height,
+                "format": image_ext,
+                "size": image_size,
+                "xref": xref
+            })
+    
+    doc.close()
+    return {"figures": figures}
+
+pdf_path = sys.argv[1]
+doc_path = os.path.basename(pdf_path)
+result = extract_figures(pdf_path)
+print(json.dumps(result))
+`;
+
+  try {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'paper-figures-'));
+    const scriptPath = path.join(tmpDir, 'extract_figures.py');
+    
+    await writeFile(scriptPath, script, 'utf-8');
+    
+    const { stdout } = await execFileAsync('python3', [scriptPath, absolutePath], {
+      timeout: 60_000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    
+    const result = JSON.parse(stdout);
+    return {
+      figures: result.figures || [],
+      totalPages: result.totalPages || 0
+    };
+  } catch (error) {
+    console.error('Figure extraction error:', error.message);
+    return {
+      figures: [],
+      error: error.message
+    };
+  }
+}
+
 export async function indexProjectCorpus(projectRoot) {
   const files = await collectCorpusFiles(projectRoot);
   const documents = [];
@@ -1921,4 +2016,488 @@ function reconstructAbstract(invertedIndex) {
     }
   }
   return words.filter(Boolean).join(' ');
+}
+
+/**
+ * Find the page number where a specific Figure appears in the PDF
+ * Searches for patterns like "Figure X", "Fig. X", "Fig X", etc.
+ * @param {string} projectRoot - Project root directory
+ * @param {string} docPath - Relative path to the PDF document
+ * @param {number} figureNum - Figure number to search for
+ * @returns {Promise<{page: number, figureIndex: number} | {error: string, suggestions?: number[]}>}
+ */
+export async function findFigurePage(projectRoot, docPath, figureNum) {
+  const absolutePath = safeJoin(projectRoot, docPath);
+  const ext = path.extname(docPath).toLowerCase();
+  
+  if (ext !== '.pdf') {
+    return { error: 'Only PDF documents support figure search' };
+  }
+
+  const script = `
+import json
+import sys
+import re
+
+def find_figure_page(pdf_path, figure_num):
+    """Find the page and image index where a specific figure appears.
+    Uses caption position to locate the correct image."""
+    try:
+        import fitz
+    except ImportError:
+        return {"error": "PyMuPDF not installed"}
+    
+    try:
+        doc = fitz.open(pdf_path)
+        
+        # Patterns to match figure captions
+        patterns = [
+            rf'Figure\\s*{figure_num}\\b',      # Figure 5
+            rf'Fig\\.\\s*{figure_num}\\b',       # Fig. 5
+            rf'Fig\\s*{figure_num}\\b',          # Fig 5
+            rf'figure\\s*{figure_num}\\b',       # figure 5
+        ]
+        
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            
+            # Get detailed text blocks with positions
+            text_dict = page.get_text("dict")
+            blocks = text_dict.get("blocks", [])
+            
+            # Find the caption block with figure number
+            caption_block = None
+            for block in blocks:
+                if block.get("type") == 0:  # text block
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text = span.get("text", "")
+                            for pattern in patterns:
+                                if re.search(pattern, text, re.IGNORECASE):
+                                    caption_block = block
+                                    caption_bbox = block.get("bbox", [])
+                                    caption_y_bottom = caption_bbox[3] if len(caption_bbox) >= 4 else 0
+                                    print(f"DEBUG: Found caption '{text}' at y={caption_y_bottom}", file=sys.stderr)
+                                    break
+                        if caption_block:
+                            break
+                    if caption_block:
+                        break
+            
+            if caption_block:
+                # Get all images with their positions
+                image_list = page.get_images(full=True)
+                
+                if len(image_list) == 0:
+                    continue
+                
+                # Get image positions using get_image_rects or calculate from annotations
+                # For each image xref, get its bbox on the page
+                image_positions = []
+                for img in image_list:
+                    xref = img[0]
+                    try:
+                        # Get image rectangle
+                        img_rect = fitz.Rect(page.parent.extract_image(xref)["transform"])
+                        # Actually need to find the image placement on page
+                        # Use get_image_rects if available
+                        img_rects = page.get_image_rects(xref)
+                        if img_rects:
+                            for r in img_rects:
+                                image_positions.append({
+                                    "xref": xref,
+                                    "bbox": r,
+                                    "y_top": r.y0,
+                                    "y_bottom": r.y1
+                                })
+                    except:
+                        pass
+                
+                if not image_positions:
+                    # Fallback: use all images on page
+                    for i, img in enumerate(image_list):
+                        image_positions.append({
+                            "xref": img[0],
+                            "index": i,
+                            "y_top": i * 100,  # placeholder
+                            "y_bottom": i * 100 + 50
+                        })
+                
+                # Sort by y_top (top to bottom of page)
+                image_positions.sort(key=lambda x: x["y_top"])
+                
+                # Find the first image below the caption (or overlapping with caption area)
+                caption_y = caption_block.get("bbox", [0, 0, 0, 0])[3]
+                
+                best_match = None
+                min_distance = float('inf')
+                
+                for i, img_pos in enumerate(image_positions):
+                    img_y = img_pos["y_top"]
+                    # Image should be below caption or close to it (within reasonable distance)
+                    distance = img_y - caption_y
+                    
+                    # Consider images below caption (distance > 0) and some above (caption might be above image)
+                    if distance > -200:  # Within 200 pixels above caption
+                        if distance < min_distance and distance > -50:  # Prefer images below
+                            min_distance = distance
+                            best_match = i
+                        elif best_match is None and i == 0:
+                            best_match = i
+                
+                if best_match is not None:
+                    doc.close()
+                    return {
+                        "page": page_idx + 1,
+                        "figureIndex": best_match + 1,  # 1-indexed
+                        "found": True,
+                        "captionY": caption_y,
+                        "imageCount": len(image_positions)
+                    }
+        
+        # If not found by caption, return error
+        doc.close()
+        total_pages = len(doc)
+        return {
+            "error": f"Figure {figure_num} not found in document",
+            "totalPages": total_pages,
+            "suggestions": list(range(1, min(11, total_pages + 1)))
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+pdf_path = sys.argv[1]
+figure_num = int(sys.argv[2])
+
+result = find_figure_page(pdf_path, figure_num)
+print(json.dumps(result))
+`;
+
+  try {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'paper-figure-find-'));
+    const scriptPath = path.join(tmpDir, 'find_figure.py');
+    
+    await writeFile(scriptPath, script, 'utf-8');
+    
+    const { stdout } = await execFileAsync('python3', [scriptPath, absolutePath, figureNum], {
+      timeout: 30_000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    
+    const result = JSON.parse(stdout);
+    if (result.error) {
+      return { error: result.error };
+    }
+    
+    return {
+      page: result.page,
+      figureIndex: result.figureIndex
+    };
+  } catch (error) {
+    console.error('Figure search error:', error.message);
+    return { error: error.message };
+  }
+}
+
+/**
+ * Extract a specific figure/image from PDF and return as base64
+ * @param {string} projectRoot - Project root directory
+ * @param {string} docPath - Relative path to the PDF document
+ * @param {number} page - Page number (1-indexed)
+ * @param {number} figureIndex - Figure index on that page (1-indexed)
+ * @returns {Promise<{base64: string, width: number, height: number, format: string} | {error: string}>}
+ */
+export async function extractFigureImage(projectRoot, docPath, page, figureIndex) {
+  const absolutePath = safeJoin(projectRoot, docPath);
+  const ext = path.extname(docPath).toLowerCase();
+  
+  if (ext !== '.pdf') {
+    return { error: 'Only PDF documents support figure extraction' };
+  }
+
+  const script = `
+import json
+import sys
+import base64
+
+def extract_figure(pdf_path, page_num, fig_idx):
+    """Extract a specific figure from PDF using PyMuPDF"""
+    try:
+        import fitz
+    except ImportError:
+        return {"error": "PyMuPDF not installed"}
+    
+    try:
+        doc = fitz.open(pdf_path)
+        
+        # Convert to 0-indexed
+        page_idx = page_num - 1
+        if page_idx < 0 or page_idx >= len(doc):
+            return {"error": f"Page {page_num} out of range (1-{len(doc)})"}
+        
+        page = doc[page_idx]
+        image_list = page.get_images(full=True)
+        
+        # Convert to 0-indexed
+        img_idx = fig_idx - 1
+        if img_idx < 0 or img_idx >= len(image_list):
+            return {"error": f"Figure {fig_idx} not found on page {page_num}"}
+        
+        img = image_list[img_idx]
+        xref = img[0]
+        base_image = page.parent.extract_image(xref)
+        image_bytes = base_image["image"]
+        image_ext = base_image["ext"]
+        
+        # Get dimensions
+        pix = fitz.Pixmap(doc, xref)
+        width = pix.width
+        height = pix.height
+        
+        # Skip very small images
+        if width < 100 or height < 100:
+            return {"error": f"Image too small ({width}x{height}), likely icon/logo"}
+        
+        # Encode to base64
+        b64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        doc.close()
+        return {
+            "base64": b64,
+            "width": width,
+            "height": height,
+            "format": image_ext,
+            "size": len(image_bytes)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+pdf_path = sys.argv[1]
+page_num = int(sys.argv[2])
+fig_idx = int(sys.argv[3])
+
+result = extract_figure(pdf_path, page_num, fig_idx)
+print(json.dumps(result))
+`;
+
+  try {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), 'paper-figure-'));
+    const scriptPath = path.join(tmpDir, 'extract_figure.py');
+    
+    await writeFile(scriptPath, script, 'utf-8');
+    
+    const { stdout } = await execFileAsync('python3', [scriptPath, absolutePath, page, figureIndex], {
+      timeout: 30_000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    
+    const result = JSON.parse(stdout);
+    if (result.error) {
+      return { error: result.error };
+    }
+    
+    return {
+      base64: result.base64,
+      width: result.width,
+      height: result.height,
+      format: result.format,
+      size: result.size
+    };
+  } catch (error) {
+    console.error('Figure extraction error:', error.message);
+    return { error: error.message };
+  }
+}
+
+/**
+ * Describe a figure image using a vision-capable LLM
+ * @param {object} llmConfig - LLM configuration { baseUrl, apiKey, model }
+ * @param {string} imageBase64 - Base64 encoded image
+ * @param {string} context - Optional context about what the figure is for
+ * @returns {Promise<{description: string} | {error: string}>}
+ */
+export async function describeFigureWithVision(llmConfig, imageBase64, context = '') {
+  const { baseUrl, apiKey, model } = llmConfig;
+  
+  if (!baseUrl || !apiKey) {
+    return { error: 'LLM API not configured' };
+  }
+  
+  // List of known vision-capable models
+  const visionModels = [
+    'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4-vision',
+    'claude-3-opus', 'claude-3-sonnet', 'claude-3-5-sonnet', 'claude-3-5-haiku',
+    'claude-sonnet-4-20250514', 'claude-opus-4-20250514',
+    'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro-vision',
+    'houmo-big-model', // if this model supports vision
+  ];
+  
+  const modelLower = (model || '').toLowerCase();
+  const isVisionCapable = visionModels.some(vm => modelLower.includes(vm.toLowerCase()));
+  
+  if (!isVisionCapable) {
+    return { 
+      error: 'Model does not support vision',
+      hint: 'This feature requires a vision-capable model like GPT-4o, Claude-3.5-Sonnet, or Gemini',
+      model: model
+    };
+  }
+  
+  try {
+    // Dynamically import OpenAI
+    const OpenAIModule = await import('openai');
+    const OpenAI = OpenAIModule.default || OpenAIModule.OpenAI;
+    
+    const client = new OpenAI({
+      apiKey: apiKey,
+      baseURL: baseUrl,
+    });
+    
+    const systemPrompt = `You are an expert at analyzing academic figures and charts from research papers.
+
+Given an image of a figure, provide a detailed description that captures:
+1. The type of figure (line chart, bar chart, scatter plot, diagram, architecture, photo, etc.)
+2. Key visual elements and their characteristics (colors, shapes, labels)
+3. Data patterns or relationships shown
+4. Style characteristics (professional academic, minimalist, colorful, etc.)
+5. Layout and composition
+
+Format your response as a concise but detailed paragraph suitable for use as a visual reference when generating similar academic figures.`;
+    
+    const userMessage = context 
+      ? `Please describe this figure for a paper about: ${context}\n\nDescribe the visual elements, style, and composition.`
+      : 'Please describe this academic figure in detail. Include the type, visual elements, colors, style, and any data patterns visible.';
+
+    const response = await client.chat.completions.create({
+      model: model || 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: userMessage
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/png;base64,${imageBase64}`,
+                detail: 'high'
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.3,
+    });
+
+    const description = response.choices[0]?.message?.content || '';
+    return { description: description.trim() };
+  } catch (error) {
+    console.error('Vision description error:', error.message);
+    return { error: `Failed to describe image: ${error.message}` };
+  }
+}
+
+/**
+ * Check if a model supports vision
+ * @param {string} model - Model name
+ * @returns {boolean}
+ */
+/**
+ * Test if a model actually supports vision by making a test request
+ * @param {object} llmConfig - LLM config { baseUrl, apiKey, model }
+ * @returns {Promise<{supported: boolean, reason?: string}>}
+ */
+export async function testVisionSupport(llmConfig) {
+  const { baseUrl, apiKey, model } = llmConfig;
+  
+  if (!baseUrl || !apiKey) {
+    return { supported: false, reason: 'LLM API not configured' };
+  }
+  
+  // Create a tiny 1x1 transparent PNG base64 for testing
+  const tinyTestImage = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+  
+  try {
+    const OpenAIModule = await import('openai');
+    const OpenAI = OpenAIModule.default || OpenAIModule.OpenAI;
+    
+    const client = new OpenAI({
+      apiKey: apiKey,
+      baseURL: baseUrl,
+    });
+    
+    const response = await client.chat.completions.create({
+      model: model || 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Reply with just "OK" if you can see this image.' },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${tinyTestImage}`, detail: 'low' } }
+          ]
+        }
+      ],
+      max_tokens: 10,
+      temperature: 0.1,
+    }, { timeout: 10000 });  // 10 second timeout
+    
+    const content = response.choices[0]?.message?.content || '';
+    
+    if (content.toLowerCase().includes('ok')) {
+      return { supported: true };
+    } else {
+      return { supported: false, reason: 'Model responded but did not acknowledge vision capability' };
+    }
+  } catch (error) {
+    // Check error type to determine if it's a vision issue
+    const errorMsg = error.message || '';
+    
+    if (errorMsg.includes('vision') || 
+        errorMsg.includes('image') || 
+        errorMsg.includes('vision_capabilities') ||
+        errorMsg.includes('Unsupported') ||
+        error.status === 400) {
+      return { supported: false, reason: 'Model does not support vision (API rejected image input)' };
+    }
+    
+    // Connection or other errors
+    return { supported: false, reason: `API error: ${errorMsg.slice(0, 100)}` };
+  }
+}
+
+/**
+ * Quick check if model name suggests vision capability (used as optimization)
+ * @param {string} model - Model name
+ * @returns {boolean}
+ */
+export function modelSupportsVision(model) {
+  if (!model) return false;
+  
+  const visionModels = [
+    // GPT models
+    'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4-vision',
+    'gpt-image', 'dall-e', 'gpt-5',
+    // Claude models
+    'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku',
+    'claude-3-5-sonnet', 'claude-3-5-haiku',
+    'claude-4', 'claude-sonnet', 'claude-opus',
+    // Gemini models
+    'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2',
+    'gemini-pro-vision', 'gemini-ultra',
+    // Other vision models
+    'vision', 'multimodal', 'image',
+  ];
+  
+  const modelLower = model.toLowerCase();
+  return visionModels.some(vm => modelLower.includes(vm.toLowerCase()));
 }

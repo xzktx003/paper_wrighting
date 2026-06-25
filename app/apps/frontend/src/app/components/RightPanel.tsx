@@ -258,8 +258,8 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--panel-muted)', flexShrink: 0, overflow: 'auto' }}>
         {([
           { key: 'chat', label: '💬 Chat' },
-          { key: 'rag', label: '🔎 RAG' },
           { key: 'draw', label: '🖼️ Draw' },
+          { key: 'rag', label: '🔎 RAG' },
           { key: 'review', label: '📋 Review' },
           { key: 'citations', label: '📚 Citations' },
           { key: 'anti-ai', label: '🔍 Anti-AI' },

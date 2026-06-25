@@ -90,7 +90,7 @@ export function RagDocumentSelector({ projectPath, selectedDocs, onChange, onCon
         }}
         title="Select documents to use as context"
       >
-        📚 {selectedDocs.length > 0 ? `${selectedDocs.length} 个文档` : '关联文档'}
+        📚 {selectedDocs.length > 0 ? `${selectedDocs.length} docs` : 'Reference Docs'}
         <span style={{ fontSize: '8px' }}>{expanded ? '▲' : '▼'}</span>
       </button>
 
@@ -122,7 +122,7 @@ export function RagDocumentSelector({ projectPath, selectedDocs, onChange, onCon
             top: 0,
           }}>
             <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
-              📚 RAG 文档库 ({documents.length})
+              📚 RAG Documents ({documents.length})
             </span>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button
@@ -137,7 +137,7 @@ export function RagDocumentSelector({ projectPath, selectedDocs, onChange, onCon
                   cursor: 'pointer',
                 }}
               >
-                全选
+                Select All
               </button>
               <button
                 onClick={clearAll}
@@ -151,15 +151,15 @@ export function RagDocumentSelector({ projectPath, selectedDocs, onChange, onCon
                   cursor: 'pointer',
                 }}
               >
-                清空
+                Clear
               </button>
             </div>
           </div>
 
           {documents.length === 0 ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--muted)', fontSize: '12px' }}>
-              暂无上传的文档<br />
-              <span style={{ fontSize: '10px' }}>在 RAG 面板上传 PDF/TXT 文件</span>
+              No documents uploaded<br />
+              <span style={{ fontSize: '10px' }}>Upload PDF/TXT files in RAG panel</span>
             </div>
           ) : (
             <div style={{ padding: '6px' }}>

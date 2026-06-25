@@ -314,6 +314,26 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
     input.click();
   };
 
+  // Refresh file list from server
+  const refreshFiles = async () => {
+    if (!projectId) return;
+    setStatus('Refreshing...');
+    try {
+      const res = await fetch(`/api/projects/${projectId}/files`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.files) {
+          setFileItems(data.files);
+          setStatus(`Loaded ${data.files.length} files`);
+        }
+      } else {
+        setStatus('Failed to refresh');
+      }
+    } catch {
+      setStatus('Refresh error');
+    }
+  };
+
   return (
     <div
       style={{ fontSize: '13px', position: 'relative', minHeight: '100%' }}
@@ -364,6 +384,34 @@ export function ProjectTree({ projectPath, config, onFileSelect, onChapterReorde
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
             >
               {uploading ? '⏳ Uploading...' : '↑ Upload'}
+            </button>
+          )}
+          {projectId && (
+            <button
+              type="button"
+              title="Refresh file list"
+              onClick={(e) => {
+                e.stopPropagation();
+                void refreshFiles();
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--muted)',
+                fontSize: '11px',
+                padding: '1px 4px',
+                lineHeight: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                borderRadius: '3px',
+                transition: 'color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-strong)'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              🔄
             </button>
           )}
         </div>
