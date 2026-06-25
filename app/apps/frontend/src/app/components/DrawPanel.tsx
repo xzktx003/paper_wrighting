@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { InlineSkillsSelector } from './SkillsSelector';
+import { RagDocumentSelector } from './RagDocumentSelector';
 import { SkillInfo } from '../api/skillApi';
+import { buildRagContext } from '../api/paperRagApi';
 
 // Types
 interface ApiSettings {
@@ -44,6 +46,7 @@ export default function DrawPanel({ projectPath, chapters, skills = [], onFigure
   
   // Per-panel skills state
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedRagDocs, setSelectedRagDocs] = useState<string[]>([]);
 
   // Load saved state from localStorage on mount
   const [state, setState] = useState<DrawState>(() => {
@@ -170,20 +173,37 @@ export default function DrawPanel({ projectPath, chapters, skills = [], onFigure
 
   // Step 1: Generate image prompt using chat model (from .env config)
   const generatePrompt = async () => {
-    if (!state.paperContent.trim() && !state.figureDescription.trim()) {
-      setState(prev => ({ ...prev, error: '请输入论文内容或描述' }));
+    if (!state.paperContent.trim() && !state.figureDescription.trim() && selectedRagDocs.length === 0) {
+      setState(prev => ({ ...prev, error: '请输入论文内容、描述或选择参考文档' }));
       return;
     }
 
     setState(prev => ({ ...prev, loadingPrompt: true, error: null }));
 
     try {
+      // If RAG docs are selected, fetch context
+      let ragContext = '';
+      if (selectedRagDocs.length > 0 && projectPath) {
+        const projectId = projectPath.startsWith('__paper_agent__:') 
+          ? projectPath.replace('__paper_agent__:', '') 
+          : null;
+        if (projectId) {
+          try {
+            const result = await buildRagContext(projectId, state.figureDescription || '生成图片', 3);
+            ragContext = result.context;
+          } catch (e) {
+            console.error('Failed to fetch RAG context:', e);
+          }
+        }
+      }
+
       const response = await fetch('/api/draw/generate-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paperContent: state.paperContent,
           figureDescription: state.figureDescription,
+          ragContext: ragContext,
         }),
       });
 
@@ -337,6 +357,25 @@ export default function DrawPanel({ projectPath, chapters, skills = [], onFigure
                       {ch.name || ch.file}
                     </label>
                   ))}
+                </div>
+              </div>
+
+              {/* RAG Document selector for Draw */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  📚 参考文档 (可选)
+                </label>
+                <div style={{ position: 'relative', zIndex: 100 }}>
+                  <RagDocumentSelector
+                    projectPath={projectPath}
+                    selectedDocs={selectedRagDocs}
+                    onChange={setSelectedRagDocs}
+                  />
+                  {selectedRagDocs.length > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--muted)' }}>
+                      已选择 {selectedRagDocs.length} 个文档作为参考
+                    </div>
+                  )}
                 </div>
               </div>
 

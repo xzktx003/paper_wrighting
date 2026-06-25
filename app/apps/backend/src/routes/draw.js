@@ -91,7 +91,7 @@ export async function registerDrawRoutes(fastify, opts) {
   // Generate image prompt from paper content
   fastify.post('/api/draw/generate-prompt', async (request, reply) => {
     try {
-      const { paperContent, figureDescription } = request.body;
+      const { paperContent, figureDescription, ragContext } = request.body;
       
       if (!openai) {
         return reply.status(500).send({ 
@@ -104,6 +104,11 @@ export async function registerDrawRoutes(fastify, opts) {
       
       // Build context for prompt generation
       let context = '';
+      
+      // Add RAG context if provided
+      if (ragContext && ragContext.trim()) {
+        context += `参考文档内容:\n${ragContext}\n\n`;
+      }
       if (paperContent && paperContent.trim()) {
         context += `Paper content:\n${paperContent}\n\n`;
       }

@@ -12,6 +12,8 @@ import { PaperRagPanel } from './PaperRagPanel';
 import DrawPanel from './DrawPanel';
 import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero, verifyTexCitations, crossCheckCitations } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';
+import { RagDocumentSelector, fetchRagContextForDocuments } from './RagDocumentSelector';
+import { getPaperAgentProjectId } from '../api/paperRagApi';
 
 type TabType = 'chat' | 'rag' | 'draw' | 'review' | 'anti-ai' | 'pipeline' | 'citations';
 
@@ -64,6 +66,9 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [showSkillsModal, setShowSkillsModal] = useState(false);
+  const [selectedRagDocs, setSelectedRagDocs] = useState<string[]>([]);
+  const [ragContext, setRagContext] = useState('');
+  const [ragSearching, setRagSearching] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,11 +119,33 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
     setCitationLoading(false);
   }, [projectPath, activeFile]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
-    onSend(inputValue.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
+    
+    let messageToSend = inputValue.trim();
+    
+    // If RAG documents are selected, fetch context and prepend to message
+    if (selectedRagDocs.length > 0 && projectPath) {
+      const projectId = getPaperAgentProjectId(projectPath);
+      if (projectId) {
+        setRagSearching(true);
+        try {
+          const { context } = await fetchRagContextForDocuments(projectId, selectedRagDocs, inputValue.trim(), 5);
+          if (context && context.trim()) {
+            const ragHeader = `\n\n📚 **已选文档上下文:**\n---\n${context}\n---\n\n**我的问题:** ${inputValue.trim()}`;
+            messageToSend = ragHeader;
+          }
+        } catch (e) {
+          console.error('Failed to fetch RAG context:', e);
+        }
+        setRagSearching(false);
+      }
+    }
+    
+    onSend(messageToSend, attachedFiles.length > 0 ? attachedFiles : undefined);
     setInputValue('');
     setAttachedFiles([]);
+    // Keep selected docs for next message
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -296,6 +323,13 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                       拖放文件到此处
                     </span>
                   )}
+                  {/* RAG Document selector */}
+                  <RagDocumentSelector
+                    projectPath={projectPath}
+                    selectedDocs={selectedRagDocs}
+                    onChange={setSelectedRagDocs}
+                    onSearching={setRagSearching}
+                  />
                   {/* Skills selector with categories */}
                   <InlineSkillsSelector
                     skills={skills}
