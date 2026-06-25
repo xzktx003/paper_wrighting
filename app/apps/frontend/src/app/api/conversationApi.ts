@@ -71,30 +71,43 @@ export async function sendMessageStream(
     onToolResult?: (name: string, result: string) => void;
     onDone: (fullText: string) => void;
     onError: (message: string) => void;
+    onProgress?: (percent: number, stage: string) => void;
   }
 ) {
   const token = localStorage.getItem('api_token');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
+  const body = JSON.stringify({
+    projectId, convId, projectPath, userMessage, projectConfig,
+    files: files?.map(f => ({ dataUrl: f.dataUrl, name: f.name, type: f.type, isImage: f.isImage, size: f.size })),
+  });
+
+  callbacks.onProgress?.(10, 'preparing');
+  console.log('[API DEBUG] Sending message to /ai/stream');
+
   const res = await fetch(`${BASE}/ai/stream`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      projectId, convId, projectPath, userMessage, projectConfig,
-      files: files?.map(f => ({ dataUrl: f.dataUrl, name: f.name, type: f.type, isImage: f.isImage, size: f.size })),
-    }),
+    body,
   });
 
   if (!res.ok) {
+    console.error('[API DEBUG] HTTP error:', res.status, res.statusText);
     callbacks.onError(`HTTP ${res.status}`);
     return;
   }
 
+  console.log('[API DEBUG] SSE stream started');
+  callbacks.onProgress?.(50, 'response');
+
   if (!res.body) {
+    console.error('[API DEBUG] Response body is null');
     callbacks.onError('Response body is null');
     return;
   }
+
+  callbacks.onProgress?.(60, 'streaming');
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -120,7 +133,7 @@ export async function sendMessageStream(
             case 'token': callbacks.onToken(data.text || ''); break;
             case 'tool_use': callbacks.onToolUse?.(data.name, data.input); break;
             case 'tool_result': callbacks.onToolResult?.(data.name, data.result || ''); break;
-            case 'done': callbacks.onDone(data.fullText || ''); break;
+            case 'done': callbacks.onDone(data.fullText || ''); callbacks.onProgress?.(100, 'complete'); break;
             case 'error': callbacks.onError(data.message || 'Unknown error'); break;
           }
         } catch {}

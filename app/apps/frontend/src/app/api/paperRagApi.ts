@@ -60,8 +60,8 @@ export async function searchRagCorpus(projectId: string, query: string, limit = 
   return apiFetch(`${BASE}/${projectId}/rag/search?q=${encodeURIComponent(query)}&limit=${limit}`);
 }
 
-export async function buildRagContext(projectId: string, query: string, limit = 5): Promise<{ context: string }> {
-  return apiPost(`${BASE}/${projectId}/rag/context`, { query, limit });
+export async function buildRagContext(projectId: string, query: string, limit = 5, docPaths?: string[]): Promise<{ context: string }> {
+  return apiPost(`${BASE}/${projectId}/rag/context`, { query, limit, docPaths });
 }
 
 /* ── External Search ────────────────────────────────────────── */

@@ -45,7 +45,10 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerAuthHook } from './middleware/auth.js';
  
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ 
+  logger: true,
+  bodyLimit: 100 * 1024 * 1024  // 100MB JSON body limit
+});
  
 // Load global config and initialize services
 const appConfig = await loadAppConfig();

@@ -236,7 +236,7 @@ export async function fetchRagContextForDocuments(
   }
 
   try {
-    const result = await buildRagContext(projectId, query, limit);
+    const result = await buildRagContext(projectId, query, limit, docPaths);
     return { context: result.context, results: [] };
   } catch (e) {
     console.error('Failed to fetch RAG context:', e);

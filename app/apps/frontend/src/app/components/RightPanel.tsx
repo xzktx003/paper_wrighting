@@ -30,6 +30,7 @@ interface Props {
   conversations: ConversationSummary[];
   activeConv: Conversation | null;
   loading: boolean;
+  uploadProgress?: { percent: number; stage: string } | null;
   chapters: { file: string }[];
   skills: { name: string; display_name: string }[];
   projectFiles?: { path: string; type: 'file' | 'dir' }[];
@@ -48,7 +49,7 @@ interface Props {
   onRejectEdit?: (editId: string) => void;
 }
 
-export function RightPanel({ conversations, activeConv, loading, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
+export function RightPanel({ conversations, activeConv, loading, uploadProgress, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
@@ -338,9 +339,24 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                     onOpenManagement={() => setShowSkillsModal(true)}
                   />
                 </div>
-                {/* File previews */}
+                {/* File previews with loading indicator */}
                 {attachedFiles.length > 0 && (
-                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {loading && (
+                      <div style={{ 
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'var(--accent-soft)',
+                        border: '1px solid var(--accent)',
+                        fontSize: '12px',
+                        color: 'var(--accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}>
+                        <span>⏳ 上传中 {uploadProgress ? `${uploadProgress.percent}%` : ''}...</span>
+                      </div>
+                    )}
                     {attachedFiles.map(file => (
                       <div 
                         key={file.id} 
@@ -398,6 +414,33 @@ export function RightPanel({ conversations, activeConv, loading, chapters, skill
                   </div>
                 )}
                 <div style={{ position: 'relative' }}>
+                  {/* Loading/Progress indicator */}
+                  {(loading || uploadProgress) && (
+                    <div style={{
+                      marginBottom: '8px',
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, var(--accent-soft), #fef3c7)',
+                      border: '2px solid var(--accent)',
+                      fontSize: '13px',
+                      color: 'var(--accent-strong)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                    }}>
+                      <span style={{ fontSize: '18px' }}>{uploadProgress?.percent === 100 ? '✅' : '⏳'}</span>
+                      <span>
+                        {uploadProgress?.stage === 'preparing' ? '准备发送消息...' :
+                         uploadProgress?.stage === 'response' ? '等待 AI 响应...' :
+                         uploadProgress?.stage === 'streaming' ? 'AI 正在生成回复...' :
+                         uploadProgress?.stage === 'complete' ? '完成!' :
+                         loading ? '处理中...' : '发送中...'}
+                      </span>
+                      {uploadProgress && (
+                        <span style={{ marginLeft: 'auto', fontWeight: 'bold' }}>{uploadProgress.percent}%</span>
+                      )}
+                    </div>
+                  )}
                   <textarea
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}

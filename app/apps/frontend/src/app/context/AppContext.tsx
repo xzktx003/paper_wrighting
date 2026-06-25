@@ -20,6 +20,7 @@ interface AppState {
   conversations: any[];
   activeConv: any;
   convLoading: boolean;
+  uploadProgress: { percent: number; stage: string } | null;
   refreshConversations: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   createConversation: (data: any) => Promise<unknown>;
@@ -209,6 +210,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     conversations: convHook.conversations,
     activeConv: convHook.activeConv,
     convLoading: convHook.loading,
+    uploadProgress: convHook.uploadProgress,
     refreshConversations: convHook.refresh,
     selectConversation: convHook.select,
     createConversation: convHook.create,
@@ -225,7 +227,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
   }), [
     project, open, create, openFiles, activeFileIndex, openFile,
     updateFileContent, saveFile, closeFile,
-    convHook.conversations, convHook.activeConv, convHook.loading,
+    convHook.conversations, convHook.activeConv, convHook.loading, convHook.uploadProgress,
     convHook.refresh, convHook.select, convHook.create, convHook.remove,
     convHook.rename, convHook.pendingEdits, convHook.rejectEdit,
     sendMessage, acceptEdit, skills, activateSkill, terminalVisible, toggleTerminal,

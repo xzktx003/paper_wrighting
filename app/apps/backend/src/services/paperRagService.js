@@ -473,9 +473,20 @@ export async function searchCorpus(projectRoot, query, options = {}) {
   const queryTerms = tokenize(query);
   if (queryTerms.length === 0) return [];
   const limit = Math.min(Number(options.limit || 5), 20);
+  
+  // Filter by document paths if specified
+  const docPaths = options.docPaths;
+  
   return index.chunks
     .map(chunk => ({ ...chunk, score: scoreChunk(chunk, queryTerms) }))
-    .filter(chunk => chunk.score > 0)
+    .filter(chunk => {
+      if (chunk.score <= 0) return false;
+      // If docPaths is specified, filter to only include chunks from those documents
+      if (docPaths && Array.isArray(docPaths) && docPaths.length > 0) {
+        return docPaths.some(dp => chunk.source?.path?.includes(dp));
+      }
+      return true;
+    })
     .sort((a, b) => b.score - a.score || a.source.path.localeCompare(b.source.path))
     .slice(0, limit)
     .map(({ terms, ...chunk }) => chunk);

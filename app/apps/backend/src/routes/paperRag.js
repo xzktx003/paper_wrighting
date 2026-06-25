@@ -196,7 +196,8 @@ export function registerPaperRagRoutes(fastify, options = {}) {
  
   fastify.post('/api/projects/:id/rag/context', async (request) => {
     const projectRoot = await resolveProjectRoot(request.params.id);
-    const evidence = await buildRagEvidence(projectRoot, request.body?.query || '', { limit: request.body?.limit });
+    const { query, limit, docPaths } = request.body || {};
+    const evidence = await buildRagEvidence(projectRoot, query || '', { limit, docPaths });
     return { context: evidence.context, evidence };
   });
  

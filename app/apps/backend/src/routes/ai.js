@@ -10,6 +10,9 @@ import { promises as fs } from 'fs';
 import { getProjectRoot } from '../services/projectService.js';
 import { diffLines } from 'diff';
 import { buildRagEvidence, buildRagUsageGuidance } from '../services/paperRagService.js';
+import { spawn } from 'child_process';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
  
 export async function resolveProjectPath(projectPath) {
   if (projectPath && projectPath.startsWith('__paper_agent__:')) {
@@ -20,11 +23,51 @@ export async function resolveProjectPath(projectPath) {
 }
  
 /**
+ * Extract text content from a PDF file using Python/pdfplumber
+ */
+async function extractPdfText(dataUrl) {
+  try {
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    
+    const mimeType = match[1];
+    if (!mimeType.includes('pdf')) return null;
+    
+    const base64Data = match[2];
+    const scriptPath = resolve(getProjectRoot('default'), 'apps/backend/extract_pdf.py');
+    
+    // Call Python script to extract PDF text
+    const result = await new Promise((resolve, reject) => {
+      const input = JSON.stringify({ pdf_base64: base64Data, max_chars: 50000 });
+      const python = spawn('python3', [scriptPath]);
+      let output = '';
+      let error = '';
+      
+      python.stdin.write(input);
+      python.stdin.end();
+      
+      python.stdout.on('data', (data) => { output += data.toString(); });
+      python.stderr.on('data', (data) => { error += data.toString(); });
+      
+      python.on('close', (code) => {
+        if (code === 0) resolve(output);
+        else reject(new Error(error || `Python exited with code ${code}`));
+      });
+    });
+    
+    return result.slice(0, 50000);
+  } catch (error) {
+    console.error('Failed to extract PDF text:', error.message);
+    return null;
+  }
+}
+
+/**
  * Build user message content, optionally including file attachments
  * as base64 vision content blocks for multimodal LLMs (images) or
  * as text content for other file types.
  */
-function buildUserMessageContent(userMessage, files) {
+async function buildUserMessageContent(userMessage, files) {
   if (!files || files.length === 0) return userMessage;
 
   const content = [];
@@ -53,12 +96,25 @@ function buildUserMessageContent(userMessage, files) {
           data: base64Data,
         },
       });
+    } else if (mimeType.includes('pdf')) {
+      // PDF: extract text and include it
+      const pdfText = await extractPdfText(dataUrl);
+      if (pdfText && pdfText.trim()) {
+        const truncated = pdfText.length > 45000 ? pdfText.slice(0, 45000) + '\n...(truncated)' : pdfText;
+        content.push({
+          type: 'text',
+          text: `[Attached PDF: ${file.name}]\n\nPDF Content:\n${truncated}`,
+        });
+      } else {
+        content.push({
+          type: 'text',
+          text: `[Attached file: ${file.name}] (PDF document - failed to extract text)`,
+        });
+      }
     } else {
-      // Non-image file: include as text with filename and type info
+      // Other non-image files: include as text with filename and type info
       let fileDescription = `[Attached file: ${file.name}]`;
-      if (mimeType.includes('pdf')) {
-        fileDescription += ' (PDF document)';
-      } else if (mimeType.includes('text') || mimeType.includes('plain')) {
+      if (mimeType.includes('text') || mimeType.includes('plain')) {
         fileDescription += ' (Text file)';
       } else if (mimeType.includes('json')) {
         fileDescription += ' (JSON file)';
@@ -278,9 +334,9 @@ export function registerAIRoutes(fastify) {
     // Auto context injection: read current chapter / paper structure / references
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
- 
-    // Build user message with optional file attachments
-    const userContent = buildUserMessageContent(userMessage, files);
+
+    // Build user message with optional file attachments (extracts PDF text)
+    const userContent = await buildUserMessageContent(userMessage, files);
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -367,8 +423,8 @@ export function registerAIRoutes(fastify) {
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
 
-    // Build user message with optional file attachments
-    const userContent = buildUserMessageContent(userMessage, files);
+    // Build user message with optional file attachments (extracts PDF text)
+    const userContent = await buildUserMessageContent(userMessage, files);
     // Build messages with conversation history + RAG context + current user message
     const messages = [...contextMessages, ...(ragContext.messages || []), { role: 'user', content: userContent }];
 
