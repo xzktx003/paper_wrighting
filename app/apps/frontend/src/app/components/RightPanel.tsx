@@ -24,6 +24,11 @@ interface AttachedFile {
   type: string;
   isImage: boolean;
   size: number;
+  attachmentId?: string;
+  readProgress?: number;
+  uploadPercent?: number;
+  readStatus?: 'reading' | 'uploading' | 'ready' | 'error';
+  errorMessage?: string;
 }
 
 interface Props {
@@ -38,6 +43,11 @@ interface Props {
   onClose: (id: string) => void;
   onCreate: (data: any) => void;
   onSend: (message: string, files?: AttachedFile[]) => void;
+  onUploadAttachment: (
+    file: { dataUrl: string; name: string; type: string; isImage: boolean; size: number },
+    onProgress?: (percent: number) => void
+  ) => Promise<{ id: string; name: string }>;
+  onRemoveAttachment: (attachmentId: string) => Promise<void>;
   onRename?: (id: string, newName: string) => void;
   globalSkills?: string[];
   chapterSkills?: string[];
@@ -49,7 +59,7 @@ interface Props {
   onRejectEdit?: (editId: string) => void;
 }
 
-export function RightPanel({ conversations, activeConv, loading, uploadProgress, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
+export function RightPanel({ conversations, activeConv, loading, uploadProgress, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onUploadAttachment, onRemoveAttachment, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
@@ -122,6 +132,7 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
 
   const handleSend = async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
+    if (attachedFiles.some(file => ['reading', 'uploading', 'error'].includes(file.readStatus || ''))) return;
     
     let messageToSend = inputValue.trim();
     
@@ -143,7 +154,11 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
       }
     }
     
-    onSend(messageToSend, attachedFiles.length > 0 ? attachedFiles : undefined);
+    const transientFiles = attachedFiles.filter(file => !file.attachmentId);
+    if (!messageToSend && attachedFiles.some(file => file.attachmentId)) {
+      messageToSend = '请确认你已经读取上传的 PDF，并简要说明文档主题。';
+    }
+    onSend(messageToSend, transientFiles.length > 0 ? transientFiles : undefined);
     setInputValue('');
     setAttachedFiles([]);
     // Keep selected docs for next message
@@ -198,29 +213,60 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  /** Add files to the attached files list */
+  /** Add files to the attached files list and expose local read progress. */
   const addFilesToList = (files: File[]) => {
     for (const file of files) {
       const isImage = file.type.startsWith('image/');
+      const id = 'file-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      setAttachedFiles(prev => [...prev, {
+        id, dataUrl: '', name: file.name, type: file.type, isImage, size: file.size,
+        readProgress: 0, readStatus: 'reading',
+      }]);
+
       const reader = new FileReader();
-      reader.onload = () => {
-        setAttachedFiles(prev => [...prev, {
-          id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          dataUrl: reader.result as string,
-          name: file.name,
-          type: file.type,
-          isImage,
-          size: file.size,
-        }]);
+      reader.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const readProgress = Math.round((event.loaded / event.total) * 100);
+        setAttachedFiles(prev => prev.map(item => item.id === id ? { ...item, readProgress } : item));
       };
-      // For non-image files, we still read as data URL for transmission
-      // The backend will handle them differently based on type
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        const isPdf = file.type.toLowerCase().includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+        setAttachedFiles(prev => prev.map(item => item.id === id ? {
+          ...item, dataUrl, readProgress: 100, readStatus: isPdf ? 'uploading' : 'ready', uploadPercent: 0,
+        } : item));
+        if (!isPdf) return;
+        try {
+          const attachment = await onUploadAttachment(
+            { dataUrl, name: file.name, type: file.type || 'application/pdf', isImage: false, size: file.size },
+            uploadPercent => setAttachedFiles(prev => prev.map(item => item.id === id ? { ...item, uploadPercent } : item))
+          );
+          setAttachedFiles(prev => prev.map(item => item.id === id ? {
+            ...item, attachmentId: attachment.id, uploadPercent: 100, readStatus: 'ready',
+          } : item));
+        } catch (error: any) {
+          setAttachedFiles(prev => prev.map(item => item.id === id ? {
+            ...item, readStatus: 'error', errorMessage: error?.message || 'PDF 解析失败',
+          } : item));
+        }
+      };
+      reader.onerror = () => {
+        setAttachedFiles(prev => prev.map(item => item.id === id ? {
+          ...item, readStatus: 'error',
+        } : item));
+      };
       reader.readAsDataURL(file);
     }
   };
-
-  const removeFile = (id: string) => {
+  const removeFile = async (id: string) => {
+    const file = attachedFiles.find(item => item.id === id);
+    if (file?.attachmentId) await onRemoveAttachment(file.attachmentId).catch(() => {});
     setAttachedFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const removePersistedAttachment = async (attachmentId: string) => {
+    await onRemoveAttachment(attachmentId);
+    setAttachedFiles(prev => prev.filter(file => file.attachmentId !== attachmentId));
   };
 
   /** Format file size for display */
@@ -339,6 +385,23 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                     onOpenManagement={() => setShowSkillsModal(true)}
                   />
                 </div>
+                {(activeConv.attachments || []).length > 0 && (
+                  <div style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-strong)', marginBottom: 5 }}>本对话持续使用的 PDF 上下文</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {(activeConv.attachments || []).map(attachment => (
+                        <span key={attachment.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 6px', borderRadius: 6, background: 'var(--paper)', fontSize: 10, color: 'var(--text)' }}>
+                          📄 {attachment.name}
+                          <button
+                            onClick={() => removePersistedAttachment(attachment.id)}
+                            title="从对话上下文移除"
+                            style={{ border: 0, background: 'transparent', color: 'var(--muted)', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+                          >×</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {/* File previews with loading indicator */}
                 {attachedFiles.length > 0 && (
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -376,7 +439,7 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                           padding: '4px',
                         }}
                       >
-                        {file.isImage ? (
+                        {file.isImage && file.dataUrl ? (
                           <img src={file.dataUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ fontSize: '20px', marginBottom: '2px' }}>
@@ -397,6 +460,17 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                           <div style={{ fontSize: '8px', color: 'var(--muted)', opacity: 0.7 }}>
                             {formatFileSize(file.size)}
                           </div>
+                        )}
+                        {file.readStatus === 'reading' && (
+                          <div style={{ fontSize: '9px', color: 'var(--accent)', marginTop: 2 }}>读取 {file.readProgress ?? 0}%</div>
+                        )}
+                        {file.readStatus === 'uploading' && (
+                          <div style={{ fontSize: '9px', color: 'var(--accent)', marginTop: 2 }}>
+                            {(file.uploadPercent ?? 0) < 100 ? `上传 ${file.uploadPercent ?? 0}%` : '解析中…'}
+                          </div>
+                        )}
+                        {file.readStatus === 'error' && (
+                          <div title={file.errorMessage} style={{ fontSize: '9px', color: '#dc2626', marginTop: 2 }}>解析失败</div>
                         )}
                         <button
                           onClick={() => removeFile(file.id)}
@@ -430,7 +504,9 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                     }}>
                       <span style={{ fontSize: '18px' }}>{uploadProgress?.percent === 100 ? '✅' : '⏳'}</span>
                       <span>
-                        {uploadProgress?.stage === 'preparing' ? '准备发送消息...' :
+                        {uploadProgress?.stage === 'uploading' ? '正在上传附件...' :
+                         uploadProgress?.stage === 'processing' ? '附件上传完成，正在解析 PDF...' :
+                         uploadProgress?.stage === 'sending' ? '正在发送消息...' :
                          uploadProgress?.stage === 'response' ? '等待 AI 响应...' :
                          uploadProgress?.stage === 'streaming' ? 'AI 正在生成回复...' :
                          uploadProgress?.stage === 'complete' ? '完成!' :
@@ -439,6 +515,11 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                       {uploadProgress && (
                         <span style={{ marginLeft: 'auto', fontWeight: 'bold' }}>{uploadProgress.percent}%</span>
                       )}
+                    </div>
+                  )}
+                  {uploadProgress?.stage === 'uploading' && (
+                    <div style={{ height: 4, margin: '-8px 0 8px', borderRadius: 999, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                      <div style={{ width: String(uploadProgress.percent) + '%', height: '100%', background: 'var(--accent)', transition: 'width 120ms linear' }} />
                     </div>
                   )}
                   <textarea
@@ -523,7 +604,7 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                     </button>
                     <button
                       onClick={handleSend}
-                      disabled={!inputValue.trim() && attachedFiles.length === 0}
+                      disabled={(!inputValue.trim() && attachedFiles.length === 0) || attachedFiles.some(file => ['reading', 'uploading', 'error'].includes(file.readStatus || '')) || loading}
                       style={{
                         border: 'none',
                         background: (inputValue.trim() || attachedFiles.length > 0) ? 'var(--accent)' : 'var(--bg-secondary)',

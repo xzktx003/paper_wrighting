@@ -18,6 +18,16 @@ export interface Conversation {
   mode: string;
   model?: string;
   history: { role: string; content: string }[];
+  attachments: ConversationAttachment[];
+}
+
+export interface ConversationAttachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  textLength: number;
+  created_at: string;
 }
 
 export interface AttachedFileData {
@@ -54,6 +64,41 @@ export async function deleteConversation(projectId: string, convId: string) {
   await apiDelete(`${BASE}/conversations/${projectId}/${convId}`);
 }
 
+export async function uploadConversationAttachment(
+  projectId: string,
+  convId: string,
+  file: AttachedFileData,
+  onProgress?: (percent: number) => void
+): Promise<{ ok: true; attachment: ConversationAttachment }> {
+  const token = localStorage.getItem('api_token');
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE}/conversations/${projectId}/${convId}/attachments`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      let payload: any = {};
+      try { payload = JSON.parse(xhr.responseText || '{}'); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
+      else reject(new Error(payload.error || `PDF upload failed (HTTP ${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Network error while uploading PDF'));
+    xhr.send(JSON.stringify({
+      dataUrl: file.dataUrl,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    }));
+  });
+}
+
+export async function deleteConversationAttachment(projectId: string, convId: string, attachmentId: string) {
+  await apiDelete(`${BASE}/conversations/${projectId}/${convId}/attachments/${attachmentId}`);
+}
+
 export async function sendMessage(projectId: string, convId: string, projectPath: string, userMessage: string, projectConfig: any, files?: AttachedFileData[]) {
   return apiPost(`${BASE}/ai/send`, {
     projectId, convId, projectPath, userMessage, projectConfig,
@@ -75,72 +120,87 @@ export async function sendMessageStream(
   }
 ) {
   const token = localStorage.getItem('api_token');
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
+  const hasTransientFiles = Boolean(files?.length);
   const body = JSON.stringify({
     projectId, convId, projectPath, userMessage, projectConfig,
     files: files?.map(f => ({ dataUrl: f.dataUrl, name: f.name, type: f.type, isImage: f.isImage, size: f.size })),
   });
 
-  callbacks.onProgress?.(10, 'preparing');
-  console.log('[API DEBUG] Sending message to /ai/stream');
+  // XMLHttpRequest exposes actual uploaded bytes; fetch currently does not.
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let responseLength = 0;
+    let eventBuffer = '';
+    let finished = false;
 
-  const res = await fetch(`${BASE}/ai/stream`, {
-    method: 'POST',
-    headers,
-    body,
-  });
-
-  if (!res.ok) {
-    console.error('[API DEBUG] HTTP error:', res.status, res.statusText);
-    callbacks.onError(`HTTP ${res.status}`);
-    return;
-  }
-
-  console.log('[API DEBUG] SSE stream started');
-  callbacks.onProgress?.(50, 'response');
-
-  if (!res.body) {
-    console.error('[API DEBUG] Response body is null');
-    callbacks.onError('Response body is null');
-    return;
-  }
-
-  callbacks.onProgress?.(60, 'streaming');
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    let eventType = '';
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        eventType = line.slice(7).trim();
-      } else if (line.startsWith('data: ')) {
-        const dataStr = line.slice(6);
-        try {
-          const data = JSON.parse(dataStr);
-          switch (eventType) {
-            case 'token': callbacks.onToken(data.text || ''); break;
-            case 'tool_use': callbacks.onToolUse?.(data.name, data.input); break;
-            case 'tool_result': callbacks.onToolResult?.(data.name, data.result || ''); break;
-            case 'done': callbacks.onDone(data.fullText || ''); callbacks.onProgress?.(100, 'complete'); break;
-            case 'error': callbacks.onError(data.message || 'Unknown error'); break;
-          }
-        } catch {}
-        eventType = '';
+    const dispatchEvent = (block: string) => {
+      let eventType = '';
+      let dataStr = '';
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith('event:')) eventType = line.slice(6).trim();
+        if (line.startsWith('data:')) dataStr += line.slice(5).trim();
       }
-    }
-  }
+      if (!eventType || !dataStr) return;
+      try {
+        const data = JSON.parse(dataStr);
+        switch (eventType) {
+          case 'token': callbacks.onToken(data.text || ''); break;
+          case 'tool_use': callbacks.onToolUse?.(data.name, data.input); break;
+          case 'tool_result': callbacks.onToolResult?.(data.name, data.result || ''); break;
+          case 'done':
+            finished = true;
+            callbacks.onProgress?.(100, 'complete');
+            callbacks.onDone(data.fullText || '');
+            break;
+          case 'error':
+            finished = true;
+            callbacks.onError(data.message || 'Unknown error');
+            break;
+        }
+      } catch { /* ignore malformed events */ }
+    };
+
+    const consumeResponse = (flush = false) => {
+      eventBuffer += xhr.responseText.slice(responseLength);
+      responseLength = xhr.responseText.length;
+      const blocks = eventBuffer.split(/\r?\n\r?\n/);
+      if (!flush) eventBuffer = blocks.pop() || '';
+      for (const block of blocks) dispatchEvent(block);
+      if (flush) eventBuffer = '';
+    };
+
+    xhr.open('POST', BASE + '/ai/stream');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        callbacks.onProgress?.(
+          Math.round((event.loaded / event.total) * 100),
+          hasTransientFiles ? 'uploading' : 'sending'
+        );
+      }
+    };
+    xhr.upload.onload = () => callbacks.onProgress?.(100, hasTransientFiles ? 'processing' : 'response');
+    xhr.onprogress = () => {
+      callbacks.onProgress?.(100, 'streaming');
+      consumeResponse();
+    };
+    xhr.onload = () => {
+      consumeResponse(true);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = 'HTTP ' + xhr.status + (xhr.statusText ? ': ' + xhr.statusText : '');
+        callbacks.onError(message);
+        reject(new Error(message));
+        return;
+      }
+      if (!finished) callbacks.onError('AI response ended unexpectedly');
+      resolve();
+    };
+    xhr.onerror = () => reject(new Error('Network error while uploading attachment'));
+    xhr.onabort = () => reject(new Error('Attachment upload was cancelled'));
+    callbacks.onProgress?.(0, hasTransientFiles ? 'uploading' : 'sending');
+    xhr.send(body);
+  });
 }
 
 // ── Review API ──

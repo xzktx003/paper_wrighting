@@ -2,7 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { createConversation, getConversation, listConversations, appendMessage, deleteConversation } from '../apps/backend/src/services/conversationStore.js';
+import {
+  createConversation, getConversation, listConversations, appendMessage, deleteConversation,
+  addConversationAttachment, removeConversationAttachment,
+} from '../apps/backend/src/services/conversationStore.js';
 
 describe('Conversation Store', () => {
   const originalHome = process.env.HOME;
@@ -31,6 +34,7 @@ describe('Conversation Store', () => {
     expect(conv.context_scope.type).toBe('free');
     expect(conv.mode).toBe('chat');
     expect(conv.history).toEqual([]);
+    expect(conv.attachments).toEqual([]);
   });
 
   it('listConversations returns created conversations', async () => {
@@ -56,6 +60,21 @@ describe('Conversation Store', () => {
     expect(conv.history).toHaveLength(2);
     expect(conv.history[0].role).toBe('user');
     expect(conv.history[1].content).toBe('Hi there!');
+  });
+
+  it('persists and removes conversation PDF context', async () => {
+    const list = await listConversations(projectId);
+    const convId = list[0].id;
+    const attachment = await addConversationAttachment(projectId, convId, {
+      name: 'paper.pdf', type: 'application/pdf', size: 123, text: 'Extracted paper content',
+    });
+    let conv = await getConversation(projectId, convId);
+    expect(conv.attachments[0].text).toBe('Extracted paper content');
+    expect(conv.attachments[0].textLength).toBe(23);
+
+    expect(await removeConversationAttachment(projectId, convId, attachment.id)).toBe(true);
+    conv = await getConversation(projectId, convId);
+    expect(conv.attachments).toEqual([]);
   });
 
   it('deleteConversation removes conversation', async () => {

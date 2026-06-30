@@ -37,6 +37,7 @@ export async function createConversation(projectId, { name, context_scope, activ
     mode: mode || 'chat',
     model: model || null,
     history: [],
+    attachments: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -79,6 +80,45 @@ export async function appendMessage(projectId, convId, message) {
     conv.updated_at = new Date().toISOString();
     await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
     return conv;
+  } finally {
+    release();
+  }
+}
+
+export async function addConversationAttachment(projectId, convId, attachment) {
+  const filePath = getConvPath(projectId, convId);
+  const release = await acquireLock(filePath);
+  try {
+    const conv = await getConversation(projectId, convId);
+    const item = {
+      id: attachment.id || randomUUID().slice(0, 12),
+      name: attachment.name,
+      type: attachment.type || 'application/pdf',
+      size: Number(attachment.size) || 0,
+      text: attachment.text,
+      textLength: attachment.text.length,
+      created_at: new Date().toISOString(),
+    };
+    const existing = (conv.attachments || []).filter(current => current.name !== item.name);
+    conv.attachments = [...existing, item].slice(-10);
+    conv.updated_at = new Date().toISOString();
+    await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
+    return item;
+  } finally {
+    release();
+  }
+}
+
+export async function removeConversationAttachment(projectId, convId, attachmentId) {
+  const filePath = getConvPath(projectId, convId);
+  const release = await acquireLock(filePath);
+  try {
+    const conv = await getConversation(projectId, convId);
+    const before = (conv.attachments || []).length;
+    conv.attachments = (conv.attachments || []).filter(item => item.id !== attachmentId);
+    conv.updated_at = new Date().toISOString();
+    await writeFile(filePath, JSON.stringify(conv, null, 2), 'utf-8');
+    return before !== conv.attachments.length;
   } finally {
     release();
   }

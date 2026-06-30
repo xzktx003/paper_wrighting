@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   listConversations, getConversation, createConversation,
   deleteConversation, updateConversation, sendMessage, sendMessageStream,
+  uploadConversationAttachment, deleteConversationAttachment,
   Conversation, ConversationSummary, AttachedFileData
 } from '../api/conversationApi';
 
@@ -74,6 +75,28 @@ export function useConversations(projectId: string | null) {
     }
     await refresh();
   }, [projectId, activeConv, refresh]);
+
+  const uploadAttachment = useCallback(async (file: AttachedFileData, onProgress?: (percent: number) => void) => {
+    if (!projectId || !activeConv) throw new Error('No active conversation');
+    const result = await uploadConversationAttachment(projectId, activeConv.id, file, onProgress);
+    setActiveConv(prev => prev ? {
+      ...prev,
+      attachments: [
+        ...(prev.attachments || []).filter(item => item.name !== result.attachment.name),
+        result.attachment,
+      ],
+    } : null);
+    return result.attachment;
+  }, [projectId, activeConv?.id]);
+
+  const removeAttachment = useCallback(async (attachmentId: string) => {
+    if (!projectId || !activeConv) return;
+    await deleteConversationAttachment(projectId, activeConv.id, attachmentId);
+    setActiveConv(prev => prev ? {
+      ...prev,
+      attachments: (prev.attachments || []).filter(item => item.id !== attachmentId),
+    } : null);
+  }, [projectId, activeConv?.id]);
 
   /** Non-streaming send (fallback) */
   const sendRaw = useCallback(async (message: string, projectPath: string, projectConfig: any, files?: AttachedFileData[], skipUserMessage = false) => {
@@ -213,5 +236,9 @@ export function useConversations(projectId: string | null) {
     setPendingEdits(prev => prev.map(e => e.id === editId ? { ...e, status: 'rejected' as const } : e));
   }, []);
 
-  return { conversations, activeConv, loading, pendingEdits, refresh, select, create, remove, rename, send, acceptEdit, rejectEdit };
+  return {
+    conversations, activeConv, loading, uploadProgress, pendingEdits,
+    refresh, select, create, remove, rename, send,
+    uploadAttachment, removeAttachment, acceptEdit, rejectEdit,
+  };
 }

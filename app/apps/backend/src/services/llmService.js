@@ -135,7 +135,7 @@ function normalizeOpenAIResponse(response) {
 }
  
 /** Build OpenAI messages array from systemPrompt + Anthropic-style messages */
-function buildOpenAIMessages(systemPrompt, messages) {
+export function buildOpenAIMessages(systemPrompt, messages) {
   const result = [{ role: 'system', content: systemPrompt || '' }];
   for (const msg of messages) {
     if (msg.role === 'assistant') {
@@ -158,6 +158,7 @@ function buildOpenAIMessages(systemPrompt, messages) {
         result.push({ role: 'assistant', content: msg.content });
       }
     } else if (msg.role === 'user' && Array.isArray(msg.content)) {
+      const userContent = [];
       for (const block of msg.content) {
         if (block.type === 'tool_result') {
           result.push({
@@ -165,8 +166,18 @@ function buildOpenAIMessages(systemPrompt, messages) {
             tool_call_id: block.tool_use_id,
             content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
           });
+        } else if (block.type === 'text') {
+          userContent.push({ type: 'text', text: block.text || '' });
+        } else if (block.type === 'image' && block.source?.type === 'base64') {
+          userContent.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${block.source.media_type};base64,${block.source.data}`,
+            },
+          });
         }
       }
+      if (userContent.length > 0) result.push({ role: 'user', content: userContent });
     } else {
       result.push({ role: msg.role, content: msg.content });
     }

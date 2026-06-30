@@ -2,7 +2,48 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, readFile, writeFile, rm, access } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { getToolsForMode, appendModeGuidance, executeTool } from '../apps/backend/src/routes/ai.js';
+import {
+  getToolsForMode, appendModeGuidance, executeTool, buildUserMessageContent,
+  buildConversationHistory, buildConversationAttachmentMessages,
+} from '../apps/backend/src/routes/ai.js';
+import { buildOpenAIMessages } from '../apps/backend/src/services/llmService.js';
+
+describe('AI PDF attachments', () => {
+  it('extracts PDF text into the user message sent to the model', async () => {
+    const pdf = await readFile(join(process.cwd(), 'templates/arxiv/template.pdf'));
+    const content = await buildUserMessageContent('Summarize this PDF', [{
+      dataUrl: 'data:application/pdf;base64,' + pdf.toString('base64'),
+      name: 'template.pdf',
+      type: 'application/pdf',
+      isImage: false,
+      size: pdf.length,
+    }]);
+
+    expect(content[0]).toEqual({ type: 'text', text: 'Summarize this PDF' });
+    expect(content[1].type).toBe('text');
+    expect(content[1].text).toContain('[Attached PDF: template.pdf]');
+    expect(content[1].text).toContain('A TEMPLATE FOR THE arxiv STYLE');
+
+    const openAIMessages = buildOpenAIMessages('system', [{ role: 'user', content }]);
+    expect(openAIMessages[1].role).toBe('user');
+    expect(openAIMessages[1].content.map(block => block.text).join('\n')).toContain('Summarize this PDF');
+    expect(openAIMessages[1].content.map(block => block.text).join('\n')).toContain('A TEMPLATE FOR THE arxiv STYLE');
+  });
+
+  it('keeps PDF text and prior messages as persistent conversation context', () => {
+    const conv = {
+      history: [
+        { role: 'user', content: 'What is the paper about?' },
+        { role: 'assistant', content: 'It studies testing.' },
+      ],
+      attachments: [{ name: 'paper.pdf', text: 'Persistent extracted PDF text.' }],
+    };
+    expect(buildConversationHistory(conv)).toEqual(conv.history);
+    const attachmentMessages = buildConversationAttachmentMessages(conv);
+    expect(attachmentMessages[0].content).toContain('paper.pdf');
+    expect(attachmentMessages[0].content).toContain('Persistent extracted PDF text.');
+  });
+});
 
 describe('AI conversation modes', () => {
   it('keeps Chat read-only, Agent proposal-only, and Tools fully tooled', () => {

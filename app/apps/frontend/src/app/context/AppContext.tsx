@@ -27,6 +27,11 @@ interface AppState {
   removeConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, newName: string) => Promise<void>;
   sendMessage: (message: string, files?: { id: string; dataUrl: string; name: string; type: string; isImage: boolean; size: number }[]) => Promise<void>;
+  uploadConversationAttachment: (
+    file: { dataUrl: string; name: string; type: string; isImage: boolean; size: number },
+    onProgress?: (percent: number) => void
+  ) => Promise<any>;
+  removeConversationAttachment: (attachmentId: string) => Promise<void>;
   pendingEdits: any[];
   acceptEdit: (editId: string) => void;
   rejectEdit: (editId: string) => void;
@@ -217,6 +222,8 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     removeConversation: convHook.remove,
     renameConversation: convHook.rename,
     sendMessage,
+    uploadConversationAttachment: convHook.uploadAttachment,
+    removeConversationAttachment: convHook.removeAttachment,
     pendingEdits: convHook.pendingEdits,
     acceptEdit,
     rejectEdit: convHook.rejectEdit,
@@ -229,7 +236,8 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     updateFileContent, saveFile, closeFile,
     convHook.conversations, convHook.activeConv, convHook.loading, convHook.uploadProgress,
     convHook.refresh, convHook.select, convHook.create, convHook.remove,
-    convHook.rename, convHook.pendingEdits, convHook.rejectEdit,
+    convHook.rename, convHook.uploadAttachment, convHook.removeAttachment,
+    convHook.pendingEdits, convHook.rejectEdit,
     sendMessage, acceptEdit, skills, activateSkill, terminalVisible, toggleTerminal,
   ]);
 

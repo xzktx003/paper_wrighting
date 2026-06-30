@@ -10,9 +10,7 @@ import { promises as fs } from 'fs';
 import { getProjectRoot } from '../services/projectService.js';
 import { diffLines } from 'diff';
 import { buildRagEvidence, buildRagUsageGuidance } from '../services/paperRagService.js';
-import { spawn } from 'child_process';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+import { extractPdfText } from '../services/pdfService.js';
  
 export async function resolveProjectPath(projectPath) {
   if (projectPath && projectPath.startsWith('__paper_agent__:')) {
@@ -23,51 +21,11 @@ export async function resolveProjectPath(projectPath) {
 }
  
 /**
- * Extract text content from a PDF file using Python/pdfplumber
- */
-async function extractPdfText(dataUrl) {
-  try {
-    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) return null;
-    
-    const mimeType = match[1];
-    if (!mimeType.includes('pdf')) return null;
-    
-    const base64Data = match[2];
-    const scriptPath = resolve(getProjectRoot('default'), 'apps/backend/extract_pdf.py');
-    
-    // Call Python script to extract PDF text
-    const result = await new Promise((resolve, reject) => {
-      const input = JSON.stringify({ pdf_base64: base64Data, max_chars: 50000 });
-      const python = spawn('python3', [scriptPath]);
-      let output = '';
-      let error = '';
-      
-      python.stdin.write(input);
-      python.stdin.end();
-      
-      python.stdout.on('data', (data) => { output += data.toString(); });
-      python.stderr.on('data', (data) => { error += data.toString(); });
-      
-      python.on('close', (code) => {
-        if (code === 0) resolve(output);
-        else reject(new Error(error || `Python exited with code ${code}`));
-      });
-    });
-    
-    return result.slice(0, 50000);
-  } catch (error) {
-    console.error('Failed to extract PDF text:', error.message);
-    return null;
-  }
-}
-
-/**
  * Build user message content, optionally including file attachments
  * as base64 vision content blocks for multimodal LLMs (images) or
  * as text content for other file types.
  */
-async function buildUserMessageContent(userMessage, files) {
+export async function buildUserMessageContent(userMessage, files) {
   if (!files || files.length === 0) return userMessage;
 
   const content = [];
@@ -164,6 +122,48 @@ export function appendModeGuidance(systemPrompt, mode) {
     tools: 'Mode: Tools. Use available tools for multi-step tasks, including controlled code/ file work when the user asks for it. Report tool actions and results clearly.',
   }[mode] || 'Mode: Unknown. Ask the user to choose Chat, Agent, or Tools.';
   return [systemPrompt, guidance].filter(Boolean).join('\n\n');
+}
+
+export function buildConversationHistory(conv, maxMessages = 30, maxChars = 60000) {
+  const history = (conv?.history || [])
+    .filter(message => ['user', 'assistant'].includes(message?.role) && typeof message.content === 'string' && message.content.trim())
+    .slice(-maxMessages);
+  const selected = [];
+  let chars = 0;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (chars + message.content.length > maxChars && selected.length > 0) break;
+    const remaining = Math.max(0, maxChars - chars);
+    selected.unshift({ ...message, content: message.content.slice(-remaining) });
+    chars += Math.min(message.content.length, remaining);
+    if (chars >= maxChars) break;
+  }
+  return selected;
+}
+
+export function buildConversationAttachmentMessages(conv, maxChars = 80000) {
+  const attachments = (conv?.attachments || []).filter(item => item?.text?.trim());
+  if (attachments.length === 0) return [];
+
+  const sections = [];
+  let remaining = maxChars;
+  for (const attachment of attachments.slice(-10)) {
+    if (remaining <= 0) break;
+    const header = `--- PDF: ${attachment.name} ---\n`;
+    const text = attachment.text.slice(0, Math.max(0, remaining - header.length));
+    sections.push(header + text);
+    remaining -= header.length + text.length;
+  }
+  return [
+    {
+      role: 'user',
+      content: `[System: Persistent PDF context for this conversation]\nThese PDF files were uploaded by the user and their extracted text is available below. Answer questions using this content. Do not claim that the files are unavailable or unreadable when their text appears here.\n\n${sections.join('\n\n')}`,
+    },
+    {
+      role: 'assistant',
+      content: `I have access to the persistent PDF context: ${attachments.map(item => item.name).join(', ')}.`,
+    },
+  ];
 }
  
 function normalizeCodePath(inputPath = '') {
@@ -334,6 +334,8 @@ export function registerAIRoutes(fastify) {
     // Auto context injection: read current chapter / paper structure / references
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
+    const attachmentMessages = buildConversationAttachmentMessages(conv);
+    const conversationHistory = buildConversationHistory(conv);
 
     // Build user message with optional file attachments (extracts PDF text)
     const userContent = await buildUserMessageContent(userMessage, files);
@@ -358,7 +360,13 @@ export function registerAIRoutes(fastify) {
         sendEvent('rag_context', { evidence: ragContext.evidence });
       }
       // Build messages with conversation history + RAG context + current user message
-      const messages = [...contextMessages, ...(ragContext.messages || []), { role: 'user', content: userContent }];
+      const messages = [
+        ...contextMessages,
+        ...attachmentMessages,
+        ...conversationHistory,
+        ...(ragContext.messages || []),
+        { role: 'user', content: userContent },
+      ];
       
       // DEBUG: log what we're sending to the LLM
       console.log('[AI DEBUG] systemPrompt:', JSON.stringify(systemPrompt));
@@ -422,11 +430,19 @@ export function registerAIRoutes(fastify) {
     // Auto context injection
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
     const ragContext = await buildRagMessages(resolvedPath, userMessage, { rag, projectConfig });
+    const attachmentMessages = buildConversationAttachmentMessages(conv);
+    const conversationHistory = buildConversationHistory(conv);
 
     // Build user message with optional file attachments (extracts PDF text)
     const userContent = await buildUserMessageContent(userMessage, files);
     // Build messages with conversation history + RAG context + current user message
-    const messages = [...contextMessages, ...(ragContext.messages || []), { role: 'user', content: userContent }];
+    const messages = [
+      ...contextMessages,
+      ...attachmentMessages,
+      ...conversationHistory,
+      ...(ragContext.messages || []),
+      { role: 'user', content: userContent },
+    ];
 
     try {
       if (conv.mode === 'chat') {
