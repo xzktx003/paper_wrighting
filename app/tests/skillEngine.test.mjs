@@ -59,12 +59,23 @@ describe('Skill Engine', () => {
 
   it('assemblePrompt with no skills returns base prompt', async () => {
     const prompt = assemblePrompt({ globalSkills: [], chapterSkills: [] });
-    expect(prompt).toBe('You are an academic writing assistant.');
+    expect(prompt).toBe('');
   });
 
   it('assemblePrompt includes manual skill when provided', async () => {
     const prompt = assemblePrompt({ globalSkills: [], chapterSkills: [], manualSkill: 'writing-anti-ai' });
     expect(prompt).toContain('AI');
+  });
+
+  it('assemblePrompt includes every selected conversation skill', async () => {
+    const prompt = assemblePrompt({
+      globalSkills: [],
+      chapterSkills: [],
+      manualSkills: ['writing-anti-ai', 'nature-polishing'],
+    });
+    expect(prompt.match(/\[Active Skill -/g)).toHaveLength(2);
+    expect(prompt).toContain('AI');
+    expect(prompt).toContain('Nature');
   });
 
   it('loads directory skill packages with manifest, references, and scripts metadata', async () => {

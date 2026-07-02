@@ -33,6 +33,7 @@ interface AppState {
   ) => Promise<any>;
   removeConversationAttachment: (attachmentId: string) => Promise<void>;
   setConversationRagDocuments: (documentPaths: string[]) => Promise<void>;
+  setConversationActiveSkills: (skillNames: string[]) => Promise<void>;
   pendingEdits: any[];
   acceptEdit: (editId: string) => void;
   rejectEdit: (editId: string) => void;
@@ -226,6 +227,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     uploadConversationAttachment: convHook.uploadAttachment,
     removeConversationAttachment: convHook.removeAttachment,
     setConversationRagDocuments: convHook.setRagDocuments,
+    setConversationActiveSkills: convHook.setActiveSkills,
     pendingEdits: convHook.pendingEdits,
     acceptEdit,
     rejectEdit: convHook.rejectEdit,
@@ -238,7 +240,7 @@ export function AppProvider({ children, projectId }: { children: React.ReactNode
     updateFileContent, saveFile, closeFile,
     convHook.conversations, convHook.activeConv, convHook.loading, convHook.uploadProgress,
     convHook.refresh, convHook.select, convHook.create, convHook.remove,
-    convHook.rename, convHook.uploadAttachment, convHook.removeAttachment, convHook.setRagDocuments,
+    convHook.rename, convHook.uploadAttachment, convHook.removeAttachment, convHook.setRagDocuments, convHook.setActiveSkills,
     convHook.pendingEdits, convHook.rejectEdit,
     sendMessage, acceptEdit, skills, activateSkill, terminalVisible, toggleTerminal,
   ]);

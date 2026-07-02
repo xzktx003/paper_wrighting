@@ -327,8 +327,8 @@ export function registerAIRoutes(fastify) {
       const chapterConfig = (projectConfig?.chapters || []).find(c => c.file === conv.context_scope.file);
       chapterSkills = chapterConfig?.skills || [];
     }
-    const manualSkill = conv.active_skills?.[0] || null;
-    const systemPrompt = appendModeGuidance(assemblePrompt({ globalSkills, chapterSkills, manualSkill }), conv.mode);
+    const manualSkills = Array.isArray(conv.active_skills) ? conv.active_skills : [];
+    const systemPrompt = appendModeGuidance(assemblePrompt({ globalSkills, chapterSkills, manualSkills }), conv.mode);
  
     // Auto context injection: read current chapter / paper structure / references
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);
@@ -426,9 +426,9 @@ export function registerAIRoutes(fastify) {
       const chapterConfig = (projectConfig?.chapters || []).find(c => c.file === conv.context_scope.file);
       chapterSkills = chapterConfig?.skills || [];
     }
-    const manualSkill = conv.active_skills?.[0] || null;
+    const manualSkills = Array.isArray(conv.active_skills) ? conv.active_skills : [];
 
-    const systemPrompt = appendModeGuidance(assemblePrompt({ globalSkills, chapterSkills, manualSkill }), conv.mode);
+    const systemPrompt = appendModeGuidance(assemblePrompt({ globalSkills, chapterSkills, manualSkills }), conv.mode);
 
     // Auto context injection
     const contextMessages = await buildContextMessages(conv, resolvedPath, projectConfig);

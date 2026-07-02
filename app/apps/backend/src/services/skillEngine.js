@@ -2230,9 +2230,13 @@ function inferTargetReferenceFromTask(query = '') {
   return false;
 }
  
-export function assemblePrompt({ globalSkills, chapterSkills, manualSkill }) {
+export function assemblePrompt({ globalSkills = [], chapterSkills = [], manualSkills = [], manualSkill } = {}) {
   const parts = [];
-  const hasAnySkill = (globalSkills?.length || chapterSkills?.length || manualSkill);
+  const activeManualSkills = [...new Set([
+    ...(Array.isArray(manualSkills) ? manualSkills : []),
+    manualSkill,
+  ].filter(Boolean))];
+  const hasAnySkill = (globalSkills.length || chapterSkills.length || activeManualSkills.length);
   
   // Only force academic writing assistant role when skills are actually selected
   if (hasAnySkill) {
@@ -2247,8 +2251,8 @@ export function assemblePrompt({ globalSkills, chapterSkills, manualSkill }) {
     const skill = skillRegistry.get(name);
     if (skill) parts.push(`[Chapter Skill - ${skill.display_name}]\n${skill.prompt}`);
   }
-  if (manualSkill) {
-    const skill = skillRegistry.get(manualSkill);
+  for (const name of activeManualSkills) {
+    const skill = skillRegistry.get(name);
     if (skill) parts.push(`[Active Skill - ${skill.display_name}]\n${skill.prompt}`);
   }
   return parts.join('\n\n---\n\n');

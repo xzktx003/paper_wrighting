@@ -48,6 +48,7 @@ interface Props {
   ) => Promise<{ id: string; name: string }>;
   onRemoveAttachment: (attachmentId: string) => Promise<void>;
   onSetRagDocuments: (documentPaths: string[]) => Promise<void>;
+  onSetActiveSkills: (skillNames: string[]) => Promise<void>;
   onRename?: (id: string, newName: string) => void;
   globalSkills?: string[];
   chapterSkills?: string[];
@@ -59,7 +60,7 @@ interface Props {
   onRejectEdit?: (editId: string) => void;
 }
 
-export function RightPanel({ conversations, activeConv, loading, uploadProgress, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onUploadAttachment, onRemoveAttachment, onSetRagDocuments, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
+export function RightPanel({ conversations, activeConv, loading, uploadProgress, chapters, skills, projectFiles, onSelect, onClose, onCreate, onSend, onUploadAttachment, onRemoveAttachment, onSetRagDocuments, onSetActiveSkills, onRename, globalSkills = [], chapterSkills = [], onActivateSkill = () => {}, projectPath, activeFile, pendingEdits = [], onAcceptEdit, onRejectEdit }: Props) {
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [activeTab, setActiveTab] = useState<TabType>('chat');
@@ -79,6 +80,7 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [skillSyncError, setSkillSyncError] = useState<string | null>(null);
   const [showSkillsModal, setShowSkillsModal] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,10 +88,23 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
   const citationAbortRef = useRef<AbortController | null>(null);
   const selectedRagDocs = activeConv?.rag_documents || [];
 
-  // Clear selected skills when switching tabs
+  // Conversation skills are persistent and must follow the active conversation.
   useEffect(() => {
-    setSelectedSkills([]);
-  }, [activeTab]);
+    setSelectedSkills(activeConv?.active_skills || []);
+    setSkillSyncError(null);
+  }, [activeConv?.id, activeConv?.active_skills]);
+
+  const handleSkillsChange = useCallback(async (skillNames: string[]) => {
+    const previous = selectedSkills;
+    setSelectedSkills(skillNames);
+    setSkillSyncError(null);
+    try {
+      await onSetActiveSkills(skillNames);
+    } catch (error) {
+      setSelectedSkills(previous);
+      setSkillSyncError(error instanceof Error ? error.message : 'Failed to save selected Skills.');
+    }
+  }, [onSetActiveSkills, selectedSkills]);
 
   useEffect(() => {
     citationAbortRef.current?.abort();
@@ -215,6 +230,13 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
     const transientFiles = attachedFiles.filter(file => !file.attachmentId);
     if (!messageToSend && attachedFiles.some(file => file.attachmentId)) {
       messageToSend = '请确认你已经读取上传的 PDF，并简要说明文档主题。';
+    }
+    try {
+      // Ensure the backend has the latest Skill selection before it assembles the prompt.
+      await onSetActiveSkills(selectedSkills);
+    } catch (error) {
+      setSkillSyncError(error instanceof Error ? error.message : 'Failed to save selected Skills.');
+      return;
     }
     onSend(messageToSend, transientFiles.length > 0 ? transientFiles : undefined);
     setInputValue('');
@@ -444,9 +466,14 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
                   <InlineSkillsSelector
                     skills={skills}
                     selectedSkills={selectedSkills}
-                    onChange={setSelectedSkills}
+                    onChange={handleSkillsChange}
                     onOpenManagement={() => setShowSkillsModal(true)}
                   />
+                  {skillSyncError && (
+                    <span style={{ color: 'var(--danger)', fontSize: '10px' }} title={skillSyncError}>
+                      Skill 保存失败
+                    </span>
+                  )}
                 </div>
                 {(activeConv.attachments || []).length > 0 && (
                   <div style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>

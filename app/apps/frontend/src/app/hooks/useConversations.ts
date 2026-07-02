@@ -110,6 +110,19 @@ export function useConversations(projectId: string | null) {
     }
   }, [projectId, activeConv?.id, activeConv?.rag_documents]);
 
+  const setActiveSkills = useCallback(async (skillNames: string[]) => {
+    if (!projectId || !activeConv) return;
+    const normalizedSkills = [...new Set(skillNames.map(name => name.trim()).filter(Boolean))];
+    const previous = activeConv.active_skills || [];
+    setActiveConv(prev => prev ? { ...prev, active_skills: normalizedSkills } : null);
+    try {
+      await updateConversation(projectId, activeConv.id, { active_skills: normalizedSkills });
+    } catch (error) {
+      setActiveConv(prev => prev ? { ...prev, active_skills: previous } : null);
+      throw error;
+    }
+  }, [projectId, activeConv?.id, activeConv?.active_skills]);
+
   /** Non-streaming send (fallback) */
   const sendRaw = useCallback(async (message: string, projectPath: string, projectConfig: any, files?: AttachedFileData[], skipUserMessage = false) => {
     if (!projectId || !activeConv) return;
@@ -251,6 +264,6 @@ export function useConversations(projectId: string | null) {
   return {
     conversations, activeConv, loading, uploadProgress, pendingEdits,
     refresh, select, create, remove, rename, send,
-    uploadAttachment, removeAttachment, setRagDocuments, acceptEdit, rejectEdit,
+    uploadAttachment, removeAttachment, setRagDocuments, setActiveSkills, acceptEdit, rejectEdit,
   };
 }
