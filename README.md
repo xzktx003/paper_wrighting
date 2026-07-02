@@ -1,321 +1,454 @@
-# Paper Writer / Pepper Agent
+<div align="center">
 
-Paper Writer, also called Pepper Agent in this workspace, is a local paper-writing assistant for research workflows. It focuses on evidence-grounded writing instead of generic chat: upload or import paper evidence, diagnose whether PDF/RAG content is actually usable, choose the right writing Skill from Chinese-first task entries, review AI output against evidence, and only then produce a human-applied adoption package.
+<img src="asserts/landing-page.png" alt="Paper Agent logo" width="180" />
 
-This repository is not the old Coding Kanban project. It still contains some shared development infrastructure from that history, but the active product surface is the Paper Writer backend, RAG service, Skill engine, writing workbench API, and the static Paper Writer workbench UI.
+# Paper Agent
 
-## What It Does
+**A local-first, AI-assisted workspace for writing, reviewing, and compiling research papers.**
 
-- **Paper evidence library**: Upload PDF, BibTeX, Markdown, TXT, and manual evidence notes into a project corpus.
-- **RAG/PDF diagnostics**: Detect empty evidence libraries, parsing failures, metadata-only PDFs, scanned PDFs, encrypted/damaged PDFs, missing text extraction, and no-hit evidence queries.
-- **OCR/manual text recovery**: Preview and import checked OCR/manual excerpts for PDFs that cannot provide reliable extracted text.
-- **Chinese-first Skill navigation**: Recommend paper-writing Skills from natural Chinese tasks, not internal Skill names.
-- **Task starters**: Start from common research tasks such as related work, paper planning, polishing, rebuttal, LaTeX debugging, submission material checks, statistics, slides, posters, and grant proposals.
-- **Chat / Agent / Tools routing**: Route explanation tasks to Chat, draft/rewrite/review tasks to Agent, and explicit command/plot/statistical execution tasks to Tools.
-- **Evidence review**: Check AI output for missing source numbers, unknown citations, evidence drift, unsupported bibliographic details, unsupported quantitative claims, and contradictions.
-- **Single-claim review**: Review one claim against the current evidence pack before it is used in the paper.
-- **Safe adoption package**: Produce a non-writing, human-applied adoption package with target section, citations used, manual diff guidance, and explicit "do not auto-write" constraints.
-- **Production readiness gates**: Surface whether OCR/PDF extraction and real browser E2E readiness are actually available on the current machine.
+[English](README.md) | [简体中文](README_ZH.md)
 
-## Privacy Boundary
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520.19-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Research papers are private by default.
+</div>
 
-- `papers/` is intentionally ignored by git.
-- `.openprism/`, `.paper-agent-runtime/`, `.env`, temporary coverage/codegraph folders, and local runtime state are ignored.
-- Do not commit PDFs, paper drafts, private manuscripts, API keys, tokens, SSH keys, or local machine configuration.
-- Use `.env` for local secrets and paths. `.env.example` is the safe template that can be committed.
+Paper Agent brings the files involved in a real paper—LaTeX or Markdown sources, bibliography databases, figures, PDFs, compiler logs, and evidence documents—into one project workspace. It combines a CodeMirror editor, PDF/asset preview, controlled AI assistance, reusable Skills, RAG, citation verification, workflow pipelines, and a project-bound terminal.
 
-Before pushing, verify:
+The project is designed around human review: AI-proposed edits are shown as diffs and remain pending until the user accepts them. Research projects and secrets stay local unless you explicitly configure an external model, scholarly API, image service, OCR service, or collaboration tunnel.
 
-```bash
-git check-ignore -v papers papers/torq .openprism .paper-agent-runtime .env
-git ls-tree -r --name-only github/v1.3.0 | rg '(^|/)papers(/|$)|(^|/)paperers(/|$)' || true
+> [!IMPORTANT]
+> The active application lives in [`app/`](app/). Run installation, development, build, and test commands from that directory.
+
+## Screenshots
+
+<div align="center">
+  <img src="asserts/landing-page-en.png" alt="Paper Agent projects page" width="88%" />
+  <br />
+  <sub>Project dashboard and templates</sub>
+  <br /><br />
+  <img src="asserts/editor-with-file.png" alt="Paper Agent editor workspace" width="88%" />
+  <br />
+  <sub>File tree, editor, AI workspace, terminal, and preview</sub>
+</div>
+
+## Highlights
+
+| Area | What is available |
+| --- | --- |
+| Project workspace | Multi-project dashboard, file tree, upload/download, text and binary previews, and project-local runtime data |
+| Editing | CodeMirror editing for LaTeX, Markdown, BibTeX, code, configuration files, search, tabs, and dirty-state tracking |
+| AI assistant | Chat, Agent, and Tools modes; streaming responses; image/file attachments; persistent conversations; reviewable diffs |
+| Skills | A searchable bilingual Skill catalog for writing, research, review, LaTeX debugging, citations, statistics, figures, submission, and more |
+| Compilation | `pdflatex`, `xelatex`, `lualatex`, `latexmk`, and `tectonic`; automatic main-file/engine detection; BibTeX passes; SyncTeX; PDF output |
+| Evidence and RAG | PDF/text upload, extraction and indexing, retrieval, per-conversation document selection, and evidence-oriented writing support |
+| Citation verification | Automatic main `.tex` and bibliography discovery; recursive `\input`/`\include`; CrossRef, Semantic Scholar, OpenAlex, and arXiv checks |
+| Review tools | Structured paper review, rule/LLM Anti-AI analysis, optional GPTZero integration, and evidence/claim review workflows |
+| Pipelines | Typed AI, Human, Compile, Citation, and Compute stages with retry, pause, resume, skip, and approval checkpoints |
+| Figures | Prompt generation, reference-figure context, image generation, editing, and project-local figure storage |
+| Templates | ACL plus CVPR, NeurIPS, and ICML skeletons; ZIP template upload; experimental template transfer workflow |
+| Terminal and automation | Project-bound tmux terminal, controlled command execution, and MCP tools over HTTP/SSE |
+| Collaboration | Token-based collaboration routes and real-time document infrastructure when collaboration is configured |
+
+## Architecture
+
+```text
+Browser (React + Vite + CodeMirror)
+        │ HTTP / SSE / WebSocket
+        ▼
+Fastify backend
+  ├─ projects, files, conversations, auth
+  ├─ LLM routing, Skills, review, pipelines
+  ├─ LaTeX compilation and SyncTeX
+  ├─ RAG/PDF extraction and retrieval
+  ├─ citation and bibliography verification
+  ├─ figure generation and template transfer
+  ├─ terminal/tmux and collaboration
+  └─ MCP JSON-RPC and SSE transports
+        │
+        ▼
+Local project folders (default: ./papers, ignored by Git)
 ```
 
-The second command should print nothing.
+Main technologies:
 
-## Main User Flow
-
-1. Open the Paper Writer workbench.
-2. Select or enter a project.
-3. Upload evidence or import checked OCR/manual text.
-4. Run RAG indexing and inspect document readiness.
-5. Describe the paper task in natural language.
-6. Let the workbench recommend mode, Skill, missing context, and next actions.
-7. Generate or paste AI output.
-8. Run evidence review or single-claim review.
-9. Create a safe adoption package.
-10. Manually apply the accepted draft to the paper after human review.
-
-The system should never silently overwrite paper files. Adoption packages are previews and manual application guides, not automatic write operations.
+- Frontend: React 18, TypeScript, Vite 8, CodeMirror 6, KaTeX, xterm.js.
+- Backend: Node.js, Fastify 5, WebSocket/SSE, YAML-based Skills.
+- Document toolchain: TeX Live/TinyTeX or Tectonic, BibTeX, SyncTeX, optional Pandoc/Poppler/OCR tools.
+- External integrations are optional and configured explicitly.
 
 ## Quick Start
 
-### Requirements
+### 1. Prerequisites
 
 Required:
 
-- Node.js 20 or newer.
-- pnpm, matching the workspace package manager.
+- Node.js 20.19+ (Node.js 22 LTS is recommended).
+- npm 9+.
+- Git.
 
-Recommended for production-quality PDF/OCR handling:
+Required for local PDF compilation—install at least one:
 
-- `pdftotext` for PDF text extraction.
-- `tesseract` for OCR.
-- `ocrmypdf` for OCR recovery workflows.
-- Playwright browser dependencies for real browser E2E validation.
+- TeX Live/TinyTeX providing `pdflatex`, `xelatex`, or `lualatex`.
+- `latexmk` for automated multi-pass builds.
+- Tectonic as a lightweight alternative.
 
-Current known gate on this machine: Chromium cannot start until the system library `libatk-1.0.so.0` is installed.
+Useful optional tools:
 
-### Install
+- `tmux` for the persistent integrated terminal.
+- `pandoc` for Markdown export/conversion.
+- `pdftotext` (Poppler) for reliable PDF extraction.
+- `tesseract` and `ocrmypdf` for scanned PDFs.
+- Playwright/Chromium dependencies for GPTZero automation and browser E2E tests.
+
+> [!NOTE]
+> Some Conda `texlive-core` builds provide engines but omit LaTeX formats and packages. If `pdflatex.fmt` or common `.sty` files are missing, install a complete TeX Live/TinyTeX distribution instead of relying on an engine-only package.
+
+### 2. Clone and install
 
 ```bash
-pnpm install
+git clone https://github.com/xzktx003/paper_wrighting.git
+cd paper_wrighting/app
+npm ci
 ```
 
-### Configure
-
-Copy the environment template:
+### 3. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Important environment variables:
+At minimum, configure an OpenAI-compatible model if you want AI features:
 
-| Variable | Purpose |
-| --- | --- |
-| `HOST` | Backend bind host. Use `0.0.0.0` for LAN access. |
-| `PORT` / `SERVER_PORT` | Backend API port used by the dev script. |
-| `WEB_HOST` | Frontend bind host. Use `0.0.0.0` for LAN access. |
-| `WEB_PORT` | Frontend dev server port. |
-| `WEB_BACKEND_HOST` / `WEB_BACKEND_PORT` | Frontend proxy target. |
-| `OPENPRISM_DATA_DIR` | Backend data directory. Default is outside this repo. |
-| `OPENPRISM_PROJECTS_DIR` | Project directory used by OpenPrism/Paper Writer settings. |
-| `OPENPRISM_API_TOKEN` | Optional API token for the static workbench UI. |
-| `OPENPRISM_LLM_*` | OpenAI-compatible LLM provider configuration. |
-| `OPENPRISM_MINERU_TOKEN` | Optional MinerU integration token. |
+```dotenv
+OPENPRISM_LLM_BASE_URL=https://api.openai.com/v1
+OPENPRISM_LLM_API_KEY=replace-with-your-key
+OPENPRISM_LLM_MODEL=gpt-4o
 
-Do not commit `.env`.
-
-### Run Development Servers
-
-Recommended:
-
-```bash
-./scripts/restart-dev.sh
+PORT=8787
+OPENPRISM_COLLAB_TOKEN_SECRET=replace-with-a-random-secret
 ```
 
-The script starts the backend and frontend, binds the frontend to `0.0.0.0`, and prints local/network URLs.
+The editor, project manager, compilation, terminal, and local cross-check features can run without an LLM key. AI writing, deep review, and prompt generation require a configured model endpoint.
 
-You can also run:
+### 4. Start development mode
+
+The Vite proxy defaults to the host configured in the repository. For a local machine, set the API origin explicitly:
 
 ```bash
-pnpm dev
+OPENPRISM_API_ORIGIN=http://localhost:8787 npm run dev
 ```
 
-Open the Paper Writer workbench:
+Open:
+
+- Frontend: <http://localhost:5173>
+- Backend health check: <http://localhost:8787/api/health>
+
+To run either side separately:
+
+```bash
+npm run dev:backend
+OPENPRISM_API_ORIGIN=http://localhost:8787 npm run dev:frontend
+```
+
+### 5. Build and run production mode
+
+```bash
+npm run build
+npm start
+```
+
+The Fastify server serves the built frontend and API from the same port:
 
 ```text
-http://<host>:<web-port>/writing-workbench
+http://localhost:8787
 ```
 
-The same static page is also available as:
+## Configuration Reference
+
+The committed template is [`app/.env.example`](app/.env.example). Keep real secrets in `app/.env`; it is ignored by Git.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `OPENPRISM_LLM_BASE_URL` | For AI | OpenAI-compatible API base URL |
+| `OPENPRISM_LLM_API_KEY` | For AI | Model provider API key |
+| `OPENPRISM_LLM_MODEL` | For AI | Default model name |
+| `PORT` / `OPENPRISM_PORT` | No | Backend port; default `8787` |
+| `OPENPRISM_FRONTEND_PORT` / `VITE_PORT` | No | Vite development port; default `5173` |
+| `OPENPRISM_API_ORIGIN` | Dev only | Vite proxy target, e.g. `http://localhost:8787` |
+| `OPENPRISM_DATA_DIR` | No | Managed project storage; default is repository-level `papers/` |
+| `OPENPRISM_PROJECTS_DIR` | Feature-specific | Base directory used by project-oriented drawing/settings flows |
+| `OPENPRISM_API_TOKEN` | No | Enables Bearer-token protection for API routes |
+| `SEMANTIC_SCHOLAR_API_KEY` | No | Improves Semantic Scholar quota for citation verification |
+| `OPENPRISM_MINERU_API_BASE` | No | MinerU endpoint for PDF conversion |
+| `OPENPRISM_MINERU_TOKEN` | No | MinerU access token |
+| `OPENPRISM_DRAW_IMAGE_API_BASE` | No | Image-generation gateway override |
+| `OPENPRISM_COLLAB_TOKEN_SECRET` | Production | Signs collaboration tokens; replace the development value |
+| `OPENPRISM_COLLAB_REQUIRE_TOKEN` | No | Require collaboration token verification |
+| `OPENPRISM_COLLAB_TOKEN_TTL` | No | Collaboration token lifetime in seconds |
+| `OPENPRISM_TUNNEL` | No | `false`, `ngrok`, `cf`, or `localtunnel` |
+| `NGROK_AUTHTOKEN` | For ngrok | ngrok authentication token |
+
+If `OPENPRISM_API_TOKEN` is enabled, enter the same token in the web UI so requests include `Authorization: Bearer <token>`.
+
+## User Guide
+
+### Create or import a project
+
+1. Open the project dashboard.
+2. Create a project from a built-in template, create an empty project, or import an existing folder/archive.
+3. Open the project to enter the editor.
+4. Use the file tree to create, rename, upload, download, or delete files.
+5. Keep the compilation entry file (`main.tex`, `paper.tex`, or `manuscript.tex`) in the project, or select a source containing `\documentclass` when compiling.
+
+Managed projects are stored under `OPENPRISM_DATA_DIR`. By default this is `papers/` at the repository root, which is intentionally ignored by Git.
+
+### Edit, compile, and preview
+
+1. Open a `.tex` or Markdown file from the file tree.
+2. Edit it in the center editor and save the change.
+3. Choose an engine or use **Auto**.
+4. Compile the current file or the full paper.
+5. Inspect the PDF and compiler log. Compilation output is kept under the project's `.compile/output/` directory.
+6. Use SyncTeX navigation where supported to move between source and PDF positions.
+
+The full-paper compiler detects a main source, chooses a compatible engine, runs bibliography and repeated LaTeX passes when necessary, and preserves a downloadable PDF.
+
+### Use Chat, Agent, and Tools modes
+
+- **Chat**: explanation and discussion without proposing file changes.
+- **Agent**: drafting, rewriting, review, and proposed edits. Changes appear as diffs for acceptance or rejection.
+- **Tools**: tasks that need controlled command execution or project tools.
+
+Recommended flow:
+
+1. Create or select a conversation.
+2. Set its scope to a chapter, global paper context, or free context.
+3. Open **Select Skill** and choose the relevant Skill.
+4. Optionally attach PDFs/images or select RAG documents.
+5. Describe the target file, intended change, constraints, and expected output.
+6. Review every proposed diff before accepting it.
+
+### Use Skills effectively
+
+Skills encode task-specific instructions and safety boundaries. The catalog includes academic writing, paper planning, literature review/search, polishing, rebuttal, reviewer response, LaTeX debugging, bibliography management, citation verification, statistical analysis, figure design, slides, posters, grants, and submission checks.
+
+Good prompt:
 
 ```text
-/paper-writer-workbench.html
+Use the Literature Review Skill. Revise sec/2.related-work.tex using only the
+selected RAG documents. Preserve existing citation keys, identify the research
+gap explicitly, and return a reviewable diff rather than replacing the file.
 ```
 
-## Workbench API
+### Build a RAG evidence library
 
-The key endpoint is:
+1. Open **RAG** in the right panel.
+2. Upload PDFs, BibTeX, Markdown, plain text, or supported research material.
+3. Check extraction/indexing status. Scanned or protected PDFs may require OCR or manual text import.
+4. Search the corpus to confirm that useful passages are retrievable.
+5. In Chat, select the documents that should remain attached to the conversation.
+6. Ask the model to cite or distinguish evidence instead of inventing bibliographic details.
 
-```http
-POST /api/projects/:id/writing-workbench/context
+Do not assume a PDF is usable merely because upload succeeded. Verify extracted text and search hits first.
+
+### Verify citations
+
+Open **Citations** in the right panel:
+
+- **Cross-Check Only** performs a fast local comparison between citations in the paper and entries in the bibliography.
+- **Verify All Citations** also queries scholarly services and can take longer.
+
+Paper Agent detects the same main `.tex` file used for compilation, recursively follows `\input` and `\include`, and resolves bibliography declarations such as:
+
+```tex
+\bibliography{references}
+\addbibresource{bib/library.bib}
 ```
 
-Example request:
+It reports citations missing from `.bib`, bibliography entries never cited by the paper, DOI/title matches, confidence, and provider errors. External verification has a visible timer, a client timeout, and a Stop action. A Semantic Scholar API key is recommended for larger bibliographies.
 
-```json
-{
-  "task": "帮我根据这些 PDF 写 related work 和 research gap",
-  "evidenceQuery": "retrieval augmented generation writing limitation research gap",
-  "contextAnswers": {
-    "target_section_or_file": "chapters/related_work.tex",
-    "paper_claims": "本文强调可审查的 RAG 证据写作流程。"
-  },
-  "skillLimit": 5,
-  "evidenceLimit": 3
-}
+### Generate figures
+
+1. Open **Draw**.
+2. Load relevant `.tex` content or describe the intended figure.
+3. Optionally attach reference figures from project PDFs.
+4. Generate and review the image prompt.
+5. Configure the image endpoint/key in the panel and generate the image.
+6. Save the result into the project's `draw/` folder and reference it from LaTeX.
+
+Generated figures should still be checked for labels, factual accuracy, typography, accessibility, and journal requirements.
+
+### Review and Anti-AI tools
+
+- **Review** produces structured manuscript feedback.
+- **Anti-AI / Quick** applies rule-based signals.
+- **Anti-AI / Deep** uses the configured LLM.
+- **GPTZero** requires its browser automation dependencies and is an external service.
+
+AI-detection scores are heuristic and should not be treated as proof of authorship.
+
+### Run a Pipeline
+
+Open **Pipeline** and choose a preset or configured workflow. Pipelines may contain:
+
+- AI stages for Skill-guided generation.
+- Human checkpoints for approve/reject/edit/skip decisions.
+- Compile stages for PDF validation.
+- Citation stages for bibliography checks.
+- Compute stages for controlled commands.
+
+Use pause/resume, retry with feedback, and stage-level logs to keep long workflows reviewable.
+
+### Use the integrated terminal
+
+Open the bottom terminal panel. When `tmux` is installed, Paper Agent associates terminal sessions with the project so they can survive UI refreshes. Treat terminal access as local shell access: do not expose it publicly without authentication and transport security.
+
+### Template transfer
+
+Template transfer supports direct LaTeX migration and a MinerU-assisted PDF path. It can copy assets, map source sections, attempt compilation fixes, and optionally inspect layout. This feature is experimental: always compare the output against the source and the target venue's official template.
+
+## MCP Integration
+
+Paper Agent exposes MCP-compatible JSON-RPC and SSE endpoints:
+
+```text
+POST /api/mcp
+GET  /api/mcp/sse
+POST /api/mcp/message
+GET  /api/mcp/info
 ```
 
-Related endpoints:
+Available tools include:
 
-```http
-POST /api/projects/:id/writing-workbench/review-answer
-POST /api/projects/:id/writing-workbench/claim-review
-POST /api/projects/:id/writing-workbench/adoption-package
-```
+- `paper_search`
+- `verify_citations`
+- `cross_check_citations`
+- `compile_latex`
+- `read_project_file`
+- `ai_polish`
+- `ai_review`
 
-RAG and recovery endpoints:
+With the server running, open `/api/mcp/info` for generated endpoint examples. Protect MCP endpoints with `OPENPRISM_API_TOKEN` before exposing them outside a trusted network.
 
-```http
-POST /api/projects/:id/rag/upload
-POST /api/projects/:id/rag/index
-GET  /api/projects/:id/rag/search?q=<query>&limit=8
-GET  /api/projects/:id/rag/documents
-DELETE /api/projects/:id/rag/documents?path=<path>
+## Templates and Skills
 
-POST /api/projects/:id/rag/text-import/preview
-POST /api/projects/:id/rag/text-import
-GET  /api/projects/:id/rag/ocr-jobs
-POST /api/projects/:id/rag/ocr-jobs
-POST /api/projects/:id/rag/ocr-jobs/run
-```
+Built-in template manifest:
 
-Skill navigation endpoints:
+- ACL
+- CVPR skeleton
+- NeurIPS skeleton
+- ICML skeleton
 
-```http
-GET  /api/skills/:name
-GET  /api/skills/navigation
-POST /api/skills/recommend
-POST /api/skills/navigation
-```
+An arXiv template is also present in the template assets. Custom ZIP templates can be uploaded through the template API/UI and are added to the local manifest.
 
-## Skills
+Skill definitions live in [`app/apps/backend/skills/`](app/apps/backend/skills/). Each YAML file can define its name, description, prompt, category, inputs, outputs, and task guidance. Project-specific Skill directories can be loaded for non-managed project paths.
 
-Built-in Paper Writer Skills include:
+## Development and Testing
 
-- `literature-review`: related work, survey, research gap.
-- `nature-academic-search`: academic search and query expansion.
-- `paper-planning`: paper outline, story line, roadmap, reviewer risk.
-- `writing-introduction`: introduction logic, motivation, contribution.
-- `writing-methodology`: method, algorithm, notation, proof sketch.
-- `writing-results`: results, experiments, datasets, ablation text.
-- `writing-discussion`: discussion, limitations, threats to validity.
-- `writing-abstract`: abstract, title, highlights, keywords.
-- `writing-conclusion`: conclusion and future work.
-- `writing-polish`: local polish, translation, tense, compression, AI-trace reduction.
-- `evidence-review`: AI output review, claim/citation grounding, safe adoption.
-- `latex-debugging`: LaTeX/Overleaf/latexmk error triage.
-- `reference-management`: BibTeX, citation keys, DOI, references cleanup.
-- `nature-figure`: figures, captions, flow diagrams, visual abstracts.
-- `statistical-analysis`: t-test, p-value, mean/std, confidence interval.
-- `conference-submission`: anonymity, checklist, cover letter, statements, supplementary material.
-- `reviewer-response`: rebuttal, response table, revision plan, over-promise checks.
-- `grant-proposal`: research proposal and grant writing.
-- `nature-paper2ppt`: slides, Beamer, conference talk.
-- `poster-design`: academic poster layout and content hierarchy.
-
-The UI should show Chinese primary titles and English subtitles, with hover/focus guidance for inputs, outputs, best-for, not-for, risk boundaries, and safe first prompts.
-
-## Safety Model
-
-Paper Writer deliberately separates "AI can draft" from "AI can write into the paper".
-
-Important rules:
-
-- Citation-sensitive tasks require an evidence pack.
-- Evidence-based answers must use source numbers such as `[1]`, `[2]`.
-- Unknown source numbers block adoption.
-- Evidence pack drift blocks adoption.
-- Unsupported author/year/venue/DOI claims are flagged.
-- Unsupported quantitative claims are flagged.
-- Adoption packages always set `canWriteToPaper: false` and `willWrite: false`.
-- The user manually applies any accepted text after review.
-
-## Validation
-
-Run the related test suite:
+From `app/`:
 
 ```bash
-node --test \
-  scripts/playwright-preflight.test.mjs \
-  scripts/playwright-e2e-acceptance.test.mjs \
-  app/apps/backend/src/services/__tests__/paperRagService.test.js \
-  app/apps/backend/src/services/__tests__/skillEngine.test.js \
-  app/apps/backend/src/services/__tests__/paperWorkbenchService.test.js \
-  app/apps/backend/src/routes/__tests__/ai.test.js \
-  app/apps/backend/src/routes/__tests__/paperAgentE2e.test.js \
-  app/apps/backend/src/routes/__tests__/paperRag.test.js \
-  app/apps/backend/src/routes/__tests__/skills.test.js \
-  app/apps/backend/src/routes/__tests__/paperWorkbench.test.js \
-  app/apps/backend/src/routes/__tests__/workbenchPrototype.test.js
+# Frontend production build
+npm run build
+
+# Main Vitest suite
+npx vitest run
+
+# A focused test file
+npx vitest run tests/project-page-sidebar.test.js
+
+# Browser E2E tests (requires Playwright browser/system dependencies)
+npm run test:e2e
 ```
 
-Static workbench check:
+Useful checks:
 
 ```bash
-node - <<'NODE'
-const { readFileSync } = require('fs');
-const html = readFileSync('app/apps/frontend/public/paper-writer-workbench.html', 'utf8');
-const required = [
-  'productionGates', '生产验收 Gate',
-  'writing-polish', '论文润色 / 语言编辑',
-  'evidence-review', '审查 AI 输出 / 证据核对',
-  'paper-planning', '论文规划 / Outline',
-  'latex-debug', '修复 LaTeX / Overleaf 报错',
-  'reviewer-response', '审稿回复 / Rebuttal',
-  'submission-materials', '投稿材料 / 声明检查',
-  'contenteditable="true"',
-  'data-import-text-evidence'
-];
-const missing = required.filter(item => !html.includes(item));
-const forbidden = ['importTextEvidenceFromPrompt', 'window.prompt', 'window.confirm', 'window.alert'].filter(item => html.includes(item));
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
-new Function(scripts[0]);
-console.log(JSON.stringify({ scripts: scripts.length, missing, forbidden }, null, 2));
-if (missing.length || forbidden.length || scripts.length !== 1) process.exit(1);
-NODE
-```
-
-General checks:
-
-```bash
+curl http://localhost:8787/api/health
 git diff --check
-git check-ignore -v papers papers/torq .openprism .paper-agent-runtime .env
 ```
 
-Production runtime preflight:
-
-```bash
-command -v ocrmypdf || true
-command -v tesseract || true
-command -v pdftotext || true
-node scripts/playwright-preflight.mjs
-```
-
-## Current Production Status
-
-The code path has automated coverage for the Paper Writer workbench, RAG recovery, Skill routing, evidence review, claim review, and non-writing adoption packages.
-
-This machine is not yet production-release ready until these environment gates pass:
-
-- `ocrmypdf` available.
-- `tesseract` available.
-- `pdftotext` available.
-- Playwright Chromium starts successfully with all required system libraries.
-- Full real-browser E2E acceptance passes in an environment with Playwright browser dependencies.
+Some integration tests expect a running backend and test fixtures. Start the expected server/port before treating connection-refused integration failures as product regressions.
 
 ## Repository Layout
 
 ```text
-app/apps/backend/                 Paper Writer backend
-app/apps/backend/src/routes/      API routes
-app/apps/backend/src/services/    RAG, Skill, workbench, review, adoption services
-app/apps/backend/skills/          YAML Skill definitions
-app/apps/frontend/public/         Static Paper Writer workbench
-docs/                             Product notes, UX contract, function/debug lists
-memories/repo/                    Repository-level function/debug memory
-scripts/                          Dev, preflight, and E2E scripts
+paper_wrighting/
+├─ app/
+│  ├─ apps/backend/          Fastify API, services, Skills, compilation, RAG
+│  ├─ apps/frontend/         React/Vite application
+│  ├─ templates/             Built-in LaTeX templates
+│  ├─ tests/                 Vitest and Playwright tests
+│  ├─ .env.example           Safe configuration template
+│  └─ package.json           Active workspace scripts
+├─ asserts/                  README screenshots
+├─ docs/                     Design, UX, function, and debugging notes
+├─ scripts/                  Repository tooling and acceptance helpers
+├─ papers/                   Local projects (ignored by Git)
+├─ README.md                 English documentation
+└─ README_ZH.md              Simplified Chinese documentation
 ```
 
-Legacy root-level `apps/`, `packages/`, and some scripts may still exist from the earlier Coding Kanban foundation. Treat the Paper Writer files under `app/apps/backend`, `app/apps/frontend/public/paper-writer-workbench.html`, and `docs/paper_writer_ux_contract.md` as the current product surface unless a task explicitly says otherwise.
+## Troubleshooting
 
-## More Documentation
+### The frontend cannot reach the backend
 
-- [Paper Writer UX Contract](docs/paper_writer_ux_contract.md)
-- [Function List](docs/func_list.md)
-- [Debug List](docs/debug_list.md)
+Start development mode with the correct proxy target:
 
+```bash
+OPENPRISM_API_ORIGIN=http://localhost:8787 npm run dev
+```
+
+Confirm `curl http://localhost:8787/api/health` returns `{"ok":true}`.
+
+### AI model or model list fails
+
+Check `OPENPRISM_LLM_BASE_URL`, key, and model name. The base URL must be the API root expected by the provider, commonly ending in `/v1`.
+
+### `pdflatex.fmt` or a `.sty` file is missing
+
+Your TeX installation is incomplete. Install a complete TeX Live/TinyTeX distribution, regenerate formats, or install the missing CTAN package with `tlmgr`. Restart Paper Agent after changing `PATH`.
+
+### Citation verification is slow
+
+Use **Cross-Check Only** for immediate local results. Full verification contacts several external services and is affected by network latency and rate limits. Configure `SEMANTIC_SCHOLAR_API_KEY`, watch the elapsed timer, or use Stop. Large entries are processed with bounded concurrency and per-entry timeouts.
+
+### A bibliography is reported missing
+
+Ensure the detected main file contains `\bibliography{...}` or `\addbibresource{...}` and that the referenced path is inside the project. The Citations panel displays the detected main file and bibliography paths.
+
+### PDF/RAG extraction returns no useful text
+
+Try `pdftotext`, OCR, or manual text import. Scanned, encrypted, malformed, and image-only PDFs may not contain a usable text layer.
+
+### The UI still shows an older version
+
+Run `npm run build`, restart the backend, and hard-refresh the browser. Production assets are served from `app/apps/frontend/dist/`.
+
+## Privacy and Security
+
+- `papers/`, `.env`, runtime state, caches, logs, and build artifacts are ignored by Git.
+- Never commit manuscripts, reviewer material, private PDFs, tokens, or API keys.
+- AI/model requests and optional scholarly/image/OCR services send the requested content to the configured provider.
+- Set `OPENPRISM_API_TOKEN` and a strong collaboration secret before LAN or internet exposure.
+- Use HTTPS through a trusted reverse proxy or tunnel for remote access.
+- Review AI output, citations, generated figures, commands, and proposed diffs before adoption.
+
+## Contributing
+
+Issues and focused pull requests are welcome:
+
+1. Create a branch.
+2. Keep changes scoped and preserve user project data.
+3. Add or update tests for behavior changes.
+4. Run the relevant Vitest suite and frontend build.
+5. Describe configuration, migration, and security implications in the pull request.
+
+Repository: <https://github.com/xzktx003/paper_wrighting>
+
+## License
+
+Released under the [MIT License](LICENSE).

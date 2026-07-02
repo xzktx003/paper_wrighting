@@ -1,747 +1,432 @@
 <div align="center">
 
-<img src="asserts/landing-page.png" alt="Paper Agent" width="200"/>
+<img src="asserts/landing-page.png" alt="Paper Agent 标志" width="180" />
 
 # Paper Agent
 
-### Paper Agent — AI 驱动的学术写作平台
+**一个本地优先、由 AI 辅助的科研论文写作、审阅与编译工作台。**
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[English](README.md) | [简体中文](README_ZH.md)
 
-[中文](README_ZH.md) | [English](README.md)
-
----
-
-### 研究软件投稿材料
-
-Paper Agent 正在为 Software: Practice and Experience (SPE) 期刊投稿做准备。
-论文草稿和相关材料位于 [`docs/spe/`](docs/spe/)。
-
----
-
-### ✨ 核心特性一览
-
-| 🤖 AI 智能助手 | ✍️ 编译与预览 | 📚 模板系统 |
-|:---:|:---:|:---:|
-| Chat / Agent 双轨历史<br>Tools 多轮工具调用 | TexLive / Tectonic / Auto<br>PDF 预览与下载 | ACL / CVPR / NeurIPS / ICML<br>模板一键切换 |
-
-| 🔄 模板转换 | ⚡ Pipeline 管线 | 🔍 Anti-AI 检测 |
-|:---:|:---:|:---:|
-| 经典模式 (LaTeX→LaTeX) / MinerU 模式 (PDF→MD→LaTeX)<br>LLM 驱动迁移 + 自动编译修复 + VLM 排版检查 | 多阶段工作流引擎<br>AI / Human / Compile / Citation | 规则扫描 + LLM 深度分析<br>+ GPTZero 第三方检测 |
-
-| 🔧 高级编辑 | 🗂️ 项目管理 | ⚙️ 灵活配置 |
-|:---:|:---:|:---:|
-| AI 自动补全 / Diff / 诊断 | 多项目管理 + 文件树 + 上传 | OpenAI 兼容端点<br>本地部署数据安全 |
-
-| 🔍 检索能力 | 📊 图表生成 | 🧠 智能识别 |
-|:---:|:---:|:---:|
-| WebSearch / PaperSearch | 表格直出图表 | 公式/图表智能识别 |
-
-| 👥 实时协作 | 📝 同行评审 | |
-|:---:|:---:|:---:|
-| 多人协同编辑<br>光标同步与在线管理 | AI 审稿报告 / 一致性检查<br>缺失引用 / 编译摘要 | |
-
-| 📚 引用验证 | 🔌 MCP 服务 | |
-|:---:|:---:|:---:|
-| CrossRef / Semantic Scholar / OpenAlex<br>三库交叉验证 + 幻觉引用检测 | 标准 MCP 协议<br>7 大工具对外暴露 | |
-
----
-
-[![快速开始](https://img.shields.io/badge/📖-快速开始-blue?style=for-the-badge)](#-快速开始)
-[![功能概览](https://img.shields.io/badge/✨-功能概览-orange?style=for-the-badge)](#-核心功能)
-[![贡献指南](https://img.shields.io/badge/🤝-贡献指南-purple?style=for-the-badge)](#-贡献指南)
-<a href="#wechat-group" target="_self">
-  <img alt="WeChat" src="https://img.shields.io/badge/💬-微信群-07C160?style=for-the-badge" />
-</a>
+[![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520.19-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify)](https://fastify.dev/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
 
-## 📢 最新动态
+Paper Agent 将真实论文项目涉及的 LaTeX/Markdown 源文件、参考文献库、图片、PDF、编译日志和证据文档统一放进一个项目工作区。它集成了 CodeMirror 编辑器、PDF 与资源预览、可控 AI 辅助、可复用 Skills、RAG、引文核验、工作流 Pipeline，以及与项目目录绑定的终端。
 
-> [!TIP]
-> 🆕 <strong>2025-05 · 引用验证引擎 & MCP 协议标准化</strong><br>
-> 新增引用验证引擎，对接 CrossRef / Semantic Scholar / OpenAlex 三大 API，支持 DOI 精确验证和标题模糊搜索，杜绝幻觉引用。新增 MCP (Model Context Protocol) 服务，将 Paper Agent 核心能力以标准 MCP 工具暴露，兼容 Claude Desktop / Cursor / Copilot 等外部 AI Agent。
+项目强调“由人确认”：AI 提议的文件修改会先以差异形式展示，只有用户接受后才会写入。论文项目与密钥默认保留在本机；只有在你主动配置外部模型、学术数据库、图片生成、OCR 或协作隧道时，相关数据才可能发送至对应服务。
 
-> [!TIP]
-> 🆕 <strong>2025-05 · Anti-AI 检测 & Pipeline 管线</strong><br>
-> 新增 Anti-AI 检测面板，支持规则扫描（Quick）、LLM 深度分析（Deep）和 GPTZero 第三方检测三种模式。Pipeline 2.0 管线系统上线，支持多阶段工作流编排（AI / Human / Compile / Citation / Compute），内置 5 种预设管线模板。
+> [!IMPORTANT]
+> 当前应用位于 [`app/`](app/) 目录。安装、开发、构建和测试命令都应在该目录中执行。
 
-> [!WARNING]
-> 🚧 <strong>模板转换功能仍在测试中</strong><br>
-> 模板转换（Template Transfer）功能目前处于测试阶段，可能存在已知或未知的 Bug。如遇到问题，欢迎在 [Issues](https://github.com/xzktx003/paper_wrighting/issues) 中反馈。
-
-> [!TIP]
-> 🆕 <strong>2025-02 · 模板转换（双模式）</strong><br>
-> 支持两种转换模式：经典模式（LaTeX→LaTeX 直接迁移）和 MinerU 模式（PDF→Markdown→LaTeX，通过 MinerU API 解析）。两种模式均支持 LLM 驱动的内容迁移、自动编译错误修复，以及可选的 VLM 排版检查。
-
-> [!TIP]
-> 🆕 <strong>2025-02 · 实时协作上线</strong><br>
-> 支持多人同时编辑同一文档，基于 CRDT 实现光标同步与冲突自动解决。当前版本需要公网服务器部署，通过邀请令牌邀请远程协作者加入。
-
----
+## 界面预览
 
 <div align="center">
-<br>
-<img src="asserts/landing-page-en.png" alt="Paper Agent 主页面" width="90%"/>
-<br>
-<sub>✨ 主页面预览：三栏工作区 + 编辑器 + 预览</sub>
-<br><br>
+  <img src="asserts/landing-page-en.png" alt="Paper Agent 项目首页" width="88%" />
+  <br />
+  <sub>项目面板与论文模板</sub>
+  <br /><br />
+  <img src="asserts/editor-with-file.png" alt="Paper Agent 编辑工作区" width="88%" />
+  <br />
+  <sub>文件树、编辑器、AI 工作区、终端与预览</sub>
 </div>
 
----
+## 功能概览
 
-## ✨ 核心功能
+| 模块 | 当前能力 |
+| --- | --- |
+| 项目工作区 | 多项目面板、文件树、上传/下载、文本与二进制文件预览、项目级运行数据 |
+| 编辑器 | 使用 CodeMirror 编辑 LaTeX、Markdown、BibTeX、代码及配置文件，支持搜索、标签页和未保存状态提示 |
+| AI 助手 | Chat、Agent、Tools 三种模式，流式响应，图片/文件附件，会话持久化，以及修改差异确认 |
+| Skills | 可搜索的中英双语 Skill 库，覆盖论文写作、调研、审稿、LaTeX 排错、引文、统计、绘图与投稿等场景 |
+| 论文编译 | 支持 `pdflatex`、`xelatex`、`lualatex`、`latexmk`、`tectonic`，自动发现主文件和引擎，执行 BibTeX 编译并生成 SyncTeX/PDF |
+| 证据库与 RAG | 上传 PDF/文本、提取与索引、检索、按会话选择文档，为有依据的写作提供上下文 |
+| 引文核验 | 自动识别主 `.tex` 与其引用的 `.bib`，递归处理 `\input`/`\include`，并查询 CrossRef、Semantic Scholar、OpenAlex 和 arXiv |
+| 论文检查 | 结构化审稿、规则/LLM Anti-AI 分析、可选 GPTZero，以及论点和证据检查工作流 |
+| Pipeline | AI、Human、Compile、Citation、Compute 等阶段，支持重试、暂停、继续、跳过与人工审批节点 |
+| 科研绘图 | 提示词生成、参考图上下文、图片生成与编辑，并将结果保存到当前项目 |
+| 模板 | 内置 ACL，并提供 CVPR、NeurIPS、ICML 骨架；支持上传 ZIP 模板和实验性的模板迁移 |
+| 终端与自动化 | 项目目录绑定的 tmux 终端、受控命令执行，以及基于 HTTP/SSE 的 MCP 工具 |
+| 协作基础设施 | 配置完成后可使用基于令牌的协作路由和实时文档能力 |
 
-Paper Agent 是一个面向学术写作的本地部署 LaTeX + AI 工作台，强调高效编辑、可控改动与隐私安全。
+## 系统架构
 
-### 🤖 AI 智能助手
-
-- **Chat 模式**：只读对话，不调用工具、不改文件，适合快速问答
-- **Agent 模式**：生成论文修改建议，用户确认后应用；不直接写文件、不运行代码
-- **Tools 模式**：多轮工具调用，支持跨文件任务和受控的 `code/` 操作
-- **任务类型**：润色、改写、结构调整、翻译、自定义
-- **自动补全**：Option/Alt + / 或 Cmd/Ctrl + Space 触发，Tab 接受
-- **视觉分析**：聊天中可粘贴图片（Ctrl+V 或 🖼️ 按钮），AI 支持多模态图片理解
-- **SSE 流式输出**：AI 回答实时逐 token 流式显示，支持 Anthropic 和 OpenAI 兼容接口
-- **自动上下文注入**：新对话自动注入当前章节内容或全局论文结构摘要，确保 AI 始终了解上下文
-- **内联 Diff 预览**：Agent/Tools 模式的编辑建议以逐行颜色标注展示（绿色新增 / 红色删除），支持一键接受或拒绝
-
-### ✍️ 编译与预览
-
-- **编译引擎**：TexLive / Tectonic / Auto 自动回退
-- **预览工具栏**：缩放、适合宽度、100%、下载 PDF
-- **编译日志**：错误解析 + 一键诊断 + 跳转定位
-- **多视图**：PDF / 图片列表 / Diff 视图
-- **Markdown 预览**：GFM 表格 / 任务列表 / 删除线 / 数学公式 / 项目图片解析
-- **LaTeX 预览**：支持 `\includegraphics`、图表标题、数学环境、代码清单等常见排版元素
-
-### 📚 模板系统
-
-- **内置模板**：ACL / CVPR / NeurIPS / ICML
-- **模板转换**：一键切换模板并保留正文内容
-
-### 🔄 模板转换
-
-- **双模式**：经典模式（LaTeX→LaTeX）和 MinerU 模式（PDF→Markdown→LaTeX）
-- **MinerU 集成**：通过 MinerU API 解析 PDF，提取 Markdown + 图片，再填充到目标模板
-- **LLM 驱动迁移**：AI 分析源/目标结构，制定迁移计划，自动映射内容
-- **自动编译修复**：自动检测并修复 LaTeX 编译错误，支持重试循环
-- **VLM 排版检查**：可选的视觉排版验证，使用 VLM 检测溢出、重叠、间距等问题
-- **资源处理**：自动复制图片、bib 文件和样式文件到目标项目
-
-### 🗂️ 项目管理
-
-- **多项目管理**：Projects 独立面板
-- **文件树管理**：新建/重命名/删除/上传/拖拽
-- **VS Code 风格操作**：右键复制路径、剪切、粘贴、内联重命名
-- **集成终端**：项目绑定 tmux 会话，关闭/刷新后自动重连
-- **BibTeX 支持**：快速创建 references.bib
-
-### ⚙️ 灵活配置
-
-- **LLM Base URL**：兼容 OpenAI API，包括自定义 Base URL
-- **.env 配置**：LLM provider、key、base URL、model 存储在仓库 `.env`，API key 在界面中脱敏
-- **TexLive 配置**：可自定义 TexLive 资源
-- **语言切换**：顶栏一键中英文切换，配置自动保存
-- **编辑器主题**：基础亮色 / GitHub Dark / Dracula / 赛博科技（区域着色：青色文件树、绿色终端、紫色 AI 助手、蓝色编辑器）
-
-### 🔍 检索与阅读
-
-- **WebSearch**：联网检索与摘要
-- **PaperSearch**：学术论文检索与引用信息
-- **BibTeX 引用搜索**：编辑器中输入 `@` + 关键词自动检索 CrossRef 学术数据库，显示论文标题、作者、年份、期刊和 DOI，一键插入格式化 BibTeX 条目
-
-### 📊 图表与识别
-
-- **表格绘图**：根据表格直接生成图表
-- **智能识别**：公式与图表结构自动识别
-
-### 📝 同行评审
-
-- **AI 质量检查**：论文质量自动评估
-- **完整审稿报告**：生成详细的 Reviewer 风格审稿意见
-- **一致性检查**：术语与符号一致性检测
-- **缺失引用检测**：查找需要补充引用的陈述
-- **编译日志摘要**：汇总编译错误与修复建议
-
-### 🔍 Anti-AI 检测
-
-- **规则扫描（Quick）**：基于词频统计、句式模式、词汇多样性、段落均匀度等规则快速评估 AI 痕迹
-- **LLM 深度分析（Deep）**：调用 LLM 从词汇多样性、论证结构、句式变化、具体性、过渡模式五个维度深度分析
-- **GPTZero 检测**：通过 Playwright 自动化调用 GPTZero 第三方检测服务
-- **改写建议**：自动生成替换建议，将 AI 典型用词替换为更自然的表达
-- **多维度评分**：综合评分 + 各维度细分 + 标记段落 + 人类特征识别
-
-### ⚡ Pipeline 2.0 管线系统
-
-- **可组合 Stage 系统**：5 种类型化执行器 — AI（LLM skill）、Compute（Shell 命令）、Human（人机检查点）、Citation（引用管理）、Compile（LaTeX 编译）
-- **预设管线模板**：Writing Flow、Paper Pipeline、Quick Review、Citation Pipeline、Executable Paper
-- **人机交互检查点**：支持 approve / reject / skip / edit 四种操作，可附带反馈
-- **AI 写作全流程**：Outline → Draft → Polish → Review，含交互式审稿关卡
-- **智能引用管理**：自动验证、格式化、去重、发现新引用
-- **可执行论文**：运行实验 → 生成图表 → 编译 PDF 一条管线完成
-- **流程控制**：暂停/恢复、带反馈重试、跳过阶段、abort 信号传播
-
-### 👥 实时协作
-
-- **多人协同编辑**：多用户同时编辑同一文档，实时同步
-- **光标与选区同步**：不同用户的光标以不同颜色显示，实时可见
-- **在线用户列表**：协作面板展示当前在线用户及状态
-- **邀请协作**：通过邀请链接或令牌邀请他人加入协作
-
-### 📚 引用验证引擎
-
-- **三库交叉验证**：对接 CrossRef、Semantic Scholar、OpenAlex 三大权威学术数据库
-- **DOI 精确验证**：有 DOI 的引用通过 DOI 直接查询，两个以上 API 确认即标记为"已验证"
-- **标题模糊搜索**：无 DOI 的引用通过标题在 CrossRef 和 OpenAlex 中模糊匹配
-- **置信度分级**：high（多库确认）/ medium（单库确认）/ low（标题匹配）/ none（无法验证）
-- **.tex ↔ .bib 交叉检查**：自动检测 .tex 中引用但 .bib 中缺失的条目，以及 .bib 中存在但未被引用的条目
-- **幻觉引用检测**：检测 AI 生成的虚假引用，避免学术不端
-- **批量验证**：支持并发验证，自动控制 API 调用频率
-- 集成到右侧面板 "📚 Citations" 标签页，可视化展示验证结果
-
-### 🔌 MCP 协议标准化
-
-- **标准 MCP 协议**：实现 Model Context Protocol JSON-RPC 2.0，兼容所有 MCP 客户端
-- **双传输模式**：HTTP POST（`POST /api/mcp`）+ SSE 长连接（`GET /api/mcp/sse`）
-- **7 大 MCP 工具**：
-  - `paper_search` — 学术论文搜索（CrossRef）
-  - `verify_citations` — BibTeX 引用验证
-  - `cross_check_citations` — .tex ↔ .bib 交叉检查
-  - `compile_latex` — LaTeX 编译
-  - `read_project_file` — 读取项目文件
-  - `ai_polish` — AI 润色学术写作
-  - `ai_review` — AI 同行评审
-- **服务发现**：`GET /api/mcp/info` 返回工具列表和客户端配置示例
-- **兼容客户端**：Claude Desktop、Cursor、GitHub Copilot 等 MCP 兼容工具
-
----
-
-## 🎨 功能展示
-
-
-### 🖥️ 三栏工作区
-
-<div align="center">
-<br>
-<img src="asserts/editor-with-file.png" alt="三栏工作界面" width="90%"/>
-<br>
-<sub>✨ 左侧 AI 助手 | 中间 LaTeX 编辑器 | 右侧 PDF 预览</sub>
-<br><br>
-</div>
-
-### ✍️ 编辑页面
-
-<div align="center">
-<br>
-<img src="asserts/editor-main.png" alt="编辑页面" width="90%"/>
-<br>
-<sub>✨ LaTeX 编辑器 + 右侧预览的同步工作流</sub>
-<br><br>
-</div>
-
-### 🤖 AI 智能助手
-
-<div align="center">
-<br>
-<img src="asserts/review-panel.png" alt="Agent 模式" width="85%"/>
-<br>
-<sub>✨ Agent 模式：生成可编辑建议 + Diff 预览</sub>
-<br><br>
-</div>
-
-### 📝 同行评审
-
-<div align="center">
-<br>
-<img src="asserts/review-panel.png" alt="同行评审" width="85%"/>
-<br>
-<sub>✨ AI 质量检查：审稿报告 / 一致性检查 / 缺失引用 / 编译摘要</sub>
-<br><br>
-</div>
-
-### 🔍 Anti-AI 检测
-
-<div align="center">
-<br>
-<img src="asserts/anti-ai-panel.png" alt="Anti-AI 检测" width="85%"/>
-<br>
-<sub>✨ 规则扫描 + LLM 深度分析 + GPTZero 第三方检测，多维度识别 AI 痕迹</sub>
-<br><br>
-</div>
-
-### ⚡ Pipeline 管线
-
-<div align="center">
-<br>
-<img src="asserts/pipeline-panel.png" alt="Pipeline 管线" width="85%"/>
-<br>
-<sub>✨ 多阶段工作流：Polish → Review → Revise → Compile，支持人机交互检查点</sub>
-<br><br>
-</div>
-
----
-
-## 🚀 快速开始
-
-### 📋 环境要求
-
-#### 基础环境
-- **Node.js** >= 18.0.0
-- **npm** >= 9.0.0
-- **操作系统**：Windows / macOS / Linux
-
-#### LaTeX 编译环境（必需）
-
-Paper Agent 需要 LaTeX 编译引擎来生成 PDF，请根据操作系统选择以下方案之一：
-
-**方案 1：TexLive（推荐）**
-- **Linux (Ubuntu/Debian)**:
-  ```bash
-  sudo apt-get update
-  sudo apt-get install texlive-full
-  ```
-- **Linux (CentOS/RHEL)**:
-  ```bash
-  sudo yum install texlive texlive-*
-  ```
-- **macOS**:
-  ```bash
-  brew install --cask mactex
-  ```
-- **Windows**: 下载 [TexLive](https://www.tug.org/texlive/) 安装包
-
-**方案 2：Tectonic（轻量级）**
-- **Linux/macOS**:
-  ```bash
-  curl --proto '=https' --tlsv1.2 -fsSL https://drop-sh.fullyjustified.net | sh
-  ```
-- **Windows**: 下载 [Tectonic](https://tectonic-typesetting.github.io/) 安装包
-
-> **注意**：TexLive 完整安装约 5-7GB，Tectonic 更轻量但功能略少。推荐 Linux 服务器使用 TexLive。
-
-### 📦 安装与启动
-
-#### 开发环境部署
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/xzktx003/paper_wrighting.git
-cd paper_wrighting/app
-
-# 2. 安装依赖
-npm ci
-
-# 3. 启动开发服务器（前端 + 后端）
-npm run dev
+```text
+浏览器（React + Vite + CodeMirror）
+        │ HTTP / SSE / WebSocket
+        ▼
+Fastify 后端
+  ├─ 项目、文件、会话与鉴权
+  ├─ LLM 路由、Skills、审稿与 Pipeline
+  ├─ LaTeX 编译与 SyncTeX
+  ├─ RAG、PDF 提取与检索
+  ├─ 引文和参考文献核验
+  ├─ 图片生成与模板迁移
+  ├─ 终端、tmux 与协作
+  └─ MCP JSON-RPC 与 SSE 传输
+        │
+        ▼
+本地论文目录（默认：./papers，已被 Git 忽略）
 ```
 
-启动后访问：
-- **前端**：http://localhost:5173
-- **后端**：http://localhost:8787
+主要技术栈：
 
-#### 生产环境部署
+- 前端：React 18、TypeScript、Vite 8、CodeMirror 6、KaTeX、xterm.js。
+- 后端：Node.js、Fastify 5、WebSocket/SSE、YAML Skills。
+- 文档工具链：TeX Live/TinyTeX 或 Tectonic、BibTeX、SyncTeX，以及可选的 Pandoc、Poppler/OCR 工具。
+- 所有外部集成都需要显式配置。
+
+## 快速开始
+
+### 1. 环境要求
+
+必需：
+
+- Node.js 20.19 或更高版本。
+- npm 9 或更高版本。
+- Git。
+
+如果需要在本机编译 LaTeX，还需要安装以下任一种工具链：
+
+- 完整 TeX Live；
+- TinyTeX；
+- Tectonic。
+
+建议同时提供 `bibtex` 和 `synctex`。项目会自动检查可用引擎，但不会替你安装缺失的 LaTeX 宏包。
+
+按需安装：
+
+- `pandoc`：文档转换和部分导出流程。
+- `pdftotext` / Poppler：PDF 文本提取。
+- `tmux`：集成终端的会话保持。
+- Playwright 浏览器与系统依赖：GPTZero 自动化和浏览器 E2E 测试。
+- MinerU 或其他 OCR 服务：扫描型 PDF 的高级解析。
+
+### 2. 克隆并安装依赖
 
 ```bash
-# 1. 构建前端和后端
-cd paper_wrighting/app
-npm run build
-
-# 2. 启动生产服务器
-npm start
-```
-
-#### Linux 服务器完整部署示例
-
-```bash
-# 1. 安装 Node.js (以 Ubuntu 为例)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# 2. 安装 TexLive
-sudo apt-get update
-sudo apt-get install -y texlive-full
-
-# 3. 验证安装
-node --version  # 应显示 >= 18.0.0
-pdflatex --version  # 应显示 TexLive 版本
-
-# 4. 克隆并部署项目
 git clone https://github.com/xzktx003/paper_wrighting.git
 cd paper_wrighting/app
 npm ci
-npm run build
+```
 
-# 5. 配置环境变量（可选）
-cat > .env << EOF
-OPENPRISM_LLM_BASE_URL=https://api.openai.com/v1
-OPENPRISM_LLM_API_KEY=your-api-key
-OPENPRISM_LLM_MODEL=gpt-4o
-OPENPRISM_DATA_DIR=./data
+仓库使用 npm workspaces 管理前后端。不要在根目录使用旧版文档中的 pnpm 命令。
+
+### 3. 创建配置文件
+
+```bash
+cp .env.example .env
+```
+
+至少配置一个 OpenAI 兼容模型端点：
+
+```dotenv
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=your-model-name
 PORT=8787
-EOF
+```
 
-# 6. 启动服务
+你也可以将 `LLM_BASE_URL` 指向本地或内网中的 OpenAI 兼容服务。请不要提交 `.env`，该文件已被 `.gitignore` 忽略。
+
+### 4. 启动开发环境
+
+在 `app/` 中运行：
+
+```bash
+OPENPRISM_API_ORIGIN=http://localhost:8787 npm run dev
+```
+
+默认地址：
+
+- 前端：<http://localhost:5173>
+- 后端：<http://localhost:8787>
+
+`OPENPRISM_API_ORIGIN` 用于告诉 Vite 开发服务器将 API 和 WebSocket 请求转发到哪个后端。显式设置它可以避免使用仓库中的局域网开发默认值。
+
+若后端端口不是 `8787`，需要让两处配置保持一致：
+
+```bash
+PORT=9000 OPENPRISM_API_ORIGIN=http://localhost:9000 npm run dev
+```
+
+### 5. 构建并运行生产模式
+
+```bash
+npm run build
 npm start
-
-# 7. 使用 PM2 守护进程（推荐）
-sudo npm install -g pm2
-pm2 start npm --name "paper-agent" -- start
-pm2 save
-pm2 startup
 ```
 
----
+`npm run build` 会生成前端静态资源，`npm start` 使用 `.env` 启动 Fastify 服务。生产部署时，请确认反向代理正确转发普通 HTTP、SSE 和 WebSocket 连接。
 
-## ⚙️ 配置说明
+## 配置项说明
 
-### 环境变量配置
+常用环境变量如下，完整示例见 [`app/.env.example`](app/.env.example)。
 
-在项目根目录创建 `.env` 文件（可选）：
+| 变量 | 作用 | 默认/说明 |
+| --- | --- | --- |
+| `PORT` | 后端监听端口 | `8787` |
+| `DATA_DIR` | 论文项目存放目录 | 未设置时使用仓库根目录下的 `papers/` |
+| `OPENPRISM_API_ORIGIN` | Vite 开发代理的后端地址 | 本地开发建议设为 `http://localhost:8787` |
+| `LLM_BASE_URL` | OpenAI 兼容 API 根地址 | 必须包含正确的 `/v1` 路径（如果服务要求） |
+| `LLM_API_KEY` | 模型 API 密钥 | 请只放在 `.env` 中 |
+| `LLM_MODEL` | 默认模型名称 | 由你的服务商决定 |
+| `LLM_MODELS` | 可选模型列表 | 用逗号分隔，可供界面切换 |
+| `OPENPRISM_API_TOKEN` | 后端 API 访问令牌 | 远程部署时建议配置 |
+| `COLLAB_*` | 协作服务、令牌与文档同步配置 | 仅启用协作时需要 |
+| `MINERU_*` | MinerU/OCR 服务地址与凭据 | 仅高级 PDF 解析需要 |
+| `DRAW_*` | 绘图模型或网关配置 | 仅图片生成/编辑需要 |
+| `TUNNEL_*` | 隧道或外网访问配置 | 仅相应部署方式需要 |
+
+修改后端 `.env` 后需要重启服务；修改 `OPENPRISM_API_ORIGIN` 后需要重启 Vite 开发服务器。
+
+## 详细使用教程
+
+### 创建或导入项目
+
+1. 打开项目首页，选择空白项目或内置模板。
+2. 设置项目名称；系统会在 `DATA_DIR` 下创建独立目录。
+3. 如已有论文，可上传 `.tex`、`.bib`、图片、PDF，或直接导入 ZIP 模板。
+4. 打开项目后，在左侧文件树中新建、重命名、移动、上传或下载文件。
+5. 建议让每篇论文保持独立目录，避免编译产物、会话和证据库相互混用。
+
+项目源文件在本地目录中是普通文件，可以继续使用 Git、命令行或其他编辑器管理。
+
+### 编辑、编译与预览
+
+1. 在文件树中打开主 `.tex` 文件。
+2. 点击编译按钮；后端会尝试发现主文件并选择合适引擎。
+3. 如果论文显式使用 XeLaTeX/LuaLaTeX，或模板对引擎有要求，请在项目编译设置中指定。
+4. 编译日志会显示缺失宏包、语法错误、BibTeX 错误及执行命令。
+5. 成功后在预览区查看 PDF；SyncTeX 可用于源码与 PDF 定位。
+
+典型编译流程会根据项目内容执行 LaTeX、BibTeX 和额外 LaTeX 轮次。编译失败时先处理日志中出现的第一个错误，后续错误通常只是连锁结果。
+
+### 使用 Chat、Agent 与 Tools 模式
+
+右侧 AI 面板提供三种工作方式：
+
+- **Chat**：讨论论文、解释文本、分析错误，不默认修改文件。
+- **Agent**：允许模型读取项目上下文并提出跨文件修改；修改会先显示差异，等待你接受或拒绝。
+- **Tools**：用于更明确的工具调用，例如检索、文件读取、编译、引文核验和审稿。
+
+建议流程：
+
+1. 先选择相关文件或在问题中写明章节与目标。
+2. 通过回形针添加图片、PDF 或其他上下文文件。
+3. 给出约束，例如目标会议、字数、不能改变的结论和引用格式。
+4. 检查 AI 返回的依据与差异，不要直接接受未经核对的事实和引用。
+5. 接受修改后重新编译，并检查 PDF、引文和图表编号。
+
+### 使用 Skills
+
+点击聊天输入区的 **Select Skill**，搜索并选择一个 Skill。Skill 会向模型注入针对特定任务的规则、检查项和工作步骤。
+
+常见用法包括：
+
+- 论文段落润色、摘要压缩与学术风格调整；
+- related work 调研和文献差距分析；
+- LaTeX 编译诊断与模板检查；
+- 统计方法、实验设计与图表建议；
+- 审稿意见生成、rebuttal 与投稿前检查。
+
+一次优先选择最贴近当前任务的 Skill。Skill 提供的是过程约束，并不能替代对引用、实验结果和投稿规范的人工确认。
+
+### 建立 RAG 证据库
+
+1. 打开右侧 **RAG** 标签页。
+2. 上传论文 PDF、笔记或文本资料。
+3. 等待文本提取与索引完成；扫描 PDF 可能需要 OCR/MinerU。
+4. 在当前会话中勾选要使用的文档。
+5. 提问时要求模型区分“证据中的内容”和“推断”，并附上可核查的出处。
+
+RAG 提高的是上下文可访问性，不代表生成内容必然准确。最终论述应回到原始论文核对。
+
+### 核验引文与参考文献
+
+打开 **Citations** 标签页，可使用：
+
+- **Verify All Citations**：解析正文与 BibTeX，并尝试通过外部学术数据库验证条目。
+- **Cross-Check Only**：只检查正文引用键、BibTeX 条目和未引用条目之间的一致性，不依赖完整的外部核验。
+
+系统不会把参考文献文件写死为 `references.bib`。它会从项目的编译主文件出发，递归分析 `\input`/`\include`，并读取 `\bibliography{...}` 或 `\addbibresource{...}` 所指向的 `.bib` 文件。
+
+使用前请确认：
+
+1. 项目中存在可识别的主 `.tex` 文件。
+2. 主文件或其子文件中包含正确的参考文献声明。
+3. `.bib` 路径相对于声明它的 TeX 文件可解析。
+4. 完整核验需要访问 CrossRef、Semantic Scholar、OpenAlex 或 arXiv；网络受限时可先使用 Cross-Check Only。
+
+外部服务可能限流或超时。界面会显示进行状态，并允许停止长时间任务；数据库“未找到”不等于文献一定不存在，仍需人工核对 DOI、标题和作者。
+
+### 生成与编辑科研图片
+
+1. 打开 **Draw** 标签页。
+2. 描述图片类型、布局、文字、配色、分辨率和期望文件格式。
+3. 如需保持风格或结构，添加参考图片。
+4. 生成后检查坐标轴、标签、数值、字体和版权问题。
+5. 将结果保存到项目图片目录，并在 LaTeX 中引用。
+
+图片功能需要配置对应的绘图模型或网关。生成式图片适合示意图和视觉草稿；包含实验数据的图表应由可复现代码生成。
+
+### Review 与 Anti-AI
+
+- **Review**：按论文结构、论证、实验、可复现性、写作和引用等维度生成检查意见。
+- **Anti-AI**：提供规则或模型辅助的文本模式分析；GPTZero 集成为可选功能。
+
+这些结果是启发式信号，不应被当作作者身份、学术不端或论文质量的确定结论。应逐条回到正文和证据进行判断。
+
+### 运行 Pipeline
+
+Pipeline 用于把多步论文任务组织成可恢复流程。一个典型流程可以是：
+
+```text
+检索/分析 → AI 草拟 → 人工确认 → 引文核验 → LaTeX 编译 → 最终检查
+```
+
+1. 在 **Pipeline** 标签页选择或创建流程。
+2. 配置每个阶段的输入、输出与失败策略。
+3. 对关键内容加入 Human 审批阶段。
+4. 启动后查看实时日志；失败阶段可以重试、跳过，流程也可暂停和继续。
+5. 完成后检查实际文件差异、编译产物与引文报告。
+
+### 使用集成终端
+
+底部终端与当前项目目录绑定，适合运行 Git、LaTeX、脚本和数据处理命令。安装 `tmux` 后可获得更稳定的会话保持。执行删除、覆盖或批量转换命令前，仍应先确认当前目录和参数。
+
+### 模板迁移
+
+模板迁移用于尝试把现有论文内容映射到另一套会议/期刊模板。由于不同模板的宏、标题结构、匿名规则和参考文献样式差异很大，该功能属于实验性工作流；迁移后必须重新编译并人工检查全文。
+
+## MCP 集成
+
+后端提供 MCP JSON-RPC/SSE 接口，可供兼容的智能体客户端调用项目工具。当前工具包括：
+
+| 工具 | 用途 |
+| --- | --- |
+| `paper_search` | 检索论文或学术条目 |
+| `verify_citations` | 通过外部来源核验参考文献 |
+| `cross_check_citations` | 对照正文引用键与 BibTeX 条目 |
+| `compile_latex` | 编译指定项目的 LaTeX |
+| `read_project_file` | 读取项目内文件 |
+| `ai_polish` | 对选定文本提出润色建议 |
+| `ai_review` | 执行 AI 辅助论文审阅 |
+
+如启用了 `OPENPRISM_API_TOKEN`，MCP 客户端也必须携带对应凭据。不要将具有项目读写或命令执行能力的端点直接暴露到公网。
+
+## 模板与 Skills
+
+内置项目模板清单当前包含 ACL，并提供 CVPR、NeurIPS、ICML 的项目骨架。你也可以上传自己的 ZIP 模板作为项目起点。
+
+后端 Skills 位于 [`app/apps/backend/skills/`](app/apps/backend/skills/)，采用 YAML 描述。添加或修改 Skill 时，应保证：
+
+- 标识符唯一，名称和描述清晰；
+- 指令只覆盖一个明确任务；
+- 文件或工具权限与任务所需范围一致；
+- 中英文展示字段保持一致；
+- 用真实项目测试模型输出和文件修改行为。
+
+## 开发与测试
+
+所有命令均在 `app/` 目录执行：
 
 ```bash
-# LLM 配置
-OPENPRISM_LLM_BASE_URL=https://api.openai.com/v1
-OPENPRISM_LLM_API_KEY=your-api-key
-OPENPRISM_LLM_MODEL=gpt-4o
-
-# 数据存储路径
-OPENPRISM_DATA_DIR=./data
-
-# 后端服务端口
-PORT=8787
-
-# MinerU API 配置（用于 PDF→MD→LaTeX 转换）
-OPENPRISM_MINERU_API_BASE=https://mineru.net/api/v4
-OPENPRISM_MINERU_TOKEN=your-mineru-token
-```
-
-### LLM 配置
-
-Paper Agent 支持任何 **OpenAI 兼容**接口，包括自定义 Base URL：
-
-**方式 1：环境变量配置**
-```bash
-# .env 文件
-OPENPRISM_LLM_BASE_URL=https://api.openai.com/v1
-OPENPRISM_LLM_API_KEY=your-api-key
-OPENPRISM_LLM_MODEL=gpt-4o
-```
-
-**方式 2：前端设置面板**
-- 在前端界面点击"设置"按钮
-- 填写 Base URL、API Key 和 Model
-- 配置通过后端写入仓库 `.env`；已有 API key 在接口响应中会脱敏，且不会缓存在浏览器 localStorage
-
-<div align="center">
-<br>
-<img src="asserts/editor-main.png" alt="模型配置设置" width="85%"/>
-<br>
-<sub>✨ LLM 配置设置面板</sub>
-<br><br>
-</div>
-
-**支持的第三方服务示例：**
-- OpenAI: `https://api.openai.com/v1`
-- Azure OpenAI: `https://your-resource.openai.azure.com/openai/deployments/your-deployment`
-- 其他兼容服务: `https://api.apiyi.com/v1`
-
-### LaTeX 编译配置
-
-**支持的编译引擎：**
-- `pdflatex` - 标准 LaTeX 引擎
-- `xelatex` - 支持 Unicode 和中文
-- `lualatex` - 支持 Lua 脚本
-- `latexmk` - 自动化构建工具
-- `tectonic` - 现代轻量级引擎
-
-**配置方式：**
-1. 在前端"设置"面板选择编译引擎
-2. 设置为 "Auto" 可自动回退到可用引擎
-3. 可自定义 TexLive 资源路径
-
-### 数据存储配置
-
-默认数据存储在 `./data` 目录，可通过环境变量修改：
-
-```bash
-# 自定义数据目录
-OPENPRISM_DATA_DIR=/var/paper-agent/data
-```
-
-**目录结构：**
-```
-data/
-├── projects/           # 用户项目
-│   ├── project-1/
-│   │   ├── main.tex
-│   │   └── references.bib
-│   └── project-2/
-└── templates/          # 模板缓存
-```
-
----
-
-## 👥 协作模式使用指南
-
-Paper Agent 内置基于 CRDT（Yjs）+ WebSocket 的实时协作系统，支持多人同时编辑同一文档，无需第三方服务。
-
-### 协作环境变量
-
-在 `.env` 中添加以下配置：
-
-```bash
-# 令牌签名密钥（生产环境务必修改）
-OPENPRISM_COLLAB_TOKEN_SECRET=your-secure-random-string
-
-# 是否强制令牌验证（默认 true，本地开发可设为 false）
-OPENPRISM_COLLAB_REQUIRE_TOKEN=true
-
-# 令牌有效期，单位秒（默认 86400 = 24 小时）
-OPENPRISM_COLLAB_TOKEN_TTL=86400
-```
-
-### 使用步骤
-
-1. **部署服务**：将 Paper Agent 部署到有公网 IP 的服务器，配置域名与 HTTPS
-2. **生成邀请**：在编辑页面的协作面板中点击「生成邀请链接」
-3. **分享链接**：将生成的链接发送给协作者
-4. **加入协作**：协作者打开链接，令牌自动验证后进入编辑器
-5. **实时编辑**：多人光标实时可见，编辑内容自动同步，冲突自动解决
-
-<details>
-<summary><strong>Nginx 反向代理配置（推荐，适合有公网服务器）</strong></summary>
-
-协作依赖 WebSocket，Nginx 需要配置升级头：
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8787;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-}
-```
-
-> **提示**：本地访问（127.0.0.1）默认免令牌验证，适合本地开发调试。
-
-</details>
-
-<details>
-<summary><strong>无公网服务器？使用内网穿透（ngrok）</strong></summary>
-
-没有公网服务器也可以远程协作，Paper Agent 内置了隧道支持，一条命令即可将本地服务暴露到公网。
-
-#### 快速开始（ngrok，推荐）
-
-1. 注册 [ngrok](https://dashboard.ngrok.com/get-started/your-authtoken) 免费账号，获取 authtoken
-2. 运行以下命令：
-
-```bash
-export NGROK_AUTHTOKEN=your_token_here
-
-npm run tunnel:ngrok
-```
-
-3. 启动后终端会输出公网 URL，将该 URL 发给协作者即可：
-
-```
-  Paper Agent started at http://localhost:8787
-
-  Tunnel active (ngrok):
-  Public URL: https://xxxx.ngrok-free.app
-  Share this URL to collaborate remotely!
-```
-
-4. 协作者在浏览器打开该 URL，即可实时协作编辑
-
-#### 其他隧道方案
-
-| 方案 | 命令 | 说明 |
-|------|------|------|
-| localtunnel | `npm run tunnel` | 零配置，但可能不稳定 |
-| Cloudflare Tunnel | `npm run tunnel:cf` | 需安装 [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/) |
-
-> **注意**：隧道默认关闭，普通 `npm start` 不会创建隧道。也可通过环境变量手动指定：`OPENPRISM_TUNNEL=ngrok npm start`
-
-</details>
-
----
-
-## 🎯 使用指南（简版）
-
-1. **创建项目**：在 Projects 面板新建项目并选择模板
-2. **编写论文**：在 Files 树中编辑 LaTeX
-3. **AI 修改**：切换 Agent / Tools，生成 diff 并确认应用
-4. **编译预览**：点击“编译 PDF”，在右侧预览
-5. **导出 PDF**：在预览工具栏点击“下载 PDF”
-
----
-
-## 📁 项目结构
-
-```
-Paper Agent/
-├── apps/
-│   ├── frontend/              # React + Vite 前端
-│   │   ├── src/
-│   │   │   ├── app/App.tsx     # 主应用逻辑
-│   │   │   ├── app/TransferPanel.tsx  # 模板转换 UI
-│   │   │   ├── app/components/AntiAiPanel.tsx  # Anti-AI 检测面板
-│   │   │   ├── app/components/PipelinePanelV2.tsx  # Pipeline 管线面板
-│   │   │   ├── app/components/CitationVerificationPanel.tsx  # 引用验证面板
-│   │   │   ├── app/api/client.ts   # API 调用
-│   │   │   ├── app/api/conversationApi.ts  # 会话/引用验证 API
-│   │   │   └── latex/          # TexLive 集成
-│   └── backend/               # Fastify 后端
-│       └── src/
-│           ├── index.js        # API / 编译 / LLM 代理
-│           ├── routes/
-│           │   ├── transfer.js     # 转换 API 端点
-│           │   ├── antiAi.js       # Anti-AI 检测端点
-│           │   ├── review.js       # 同行评审端点
-│           │   ├── pipelineV2.js   # Pipeline 管线端点
-│           │   ├── citationVerification.js  # 引用验证端点
-│           │   └── mcp.js          # MCP 协议端点
-│           └── services/
-│               ├── llmService.js           # LLM 调用服务
-│               ├── gptzeroService.js       # GPTZero Playwright 检测
-│               ├── mineruService.js        # MinerU API 集成
-│               ├── citationVerificationService.js  # 引用验证服务
-│               ├── mcpServer.js            # MCP 协议服务器
-│               ├── pipeline/              # Pipeline 引擎
-│               │   ├── pipelineEngine.js  # 管线核心引擎
-│               │   ├── presets.js         # 预设管线模板
-│               │   └── executors/         # 阶段执行器
-│               └── transferAgent/          # LangGraph 转换工作流
-│                   ├── graph.js            # 经典转换图
-│                   ├── graphMineru.js       # MinerU 转换图
-│                   ├── state.js            # 转换状态定义
-│                   └── nodes/              # 工作流节点
-├── templates/                 # LaTeX 模板（ACL/CVPR/NeurIPS/ICML）
-├── data/                      # 项目存储目录（默认）
-└── README.md
-```
-
----
-
-## 🗺️ Roadmap
-
-<table>
-<tr>
-<th width="35%">功能</th>
-<th width="15%">状态</th>
-<th width="50%">说明</th>
-</tr>
-<tr>
-<td><strong>👥 私域协作编辑</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>多人实时协同编辑，光标同步与在线用户管理（当前需公网服务器部署）</td>
-</tr>
-<tr>
-<td><strong>📚 模板转换（双模式）</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>经典模式（LaTeX→LaTeX）和 MinerU 模式（PDF→MD→LaTeX）双模式模板转换，支持 LLM 驱动迁移、自动编译修复和 VLM 排版检查</td>
-</tr>
-<tr>
-<td><strong>🔍 Anti-AI 检测</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>三模式检测：规则扫描（Quick）、LLM 深度分析（Deep）、GPTZero 第三方检测，支持改写建议与多维度评分</td>
-</tr>
-<tr>
-<td><strong>⚡ Pipeline 2.0 管线</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>多阶段工作流引擎，5 种执行器（AI / Human / Compile / Citation / Compute），内置 5 种预设管线模板，支持暂停/恢复/重试/跳过</td>
-</tr>
-<tr>
-<td><strong>📚 引用验证引擎</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>对接 CrossRef / Semantic Scholar / OpenAlex 三大 API，DOI 精确验证 + 标题模糊搜索，.tex ↔ .bib 交叉检查，幻觉引用检测</td>
-</tr>
-<tr>
-<td><strong>🔌 MCP 协议标准化</strong></td>
-<td><img src="https://img.shields.io/badge/✅-已完成-success?style=flat-square" alt="Done"/></td>
-<td>标准 MCP JSON-RPC 2.0 协议，7 大工具（paper_search / verify_citations / compile_latex 等），兼容 Claude Desktop / Cursor / Copilot</td>
-</tr>
-<tr>
-<td><strong>🌐 无服务器协作</strong></td>
-<td><img src="https://img.shields.io/badge/⏳-规划中-yellow?style=flat-square" alt="Planned"/></td>
-<td>支持无公网服务器的本地协作：① 内置内网穿透集成（ngrok / Cloudflare Tunnel）一键暴露本地服务；② 基于 WebRTC 的 P2P 点对点直连，数据不经第三方中转</td>
-</tr>
-<tr>
-<td><strong>🔍 增强 WebSearch</strong></td>
-<td><img src="https://img.shields.io/badge/⏳-规划中-yellow?style=flat-square" alt="Planned"/></td>
-<td>增强联网检索能力，接入第三方 Search API（如 Google / Baidu / SerpAPI），提升搜索质量与覆盖范围</td>
-</tr>
-<tr>
-<td><strong>📸 版本快照与回滚</strong></td>
-<td><img src="https://img.shields.io/badge/⏳-规划中-yellow?style=flat-square" alt="Planned"/></td>
-<td>项目版本管理，支持快照保存与一键回滚</td>
-</tr>
-<tr>
-<td><strong>📖 引用检索助手</strong></td>
-<td><img src="https://img.shields.io/badge/⏳-规划中-yellow?style=flat-square" alt="Planned"/></td>
-<td>自动检索相关文献并生成 BibTeX 引用</td>
-</tr>
-</table>
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 或 PR：
-1. Fork 仓库
-2. 新建分支
-3. 提交变更
-4. 发起 PR
-
-开发命令：
-```bash
-npm run dev
-npm run dev:frontend
-npm run dev:backend
+# 前端生产构建
 npm run build
+
+# 主要 Vitest 测试套件
+npx vitest run
+
+# 运行单个测试文件
+npx vitest run tests/project-page-sidebar.test.js
+
+# 浏览器 E2E（需要 Playwright 浏览器和系统依赖）
+npm run test:e2e
 ```
 
----
+前端和后端分别位于 npm workspace 中，也可以使用 workspace 参数运行其脚本：
 
-## 📄 开源协议
+```bash
+npm run dev --workspace apps/frontend
+npm run dev --workspace apps/backend
+```
 
-MIT License. See [LICENSE](LICENSE).
+## 仓库结构
 
----
+```text
+paper_wrighting/
+├── app/
+│   ├── apps/
+│   │   ├── frontend/       # React/Vite 用户界面
+│   │   └── backend/        # Fastify API、编译、AI 与工具服务
+│   ├── package.json        # npm workspaces 与顶层脚本
+│   └── .env.example        # 环境变量示例
+├── asserts/                # README 使用的图片资源（保留现有目录名）
+├── papers/                 # 默认本地项目数据，不提交到 Git
+├── README.md               # English documentation
+├── README_ZH.md            # 中文文档
+└── LICENSE
+```
 
-## 🙏 致谢
+## 常见问题
 
-- Tectonic
-- CodeMirror
-- PDF.js
-- LangChain
-- React / Fastify
+### 前端无法连接后端
 
-<div align="center">
+确认后端端口与开发代理一致，然后重启两个进程：
 
-**如果这个项目对你有帮助，请给我们一个 ⭐️ Star！**
+```bash
+PORT=8787 OPENPRISM_API_ORIGIN=http://localhost:8787 npm run dev
+```
 
-[![GitHub stars](https://img.shields.io/github/stars/xzktx003/paper_wrighting?style=social)](https://github.com/xzktx003/paper_wrighting/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/xzktx003/paper_wrighting?style=social)](https://github.com/xzktx003/paper_wrighting/network/members)
+若使用远程主机，还要检查防火墙、反向代理、SSE 和 WebSocket 转发。
 
-<br>
+### 模型列表或 AI 请求失败
 
-<a name="wechat-group"></a>
-<img src="asserts/wechat.png" alt="Paper Agent 微信交流群" width="300"/>
-<br>
-<sub>扫码加入微信交流群</sub>
+检查 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL`。许多兼容服务要求基础地址包含 `/v1`，模型名称也必须与服务端完全一致。修改 `.env` 后重启后端。
 
-<p align="center">
-  <em>Made with ❤️ by Paper Agent Team</em>
-</p>
+### 出现 `pdflatex.fmt` 或缺少 `.sty`
 
-</div>
+这表示 TeX 安装不完整或当前进程使用了错误的 TeX 环境。先运行 `which pdflatex`、`kpsewhich dashrule.sty` 和 `pdflatex --version` 确认路径，再通过当前 TeX 发行版安装缺失宏包并刷新格式/文件数据库。不要混用系统 TeX 与 Conda/TinyTeX 的可执行文件和 Perl 脚本。
+
+### 引文核验一直很慢
+
+完整核验会访问多个外部数据库，可能受网络、限流和服务状态影响。先用 **Cross-Check Only** 排除本地引用键问题，再重试完整核验；必要时停止任务并检查后端日志。
+
+### 提示找不到参考文献文件
+
+确认编译主文件中存在 `\bibliography{path/name}` 或 `\addbibresource{path/name.bib}`，文件名大小写正确，路径相对于声明所在的 TeX 文件有效。系统会动态发现引用的 `.bib`，不会固定查找 `references.bib`。
+
+### PDF/RAG 没有提取到有效文本
+
+先确认 PDF 是否包含可选择的文本。扫描版 PDF 需要 OCR；安装 Poppler 或配置 MinerU 后重新导入。加密、损坏或字体编码异常的 PDF 也可能无法正常解析。
+
+### 修改后界面仍是旧版本
+
+开发模式下重启 Vite；生产模式下重新执行 `npm run build` 并重启后端。必要时清除浏览器缓存，确认服务实际使用的是新的 `apps/frontend/dist`。
+
+## 隐私与安全
+
+- `papers/`、`.env`、运行时文件和前端构建产物已从 Git 中忽略。
+- 不要把 API 密钥写入源码、Skill 或论文项目文件。
+- 外部 LLM、学术数据库、OCR 和绘图服务可能接收你提交的文本或文件，请先确认其数据政策。
+- 远程部署时应启用访问令牌、TLS、网络访问控制和可信反向代理。
+- AI 生成的引用、数值、结论和文件修改都必须人工核验。
+
+## 参与贡献
+
+欢迎提交问题和改进。提交代码前建议：
+
+1. 从当前分支创建功能分支。
+2. 保持改动范围明确，并为行为变化添加测试。
+3. 运行相关测试与 `npm run build`。
+4. 在 Pull Request 中说明用户影响、配置变化和验证方式。
+
+报告问题时，请附上复现步骤、浏览器与 Node 版本、相关后端日志，以及去除密钥和论文敏感内容后的最小示例。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。
