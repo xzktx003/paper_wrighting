@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="asserts/landing-page.png" alt="Paper Agent logo" width="180" />
+<img src="app/apps/frontend/public/favicon.svg" alt="Paper Agent logo" width="72" />
 
 # Paper Agent
 
@@ -25,13 +25,13 @@ The project is designed around human review: AI-proposed edits are shown as diff
 ## Screenshots
 
 <div align="center">
-  <img src="asserts/landing-page-en.png" alt="Paper Agent projects page" width="88%" />
-  <br />
-  <sub>Project dashboard and templates</sub>
-  <br /><br />
   <img src="asserts/editor-with-file.png" alt="Paper Agent editor workspace" width="88%" />
   <br />
-  <sub>File tree, editor, AI workspace, terminal, and preview</sub>
+  <sub>File tree, LaTeX source, rendered preview, and AI workspace</sub>
+  <br /><br />
+  <img src="asserts/anti-ai-panel.png" alt="Paper Agent Anti-AI review panel" width="88%" />
+  <br />
+  <sub>Rule-based writing analysis with reviewable suggestions</sub>
 </div>
 
 ## Highlights
