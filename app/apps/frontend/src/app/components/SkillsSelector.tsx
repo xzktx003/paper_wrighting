@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { listSkills, SkillInfo } from '../api/skillApi';
 
 // Language type
@@ -350,16 +351,67 @@ export function CollapsibleDropdown({ skills, selectedSkills, onSelect, onManage
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['writing']));
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<React.CSSProperties>({});
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target) && !menuRef.current?.contains(target)) {
         setShowDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const updatePosition = () => {
+      const trigger = dropdownRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const margin = 8;
+      const gap = 4;
+      const width = Math.min(360, Math.max(0, viewportWidth - margin * 2));
+      const left = Math.max(margin, Math.min(rect.left, viewportWidth - width - margin));
+      const spaceAbove = rect.top - gap - margin;
+      const spaceBelow = viewportHeight - rect.bottom - gap - margin;
+
+      const placeAbove = () => {
+        const bottom = viewportHeight - rect.top + gap;
+        setMenuPosition({ left, bottom, width, maxHeight: Math.max(80, spaceAbove) });
+      };
+      const placeBelow = () => {
+        const top = rect.bottom + gap;
+        setMenuPosition({ left, top, width, maxHeight: Math.max(80, spaceBelow) });
+      };
+
+      if (position === 'below') {
+        if (spaceBelow >= 160 || spaceBelow >= spaceAbove) placeBelow();
+        else placeAbove();
+      } else if (position === 'right') {
+        const fitsRight = rect.right + gap + width <= viewportWidth - margin;
+        const rightAwareLeft = fitsRight ? rect.right + gap : Math.max(margin, rect.left - width - gap);
+        const top = Math.max(margin, Math.min(rect.top, viewportHeight - 160 - margin));
+        setMenuPosition({ left: rightAwareLeft, top, width, maxHeight: Math.max(160, viewportHeight - top - margin) });
+      } else {
+        if (spaceAbove >= 160 || spaceAbove >= spaceBelow) placeAbove();
+        else placeBelow();
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [showDropdown, position]);
 
   // Group skills by category
   const skillsByCategory: Record<string, SkillInfo[]> = {};
@@ -377,19 +429,6 @@ export function CollapsibleDropdown({ skills, selectedSkills, onSelect, onManage
       newSet.add(catId);
     }
     setExpandedCategories(newSet);
-  };
-
-  // Calculate position styles
-  const getPositionStyle = () => {
-    switch (position) {
-      case 'below':
-        return { top: '100%', left: 0, marginTop: '4px' };
-      case 'right':
-        return { top: 0, left: '100%', marginLeft: '4px' };
-      case 'above':
-      default:
-        return { bottom: '100%', left: 0, marginBottom: '4px' };
-    }
   };
 
   return (
@@ -416,7 +455,7 @@ export function CollapsibleDropdown({ skills, selectedSkills, onSelect, onManage
       </div>
 
       {/* Dropdown */}
-      {showDropdown && (
+      {showDropdown && createPortal(
         <>
           {/* Full screen backdrop to block everything */}
           <div 
@@ -431,12 +470,9 @@ export function CollapsibleDropdown({ skills, selectedSkills, onSelect, onManage
             }}
             onClick={() => setShowDropdown(false)}
           />
-          <div style={{
-            position: 'absolute',
-            ...getPositionStyle(),
-            minWidth: '260px',
-            maxWidth: '360px',
-            maxHeight: '500px',
+          <div ref={menuRef} style={{
+            position: 'fixed',
+            ...menuPosition,
             overflow: 'auto',
             background: 'var(--paper)',
             border: '1px solid var(--border)',
@@ -576,7 +612,8 @@ export function CollapsibleDropdown({ skills, selectedSkills, onSelect, onManage
             <span>{t({ zh: '管理 Skills...', en: 'Manage Skills...' }, lang)}</span>
           </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
