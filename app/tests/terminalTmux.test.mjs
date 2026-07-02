@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { buildTmuxSpawnOptions, getTerminalSessionName } from '../apps/backend/src/routes/terminal.js';
+import pty from 'node-pty';
 
 describe('tmux-backed terminal sessions', () => {
   it('derives a stable sanitized tmux session name per project/cwd', () => {
@@ -27,6 +28,23 @@ describe('tmux-backed terminal sessions', () => {
     expect(config.options.env.TERM).toBe('xterm-256color');
   });
 
+  it('has a working node-pty backend instead of silently rendering an empty terminal', async () => {
+    expect(typeof pty.spawn).toBe('function');
+    const output = await new Promise((resolve, reject) => {
+      const process = pty.spawn('/bin/sh', ['-lc', "printf 'terminal-ready\\n'"], {
+        name: 'xterm-256color', cols: 80, rows: 24, cwd: '/tmp', env: processEnv(),
+      });
+      let text = '';
+      const timer = setTimeout(() => reject(new Error('node-pty smoke test timed out')), 3000);
+      process.onData(data => { text += data; });
+      process.onExit(() => {
+        clearTimeout(timer);
+        resolve(text);
+      });
+    });
+    expect(output).toContain('terminal-ready');
+  });
+
   it('documents that websocket close detaches the client and keeps the tmux session resumable until delayed cleanup', async () => {
     const source = await readFile(join(process.cwd(), 'apps/backend/src/routes/terminal.js'), 'utf8');
     expect(source).toContain("ws.send(JSON.stringify({ type: 'id', session: sessionName, backend: 'tmux', resumed: true }))");
@@ -37,3 +55,7 @@ describe('tmux-backed terminal sessions', () => {
     expect(source).toContain('CLEANUP_TIMEOUT_MS');
   });
 });
+
+function processEnv() {
+  return { ...globalThis.process.env, TERM: 'xterm-256color' };
+}

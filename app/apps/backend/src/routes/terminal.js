@@ -106,7 +106,16 @@ export function registerTerminalRoutes(fastify) {
         try { ws.close(1011, message); } catch (e) {}
         return;
       }
-      const ptyProcess = pty.spawn(spawnConfig.command, spawnConfig.args, spawnConfig.options);
+      let ptyProcess;
+      try {
+        ptyProcess = pty.spawn(spawnConfig.command, spawnConfig.args, spawnConfig.options);
+      } catch (error) {
+        const message = `Terminal failed to start: ${error.message || String(error)}`;
+        fastify.log.error({ err: error, cwd, sessionName }, message);
+        try { if (ws && ws.readyState <= 1) ws.send(JSON.stringify({ type: 'error', error: message })); } catch {}
+        try { ws.close(1011, message.slice(0, 120)); } catch {}
+        return;
+      }
  
       entry = {
         ptyProcess,

@@ -67,7 +67,12 @@ export function TerminalPanel({ cwd }: Props) {
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
-    fitAddon.fit();
+    const fitTerminal = () => {
+      const container = containerRef.current;
+      if (!container || container.clientWidth <= 0 || container.clientHeight <= 0) return;
+      try { fitAddon.fit(); } catch {}
+    };
+    requestAnimationFrame(fitTerminal);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -76,18 +81,49 @@ export function TerminalPanel({ cwd }: Props) {
     const wsUrl = `${protocol}//${window.location.host}/api/terminal/ws?cols=${term.cols}&rows=${term.rows}&cwd=${encodeURIComponent(cwd)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    let disposed = false;
+    let receivedTerminalData = false;
+    let promptTimer: ReturnType<typeof setTimeout> | null = null;
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'data') {
-        term.write(msg.data);
-      } else if (msg.type === 'replay') {
-        term.write(msg.data);
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'data' || msg.type === 'replay') {
+          receivedTerminalData = true;
+          term.write(msg.data || '');
+        } else if (msg.type === 'id') {
+          term.writeln(`\x1b[90m[terminal connected · ${msg.backend || 'pty'} · ${msg.session}]\x1b[0m`);
+          // Some shells emit their first prompt before the PTY listener is attached.
+          // Request one empty command only when no terminal output arrives shortly.
+          promptTimer = setTimeout(() => {
+            if (!receivedTerminalData && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'data', data: '\r' }));
+            }
+          }, 150);
+        } else if (msg.type === 'error') {
+          term.writeln(`\r\n\x1b[31m${msg.error || 'Terminal backend error'}\x1b[0m`);
+        } else if (msg.type === 'exit') {
+          term.writeln(`\r\n\x1b[33m[terminal exited with code ${msg.code}]\x1b[0m`);
+        }
+      } catch {
+        receivedTerminalData = true;
+        term.write(String(event.data || ''));
       }
     };
 
     ws.onopen = () => {
-      // 不发送额外的换行，避免重复显示
+      fitTerminal();
+      term.focus();
+    };
+
+    ws.onerror = () => {
+      term.writeln('\r\n\x1b[31mTerminal connection failed. Check the backend WebSocket and node-pty installation.\x1b[0m');
+    };
+
+    ws.onclose = (event) => {
+      if (!disposed && event.code !== 1000) {
+        term.writeln(`\r\n\x1b[33m[terminal disconnected${event.reason ? `: ${event.reason}` : ''}]\x1b[0m`);
+      }
     };
 
     term.onData((data) => {
@@ -107,11 +143,13 @@ export function TerminalPanel({ cwd }: Props) {
     });
 
     const observer = new ResizeObserver(() => {
-      fitAddon.fit();
+      fitTerminal();
     });
     observer.observe(containerRef.current);
 
     return () => {
+      disposed = true;
+      if (promptTimer) clearTimeout(promptTimer);
       observer.disconnect();
       ws.close();
       term.dispose();
@@ -119,6 +157,6 @@ export function TerminalPanel({ cwd }: Props) {
   }, [cwd]);
 
   return (
-    <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+    <div ref={containerRef} style={{ height: '100%', width: '100%', minHeight: 0, background: '#1e1e1e' }} />
   );
 }
