@@ -356,13 +356,13 @@ Note: ${mainFile} not found. Searching for a main file with \documentclass...
  * Detect the main entry file for the project.
  * Checks for existing main files, then falls back to paper.yaml chapter order.
  */
-async function detectMainFile(projectRoot, editorMode) {
+export async function findExistingMainTexFile(projectRoot) {
   // 1. Check standard names
   const mainCandidates = ['main.tex', 'paper.tex', 'manuscript.tex'];
   for (const name of mainCandidates) {
     try {
       await fs.access(safeJoin(projectRoot, name));
-      return { mainFile: name, generated: false };
+      return name;
     } catch { /* not found */ }
   }
  
@@ -374,7 +374,7 @@ async function detectMainFile(projectRoot, editorMode) {
       try {
         const content = await fs.readFile(safeJoin(projectRoot, texFile), 'utf8');
         if (/\\documentclass/.test(content)) {
-          return { mainFile: texFile, generated: false };
+          return texFile;
         }
       } catch { /* skip */ }
     }
@@ -391,12 +391,19 @@ async function detectMainFile(projectRoot, editorMode) {
         try {
           const content = await fs.readFile(safeJoin(projectRoot, entry.name, f), 'utf8');
           if (/\\documentclass/.test(content)) {
-            return { mainFile: `${entry.name}/${f}`, generated: false };
+            return `${entry.name}/${f}`;
           }
         } catch { /* skip */ }
       }
     }
   } catch { /* can't read subdirectories */ }
+
+  return null;
+}
+
+async function detectMainFile(projectRoot, editorMode) {
+  const existingMainFile = await findExistingMainTexFile(projectRoot);
+  if (existingMainFile) return { mainFile: existingMainFile, generated: false };
  
   let chapters = [];
   try {

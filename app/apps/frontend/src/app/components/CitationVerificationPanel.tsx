@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface CitationResult {
   key: string;
@@ -33,13 +33,19 @@ interface CrossCheckResult {
 interface FullReport extends VerificationReport, CrossCheckResult {
   missingInBib: string[];
   uncitedInBib: string[];
+  mainFile?: string;
+  bibFiles?: string[];
 }
 
 interface Props {
   report: FullReport | null;
   loading: boolean;
+  loadingAction?: 'verify' | 'cross-check' | null;
+  verificationTotal?: number;
+  error?: string | null;
   onRunVerification?: () => void;
   onRunCrossCheck?: () => void;
+  onCancel?: () => void;
   projectPath?: string;
 }
 
@@ -136,8 +142,19 @@ function CitationItem({ result }: { result: CitationResult }) {
   );
 }
 
-export function CitationVerificationPanel({ report, loading, onRunVerification, onRunCrossCheck, projectPath }: Props) {
+export function CitationVerificationPanel({ report, loading, loadingAction, verificationTotal, error, onRunVerification, onRunCrossCheck, onCancel, projectPath }: Props) {
   const [view, setView] = useState<'summary' | 'verified' | 'missing' | 'uncited'>('summary');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 12, gap: 10, overflow: 'auto' }}>
@@ -149,20 +166,37 @@ export function CitationVerificationPanel({ report, loading, onRunVerification, 
       {/* Action Buttons */}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
+          type="button"
           onClick={onRunVerification}
           disabled={loading || !projectPath}
           style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--fg)', cursor: loading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, opacity: !projectPath ? 0.5 : 1 }}
         >
-          {loading ? '⏳ Verifying...' : '🔍 Verify All Citations'}
+          {loading && loadingAction === 'verify' ? '⏳ Verifying...' : '🔍 Verify All Citations'}
         </button>
+        {loading && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #ef444480', background: '#ef444415', color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+          >
+            Stop
+          </button>
+        )}
         <button
+          type="button"
           onClick={onRunCrossCheck}
           disabled={loading || !projectPath}
           style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--fg)', cursor: loading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600, opacity: !projectPath ? 0.5 : 1 }}
         >
-          {loading ? '⏳ Checking...' : '📑 Cross-Check Only'}
+          {loading && loadingAction === 'cross-check' ? '⏳ Checking...' : '📑 Cross-Check Only'}
         </button>
       </div>
+
+      {error && (
+        <div role="alert" style={{ padding: '9px 10px', background: '#ef444415', border: '1px solid #ef444450', borderRadius: 6, color: '#ef4444', fontSize: 11, lineHeight: 1.5 }}>
+          <strong>Citation verification failed:</strong> {error}
+        </div>
+      )}
 
       {!projectPath && (
         <div style={{ padding: 10, background: '#eab30815', border: '1px solid #eab30840', borderRadius: 6, fontSize: 11, color: '#eab308', textAlign: 'center' }}>
@@ -173,7 +207,12 @@ export function CitationVerificationPanel({ report, loading, onRunVerification, 
       {/* Loading */}
       {loading && (
         <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
-          <div style={{ marginBottom: 8 }}>⏳ Verifying citations against academic databases...</div>
+          <div style={{ marginBottom: 8 }}>
+            ⏳ {loadingAction === 'cross-check'
+              ? 'Cross-checking project citations...'
+              : `Verifying ${verificationTotal || 'project'} bibliography entries...`}
+          </div>
+          <div style={{ fontSize: 10, marginBottom: 4 }}>Elapsed: {elapsedSeconds}s · timeout: 120s</div>
           <div style={{ fontSize: 10 }}>CrossRef · Semantic Scholar · OpenAlex</div>
         </div>
       )}
@@ -181,6 +220,12 @@ export function CitationVerificationPanel({ report, loading, onRunVerification, 
       {/* Report */}
       {report && !loading && (
         <>
+          {(report.mainFile || report.bibFiles?.length) && (
+            <div style={{ padding: '7px 9px', background: 'var(--bg-secondary)', borderRadius: 6, color: 'var(--muted)', fontSize: 10, lineHeight: 1.5 }}>
+              {report.mainFile && <div><strong>Main TeX:</strong> <code>{report.mainFile}</code></div>}
+              {report.bibFiles?.length ? <div><strong>Bibliography:</strong> <code>{report.bibFiles.join(', ')}</code></div> : null}
+            </div>
+          )}
           <SummaryCards report={report} />
 
           {/* Tab Bar */}

@@ -330,11 +330,19 @@ export interface CrossCheckResult {
   uncitedInBib: string[];
 }
 
-export interface FullCitationReport extends VerificationReport, CrossCheckResult {}
+export interface FullCitationReport extends VerificationReport, CrossCheckResult {
+  mainFile?: string;
+  bibFiles?: string[];
+}
 
 /** Verify all BibTeX entries against academic databases */
-export async function verifyCitations(projectPath: string, bibFile?: string): Promise<FullCitationReport> {
-  return apiPost(`${BASE}/citations/verify`, { projectPath, bibFile });
+export async function verifyCitations(projectPath: string, bibFile?: string, signal?: AbortSignal): Promise<FullCitationReport> {
+  return apiFetch(`${BASE}/citations/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, bibFile }),
+    signal: signal || AbortSignal.timeout(120000),
+  });
 }
 
 /** Verify .tex citations and cross-check with .bib */
@@ -343,6 +351,11 @@ export async function verifyTexCitations(projectPath: string, texFile?: string, 
 }
 
 /** Quick cross-check without external API calls */
-export async function crossCheckCitations(projectPath: string, texFile?: string, bibFile?: string): Promise<CrossCheckResult> {
-  return apiPost(`${BASE}/citations/cross-check`, { projectPath, texFile, bibFile });
+export async function crossCheckCitations(projectPath: string, texFile?: string, bibFile?: string, signal?: AbortSignal): Promise<CrossCheckResult> {
+  return apiFetch(`${BASE}/citations/cross-check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath, texFile, bibFile }),
+    signal,
+  });
 }

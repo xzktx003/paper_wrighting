@@ -10,7 +10,7 @@ import { PipelinePanelV2 } from './PipelinePanelV2';
 import { CitationVerificationPanel } from './CitationVerificationPanel';
 import { PaperRagPanel } from './PaperRagPanel';
 import DrawPanel from './DrawPanel';
-import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero, verifyTexCitations, crossCheckCitations } from '../api/conversationApi';
+import { ConversationSummary, Conversation, structuredReview, detectAntiAi, detectAntiAiDeep, detectAntiAiGPTZero, verifyCitations, crossCheckCitations } from '../api/conversationApi';
 import { PendingEdit } from '../hooks/useConversations';
 import { RagDocumentSelector } from './RagDocumentSelector';
 
@@ -73,18 +73,34 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
   const [gptzeroLoading, setGptzeroLoading] = useState(false);
   const [citationReport, setCitationReport] = useState<any>(null);
   const [citationLoading, setCitationLoading] = useState(false);
+  const [citationLoadingAction, setCitationLoadingAction] = useState<'verify' | 'cross-check' | null>(null);
+  const [citationVerificationTotal, setCitationVerificationTotal] = useState(0);
+  const [citationError, setCitationError] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [showSkillsModal, setShowSkillsModal] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const citationRequestRef = useRef(0);
+  const citationAbortRef = useRef<AbortController | null>(null);
   const selectedRagDocs = activeConv?.rag_documents || [];
 
   // Clear selected skills when switching tabs
   useEffect(() => {
     setSelectedSkills([]);
   }, [activeTab]);
+
+  useEffect(() => {
+    citationAbortRef.current?.abort();
+    citationAbortRef.current = null;
+    citationRequestRef.current += 1;
+    setCitationReport(null);
+    setCitationError(null);
+    setCitationLoading(false);
+    setCitationLoadingAction(null);
+    setCitationVerificationTotal(0);
+  }, [projectPath]);
 
   const handleRunReview = useCallback(async () => {
     if (!projectPath) return;
@@ -116,17 +132,79 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
 
   const handleRunCitationVerification = useCallback(async () => {
     if (!projectPath) return;
+    const requestId = ++citationRequestRef.current;
+    const controller = new AbortController();
+    citationAbortRef.current?.abort();
+    citationAbortRef.current = controller;
     setCitationLoading(true);
-    try { const r = await verifyTexCitations(projectPath, activeFile); setCitationReport(r); } catch {}
-    setCitationLoading(false);
-  }, [projectPath, activeFile]);
+    setCitationLoadingAction('verify');
+    setCitationVerificationTotal(0);
+    setCitationError(null);
+    try {
+      const crossCheck = await crossCheckCitations(projectPath, undefined, undefined, controller.signal);
+      if (citationRequestRef.current !== requestId) return;
+      setCitationVerificationTotal(crossCheck.bibKeys.length);
+      const verification = await verifyCitations(projectPath, undefined, controller.signal);
+      if (citationRequestRef.current === requestId) setCitationReport({ ...verification, ...crossCheck });
+    } catch (error) {
+      if (citationRequestRef.current === requestId) {
+        setCitationError(error instanceof DOMException && error.name === 'AbortError'
+          ? 'Verification cancelled.'
+          : error instanceof Error ? error.message : 'Unknown citation verification error');
+      }
+    } finally {
+      if (citationRequestRef.current === requestId) {
+        setCitationLoading(false);
+        setCitationLoadingAction(null);
+        citationAbortRef.current = null;
+      }
+    }
+  }, [projectPath]);
 
   const handleRunCrossCheck = useCallback(async () => {
     if (!projectPath) return;
+    const requestId = ++citationRequestRef.current;
+    const controller = new AbortController();
+    citationAbortRef.current?.abort();
+    citationAbortRef.current = controller;
     setCitationLoading(true);
-    try { const r = await crossCheckCitations(projectPath, activeFile); setCitationReport((prev: any) => ({ ...prev, ...r })); } catch {}
+    setCitationLoadingAction('cross-check');
+    setCitationError(null);
+    try {
+      const result = await crossCheckCitations(projectPath, undefined, undefined, controller.signal);
+      if (citationRequestRef.current === requestId) {
+        setCitationReport({
+          totalEntries: 0,
+          verified: 0,
+          titleMatch: 0,
+          doiNotFound: 0,
+          unverifiable: 0,
+          results: [],
+          summary: `Cited: ${result.citedKeys.length}, Missing in .bib: ${result.missingInBib.length}, Uncited in .bib: ${result.uncitedInBib.length}`,
+          ...result,
+        });
+      }
+    } catch (error) {
+      if (citationRequestRef.current === requestId) {
+        setCitationError(error instanceof Error ? error.message : 'Unknown citation cross-check error');
+      }
+    } finally {
+      if (citationRequestRef.current === requestId) {
+        setCitationLoading(false);
+        setCitationLoadingAction(null);
+        citationAbortRef.current = null;
+      }
+    }
+  }, [projectPath]);
+
+  const handleCancelCitationVerification = useCallback(() => {
+    citationAbortRef.current?.abort();
+    citationAbortRef.current = null;
+    citationRequestRef.current += 1;
     setCitationLoading(false);
-  }, [projectPath, activeFile]);
+    setCitationLoadingAction(null);
+    setCitationError('Verification cancelled.');
+  }, []);
 
   const handleSend = async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
@@ -668,7 +746,7 @@ export function RightPanel({ conversations, activeConv, loading, uploadProgress,
         </div>
       ) : activeTab === 'citations' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <CitationVerificationPanel report={citationReport} loading={citationLoading} onRunVerification={handleRunCitationVerification} onRunCrossCheck={handleRunCrossCheck} projectPath={projectPath} />
+          <CitationVerificationPanel report={citationReport} loading={citationLoading} loadingAction={citationLoadingAction} verificationTotal={citationVerificationTotal} error={citationError} onRunVerification={handleRunCitationVerification} onRunCrossCheck={handleRunCrossCheck} onCancel={handleCancelCitationVerification} projectPath={projectPath} />
         </div>
       ) : activeTab === 'pipeline' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>

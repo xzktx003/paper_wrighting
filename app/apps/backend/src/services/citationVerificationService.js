@@ -72,26 +72,32 @@ export function titleSimilarity(title1, title2) {
 // ── S2 请求队列（限流 + 重试）────────────────────────────────────
  
 let s2LastRequestTime = 0;
+let s2RequestQueue = Promise.resolve();
 const s2ApiKey = process.env.SEMANTIC_SCHOLAR_API_KEY || '';
  
 /**
  * Semantic Scholar 带限流的 fetch
  * 串行队列，最小间隔 1.2s，429 时指数退避重试
  */
-async function s2Fetch(url, retryCount = 0) {
-  // 等待最小间隔
-  const now = Date.now();
-  const elapsed = now - s2LastRequestTime;
-  if (elapsed < S2_MIN_INTERVAL_MS) {
-    await new Promise(r => setTimeout(r, S2_MIN_INTERVAL_MS - elapsed));
-  }
-  s2LastRequestTime = Date.now();
- 
+async function enqueueS2Request(url) {
   const headers = { 'Accept': 'application/json' };
   if (s2ApiKey) headers['x-api-key'] = s2ApiKey;
- 
+
+  const request = s2RequestQueue.then(async () => {
+    const elapsed = Date.now() - s2LastRequestTime;
+    if (elapsed < S2_MIN_INTERVAL_MS) {
+      await new Promise(r => setTimeout(r, S2_MIN_INTERVAL_MS - elapsed));
+    }
+    s2LastRequestTime = Date.now();
+    return fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+  });
+  s2RequestQueue = request.then(() => undefined, () => undefined);
+  return request;
+}
+
+async function s2Fetch(url, retryCount = 0) {
   try {
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+    const res = await enqueueS2Request(url);
     if (res.status === 429 && retryCount < S2_MAX_RETRIES) {
       const backoffMs = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
       await new Promise(r => setTimeout(r, backoffMs));
@@ -138,6 +144,18 @@ export function parseBibTeX(bibContent) {
  
   return entries;
 }
+
+function stripTexComments(content) {
+  return content.split(/\r?\n/).map(line => {
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] !== '%') continue;
+      let slashCount = 0;
+      for (let j = i - 1; j >= 0 && line[j] === '\\'; j--) slashCount++;
+      if (slashCount % 2 === 0) return line.slice(0, i);
+    }
+    return line;
+  }).join('\n');
+}
  
 /**
  * 从 .tex 内容中提取所有 \cite{...} 引用键
@@ -146,10 +164,11 @@ export function parseBibTeX(bibContent) {
  */
 export function extractCiteKeys(texContent) {
   const keys = new Set();
-  // \cite{key1,key2}, \citep{key}, \citet{key}, \citealp{key}, etc.
-  const regex = /\\cite[tp]?\*?(?:\[[^\]]*\])?\{([^}]+)\}/g;
+  // Common BibTeX/natbib/biblatex citation commands with up to two options.
+  const regex = /\\(?:cite|citep|citet|citealp|citealt|citeauthor|citeyear|citeyearpar|autocite|parencite|textcite|footcite|smartcite)\*?(?:\s*\[[^\]]*\]){0,2}\s*\{([^}]+)\}/g;
+  const uncommented = stripTexComments(texContent);
   let m;
-  while ((m = regex.exec(texContent)) !== null) {
+  while ((m = regex.exec(uncommented)) !== null) {
     m[1].split(',').map(k => k.trim()).filter(Boolean).forEach(k => keys.add(k));
   }
   return [...keys];
@@ -518,7 +537,7 @@ export async function verifyCitation(entry) {
  * @returns {VerificationReport}
  */
 export async function verifyBibFile(bibContent, options = {}) {
-  const { onProgress } = options;
+  const { onProgress, verifyEntry = verifyCitation } = options;
   const entries = parseBibTeX(bibContent);
  
   if (entries.length === 0) {
@@ -534,10 +553,37 @@ export async function verifyBibFile(bibContent, options = {}) {
   }
  
   const results = [];
-  // [Fix #3] 串行验证，避免 S2 429；S2 内部已有 1.2s 间隔队列
-  for (const entry of entries) {
-    const result = await verifyCitation(entry);
-    results.push(result);
+  const concurrency = Math.max(1, Math.min(Number(options.concurrency) || 5, 10));
+  const entryTimeoutMs = Math.max(5000, Number(options.entryTimeoutMs) || 35000);
+  for (let i = 0; i < entries.length; i += concurrency) {
+    const batch = entries.slice(i, i + concurrency);
+    const batchResults = await Promise.all(batch.map(entry => new Promise(resolve => {
+      const timer = setTimeout(() => resolve({
+        key: entry.key,
+        type: entry.type,
+        doi: entry.fields.doi || null,
+        title: entry.fields.title || null,
+        status: 'unverifiable',
+        confidence: 'none',
+        sources: [{ source: 'verification', verified: false, error: `Timed out after ${entryTimeoutMs}ms` }],
+      }), entryTimeoutMs);
+      Promise.resolve(verifyEntry(entry)).then(
+        result => { clearTimeout(timer); resolve(result); },
+        error => {
+          clearTimeout(timer);
+          resolve({
+            key: entry.key,
+            type: entry.type,
+            doi: entry.fields.doi || null,
+            title: entry.fields.title || null,
+            status: 'unverifiable',
+            confidence: 'none',
+            sources: [{ source: 'verification', verified: false, error: error?.message || String(error) }],
+          });
+        },
+      );
+    })));
+    results.push(...batchResults);
     onProgress?.({ done: results.length, total: entries.length });
   }
  
